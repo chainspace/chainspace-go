@@ -51,13 +51,11 @@ func cmdGenTestnet(args []string, usage string) {
 				Value:     b32.EncodeToString(keypair.PublicKey()),
 			},
 		}
-
 	}
 
 	if err = writeYAML(filepath.Join(netDir, "peers.yaml"), peers); err != nil {
 		log.Fatal(err)
 	}
-
 }
 
 func createNodeYaml(address string, i *int, nodeDir string) {
