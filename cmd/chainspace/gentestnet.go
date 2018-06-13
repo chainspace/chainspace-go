@@ -41,15 +41,8 @@ func cmdGenTestnet(args []string, usage string) {
 			log.Fatal(err)
 		}
 
-		// Create node.yaml
 		address := fmt.Sprintf("%s:%d", *ip, *portOffset+i)
-		cfg := &config.Node{
-			Address: address,
-			ID:      uint64(i),
-		}
-		if err = writeYAML(filepath.Join(nodeDir, "node.yaml"), cfg); err != nil {
-			log.Fatal(err)
-		}
+		createNodeYaml(address, &i, nodeDir)
 
 		peers[uint64(i)] = &config.Peer{
 			Address: address,
@@ -65,4 +58,14 @@ func cmdGenTestnet(args []string, usage string) {
 		log.Fatal(err)
 	}
 
+}
+
+func createNodeYaml(address string, i *int, nodeDir string) {
+	cfg := &config.Node{
+		Address: address,
+		ID:      uint64(*i),
+	}
+	if err := writeYAML(filepath.Join(nodeDir, "node.yaml"), cfg); err != nil {
+		log.Fatal(err)
+	}
 }
