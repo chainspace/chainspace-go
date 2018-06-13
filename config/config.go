@@ -7,7 +7,7 @@ import (
 )
 
 type KeyPair struct {
-	Algorithm string `yaml:"alg"`
+	Algorithm string `yaml:"algorithm"`
 	PrivKey   string `yaml:"privkey"`
 	PubKey    string `yaml:"pubkey"`
 }
@@ -15,7 +15,6 @@ type KeyPair struct {
 type Node struct {
 	Address string `yaml:"address"`
 	ID      uint64 `yaml:"id"`
-	Moniker string `yaml:"moniker"`
 }
 
 type Peer struct {
@@ -24,7 +23,7 @@ type Peer struct {
 }
 
 type PublicKey struct {
-	Algorithm string `yaml:"alg"`
+	Algorithm string `yaml:"algorithm"`
 	Value     string `yaml:"value"`
 }
 

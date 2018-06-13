@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
-	"log"
 
 	"chainspace.io/prototype/config"
+	"github.com/tav/golly/log"
 )
 
 func cmdRun(args []string, info string) {
@@ -21,7 +21,7 @@ func cmdRun(args []string, info string) {
 	if err != nil {
 		log.Fatalf("Could not parse peers.yaml: %s", err)
 	}
-	log.Printf("NODE CONFIG: %v", cfg)
-	log.Printf("KEYPAIR: %#v", keypair)
-	log.Printf("PEERS: %v", peers)
+	log.Infof("NODE CONFIG: %v", cfg)
+	log.Infof("KEYPAIR: %#v", keypair)
+	log.Infof("PEERS: %v", peers)
 }
