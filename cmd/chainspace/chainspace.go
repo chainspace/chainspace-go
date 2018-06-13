@@ -1,22 +1,17 @@
 package main
 
 import (
-	"fmt"
-	"log"
-
-	"chainspace.io/prototype/config"
+	"github.com/tav/golly/optparse"
 )
 
 func main() {
-	fmt.Println(">> Running chainspace!")
-	cfg, err := config.ParseNode("node.yaml")
-	if err != nil {
-		log.Fatalf("Could not parse node.yaml: %s", err)
+	cmds := map[string]func([]string, string){
+		"genkey": cmdGenKey,
+		"run":    cmdRun,
 	}
-	privkey, err := config.ParsePrivkey("privkey.yaml")
-	if err != nil {
-		log.Fatalf("Could not parse privkey.yaml: %s", err)
+	info := map[string]string{
+		"genkey": "generate a new node keypair",
+		"run":    "run the chainspace node",
 	}
-	log.Printf("NODE CONFIG: %#v", cfg)
-	log.Printf("PRIVKEY: %#v", privkey)
+	optparse.Commands("chainspace", "0.0.1", cmds, info)
 }
