@@ -6,33 +6,45 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-type KeyPair struct {
-	Algorithm string `yaml:"algorithm"`
-	PrivKey   string `yaml:"privkey"`
-	PubKey    string `yaml:"pubkey"`
+type Keys struct {
+	SigningKey    *SigningKey    `yaml:"signing.key"`
+	TransportCert *TransportCert `yaml:"transport.cert"`
 }
 
 type Node struct {
-	Address string `yaml:"address"`
+	Address string
 	ID      uint64 `yaml:"id"`
 }
 
 type Peer struct {
-	Address string     `yaml:"address"`
-	PubKey  *PublicKey `yaml:"pubkey"`
+	Address       string
+	SigningKey    *PeerKey `yaml:"signing.key"`
+	TransportCert *PeerKey `yaml:"transport.cert"`
 }
 
-type PublicKey struct {
-	Algorithm string `yaml:"algorithm"`
-	Value     string `yaml:"value"`
+type PeerKey struct {
+	Type  string
+	Value string
 }
 
-func ParseKeyPair(path string) (*KeyPair, error) {
+type SigningKey struct {
+	Type    string
+	Public  string
+	Private string `yaml:",omitempty"`
+}
+
+type TransportCert struct {
+	Type    string
+	Public  string
+	Private string
+}
+
+func ParseKeys(path string) (*Keys, error) {
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	cfg := &KeyPair{}
+	cfg := &Keys{}
 	err = yaml.Unmarshal(data, cfg)
 	return cfg, err
 }
