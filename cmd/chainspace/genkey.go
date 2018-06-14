@@ -6,42 +6,54 @@ import (
 	"os"
 
 	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/crypto"
+	"chainspace.io/prototype/crypto/signature"
+	"chainspace.io/prototype/crypto/transport"
 	"github.com/tav/golly/log"
 	"gopkg.in/yaml.v2"
 )
 
 var b32 = base32.StdEncoding.WithPadding(base32.NoPadding)
 
-func genKey(path string) (*crypto.SignatureKeyPair, error) {
-	keypair, err := crypto.GenSignatureKey(crypto.Ed25519Signature)
+func genKeys(path string) (signature.KeyPair, *transport.Cert, error) {
+	signingKey, err := signature.GenKeyPair(signature.Ed25519)
 	if err != nil {
-		return nil, fmt.Errorf("could not generate keypair: %s", err)
+		return nil, nil, fmt.Errorf("could not generate signing key: %s", err)
+	}
+	cert, err := transport.GenCert(transport.ECDSA)
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not generate transport cert: %s", err)
 	}
 	f, err := os.Create(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer f.Close()
-	cfg := config.KeyPair{
-		Algorithm: keypair.Algorithm().String(),
-		PubKey:    b32.EncodeToString(keypair.PublicKey()),
-		PrivKey:   b32.EncodeToString(keypair.PrivateKey()),
+	cfg := config.Keys{
+		SigningKey: &config.SigningKey{
+			Private: b32.EncodeToString(signingKey.PrivateKey().Value()),
+			Public:  b32.EncodeToString(signingKey.PublicKey().Value()),
+			Type:    signingKey.Algorithm().String(),
+		},
+		TransportCert: &config.TransportCert{
+			Private: cert.Private,
+			Public:  cert.Public,
+			Type:    cert.Type.String(),
+		},
 	}
 	enc := yaml.NewEncoder(f)
 	err = enc.Encode(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("could not write data to %s: %s", path, err)
+		return nil, nil, fmt.Errorf("could not write data to %s: %s", path, err)
 	}
-	return keypair, nil
+	return signingKey, cert, nil
 }
 
 func cmdGenKey(args []string, usage string) {
 	opts := newOpts("genkey OPTIONS", usage)
-	path := opts.Flags("-o", "--output").Label("PATH").String("path to write the generated keypair [keypair.yaml]")
+	path := opts.Flags("-o", "--output").Label("PATH").String("path to write the generated keys [keys.yaml]")
 	opts.Parse(args)
-	if _, err := genKey(*path); err != nil {
-		log.Fatalf("ERROR: %s", err)
+	if _, _, err := genKeys(*path); err != nil {
+		log.Fatalf("%s", err)
 	}
-	log.Infof("Generated keypair successfully written to %s", *path)
+	log.Infof("Generated keys successfully written to %s", *path)
 }

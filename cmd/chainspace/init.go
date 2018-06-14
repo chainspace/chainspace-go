@@ -16,7 +16,7 @@ func cmdInit(args []string, usage string) {
 	}
 	id, err := strconv.ParseUint(params[0], 10, 64)
 	if err != nil {
-		log.Fatalf("ERROR: %q is not a valid node ID. It should be a number: %s", params[0], err)
+		log.Fatalf("%q is not a valid node ID. It should be a number: %s", params[0], err)
 	}
 	_ = id
 	log.Fatal("NOT IMPLEMENTED :)")
