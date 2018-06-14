@@ -1,4 +1,4 @@
-package config
+package config // import "chainspace.io/prototype/config"
 
 import (
 	"io/ioutil"

@@ -13,8 +13,8 @@ import (
 
 var b32 = base32.StdEncoding.WithPadding(base32.NoPadding)
 
-func genKey(path string) (*crypto.KeyPair, error) {
-	keypair, err := crypto.GenKeyPair("ed25519")
+func genKey(path string) (*crypto.SignatureKeyPair, error) {
+	keypair, err := crypto.GenSignatureKey(crypto.Ed25519Signature)
 	if err != nil {
 		return nil, fmt.Errorf("could not generate keypair: %s", err)
 	}
@@ -24,7 +24,7 @@ func genKey(path string) (*crypto.KeyPair, error) {
 	}
 	defer f.Close()
 	cfg := config.KeyPair{
-		Algorithm: keypair.Algorithm(),
+		Algorithm: keypair.Algorithm().String(),
 		PubKey:    b32.EncodeToString(keypair.PublicKey()),
 		PrivKey:   b32.EncodeToString(keypair.PrivateKey()),
 	}
