@@ -16,8 +16,8 @@ func (k ed25519Privkey) Sign(data []byte) []byte {
 
 type ed25519Pubkey []byte
 
-func (k ed25519Pubkey) Algorithm() string {
-	return "ed25519"
+func (k ed25519Pubkey) Algorithm() SignatureAlgorithm {
+	return Ed25519Signature
 }
 
 func (k ed25519Pubkey) PublicKey() []byte {

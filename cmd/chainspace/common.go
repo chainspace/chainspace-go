@@ -22,12 +22,11 @@ func createUnlessExists(path string) {
 	}
 }
 
-func ensureRootDir() (string, error) {
-	path := os.ExpandEnv("$HOME/.chainspace")
-	if exists, err := fsutil.Exists(path); exists {
-		return path, err
+func ensureRootDir() error {
+	if exists, err := fsutil.Exists(rootDir); exists {
+		return err
 	}
-	return path, os.Mkdir(path, dirPerms)
+	return os.Mkdir(rootDir, dirPerms)
 }
 
 func newOpts(command string, usage string) *optparse.Parser {

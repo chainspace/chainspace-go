@@ -1,14 +1,15 @@
 package main
 
 import (
-	"fmt"
-
 	"chainspace.io/prototype/config"
 	"github.com/tav/golly/log"
 )
 
-func cmdRun(args []string, info string) {
-	fmt.Println(">> Running chainspace!")
+func cmdRun(args []string, usage string) {
+
+	opts := newOpts("run NETWORK_ID NODE_ID", usage)
+	opts.Parse(args)
+
 	cfg, err := config.ParseNode("node.yaml")
 	if err != nil {
 		log.Fatalf("Could not parse node.yaml: %s", err)

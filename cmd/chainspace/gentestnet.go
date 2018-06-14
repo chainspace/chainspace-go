@@ -17,12 +17,11 @@ func cmdGenTestnet(args []string, usage string) {
 	portOffset := opts.Flags("-p", "--port-offset").Int("starting port offset for node addresses [9000]")
 	opts.Parse(args)
 
-	root, err := ensureRootDir()
-	if err != nil {
+	if err := ensureRootDir(); err != nil {
 		log.Fatal(err)
 	}
 
-	netDir := filepath.Join(root, *networkID)
+	netDir := filepath.Join(rootDir, *networkID)
 	createUnlessExists(netDir)
 
 	peers := map[uint64]*config.Peer{}
@@ -53,7 +52,7 @@ func cmdGenTestnet(args []string, usage string) {
 		}
 	}
 
-	if err = writeYAML(filepath.Join(netDir, "peers.yaml"), peers); err != nil {
+	if err := writeYAML(filepath.Join(netDir, "peers.yaml"), peers); err != nil {
 		log.Fatal(err)
 	}
 }
