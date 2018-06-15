@@ -2,6 +2,30 @@
 
 
 [[projects]]
+  branch = "master"
+  name = "github.com/aead/chacha20"
+  packages = [
+    ".",
+    "chacha"
+  ]
+  revision = "e2538746bfea853aaa589feb8ec46bd46ee78f86"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/bifurcation/mint"
+  packages = [
+    ".",
+    "syntax"
+  ]
+  revision = "198357931e6129b810c9c77c12e0dd754846170c"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/cheekybits/genny"
+  packages = ["generic"]
+  revision = "9127e812e1e9e501ce899a18121d316ecb52e4ba"
+
+[[projects]]
   name = "github.com/dchest/siphash"
   packages = ["."]
   revision = "4ebf1de738443ea7f45f02dc394c4df1942a126d"
@@ -12,6 +36,43 @@
   name = "github.com/flynn/go-shlex"
   packages = ["."]
   revision = "3f9db97f856818214da2e1057f8ad84803971cff"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/hashicorp/golang-lru"
+  packages = [
+    ".",
+    "simplelru"
+  ]
+  revision = "0fb14efe8c47ae851c0034ed7a448854d3d34cf3"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/lucas-clemente/aes12"
+  packages = ["."]
+  revision = "cd47fb39b79f867c6e4e5cd39cf7abd799f71670"
+
+[[projects]]
+  name = "github.com/lucas-clemente/quic-go"
+  packages = [
+    ".",
+    "internal/ackhandler",
+    "internal/congestion",
+    "internal/crypto",
+    "internal/flowcontrol",
+    "internal/handshake",
+    "internal/protocol",
+    "internal/utils",
+    "internal/wire",
+    "qerr"
+  ]
+  revision = "7356fc05d5799392e5131b1a8865c00455158c4e"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/lucas-clemente/quic-go-certificates"
+  packages = ["."]
+  revision = "d2f86524cced5186554df90d92529757d22c1cb6"
 
 [[projects]]
   name = "github.com/mattn/go-colorable"
@@ -47,20 +108,23 @@
   branch = "master"
   name = "golang.org/x/crypto"
   packages = [
+    "curve25519",
     "ed25519",
     "ed25519/internal/edwards25519",
+    "hkdf",
     "ssh/terminal"
   ]
-  revision = "8ac0e0d97ce45cd83d1d7243c060cb8461dda5e9"
+  revision = "a8fb68e7206f8c78be19b432c58eb52a6aa34462"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/sys"
   packages = [
+    "cpu",
     "unix",
     "windows"
   ]
-  revision = "8ee9f3e146b708d082f4bab861e5759d1edf8c00"
+  revision = "8014b7b116a67fea23fbb82cd834c9ad656ea44b"
 
 [[projects]]
   name = "gopkg.in/yaml.v2"
@@ -71,6 +135,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "0b498b5a2f90713de910f1abc773a6593144380e032bdb02a058be0dc701ed55"
+  inputs-digest = "d5321830d135c7025b6a866a87d841b476c990c66231d6b4b2af9b98ba0da65d"
   solver-name = "gps-cdcl"
   solver-version = 1
