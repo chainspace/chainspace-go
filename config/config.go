@@ -6,18 +6,28 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+type Key struct {
+	Type    string
+	Public  string
+	Private string `yaml:",omitempty"`
+}
+
 type Keys struct {
-	SigningKey    *SigningKey    `yaml:"signing.key"`
-	TransportCert *TransportCert `yaml:"transport.cert"`
+	SigningKey    *Key `yaml:"signing.key"`
+	TransportCert *Key `yaml:"transport.cert"`
+}
+
+type Network struct {
+	Shards    int
+	SeedNodes map[uint64]*Peer `yaml:"seed.nodes"`
 }
 
 type Node struct {
-	Address string
-	ID      uint64 `yaml:"id"`
+	Address   string
+	Bootstrap string
 }
 
 type Peer struct {
-	Address       string
 	SigningKey    *PeerKey `yaml:"signing.key"`
 	TransportCert *PeerKey `yaml:"transport.cert"`
 }
@@ -25,18 +35,6 @@ type Peer struct {
 type PeerKey struct {
 	Type  string
 	Value string
-}
-
-type SigningKey struct {
-	Type    string
-	Public  string
-	Private string `yaml:",omitempty"`
-}
-
-type TransportCert struct {
-	Type    string
-	Public  string
-	Private string
 }
 
 func ParseKeys(path string) (*Keys, error) {
@@ -49,6 +47,16 @@ func ParseKeys(path string) (*Keys, error) {
 	return cfg, err
 }
 
+func ParseNetwork(path string) (*Network, error) {
+	data, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	network := &Network{}
+	err = yaml.Unmarshal(data, network)
+	return network, err
+}
+
 func ParseNode(path string) (*Node, error) {
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -57,14 +65,4 @@ func ParseNode(path string) (*Node, error) {
 	cfg := &Node{}
 	err = yaml.Unmarshal(data, cfg)
 	return cfg, err
-}
-
-func ParsePeers(path string) (map[uint64]*Peer, error) {
-	data, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	peers := map[uint64]*Peer{}
-	err = yaml.Unmarshal(data, peers)
-	return peers, err
 }
