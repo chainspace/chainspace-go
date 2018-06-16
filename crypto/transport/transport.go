@@ -7,6 +7,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
 	"math/big"
@@ -40,7 +41,7 @@ type Cert struct {
 
 // GenCert creates a new cert for the given cert type. It uses crypto/rand's
 // Reader behind the scenes as the source of randomness.
-func GenCert(t CertType) (*Cert, error) {
+func GenCert(t CertType, networkID string, nodeID uint64) (cert *Cert, err error) {
 	switch t {
 	case ECDSA:
 		key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -52,9 +53,15 @@ func GenCert(t CertType) (*Cert, error) {
 			return nil, err
 		}
 		tmpl := &x509.Certificate{
-			NotAfter:     time.Now().Add(time.Hour * 24 * 365 * 100), // 100 years
-			NotBefore:    time.Now(),
-			SerialNumber: big.NewInt(1),
+			BasicConstraintsValid: true,
+			ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+			IsCA:                  true,
+			KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+			NotAfter:              time.Now().Add(time.Hour * 24 * 365 * 100), // 100 years
+			NotBefore:             time.Now(),
+			SerialNumber:          big.NewInt(1),
+			SignatureAlgorithm:    x509.ECDSAWithSHA512,
+			Subject:               pkix.Name{CommonName: fmt.Sprintf("%s/%d", networkID, nodeID)},
 		}
 		cert, err := x509.CreateCertificate(
 			rand.Reader, tmpl, tmpl, &key.PublicKey, key,
@@ -70,14 +77,18 @@ func GenCert(t CertType) (*Cert, error) {
 			Bytes: der,
 			Type:  "EC PRIVATE KEY",
 		}
-		pem.Encode(buf, block)
+		if err = pem.Encode(buf, block); err != nil {
+			return nil, err
+		}
 		c.Private = buf.String()
 		buf.Reset()
 		block = &pem.Block{
 			Type:  "CERTIFICATE",
 			Bytes: cert,
 		}
-		pem.Encode(buf, block)
+		if err = pem.Encode(buf, block); err != nil {
+			return nil, err
+		}
 		c.Public = buf.String()
 		return c, nil
 	default:
