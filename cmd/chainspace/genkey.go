@@ -14,12 +14,12 @@ import (
 
 var b32 = base32.StdEncoding.WithPadding(base32.NoPadding)
 
-func genKeys(path string) (signature.KeyPair, *transport.Cert, error) {
+func genKeys(path string, networkID string, nodeID uint64) (signature.KeyPair, *transport.Cert, error) {
 	signingKey, err := signature.GenKeyPair(signature.Ed25519)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not generate signing key: %s", err)
 	}
-	cert, err := transport.GenCert(transport.ECDSA)
+	cert, err := transport.GenCert(transport.ECDSA, networkID, nodeID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not generate transport cert: %s", err)
 	}
@@ -29,12 +29,12 @@ func genKeys(path string) (signature.KeyPair, *transport.Cert, error) {
 	}
 	defer f.Close()
 	cfg := config.Keys{
-		SigningKey: &config.SigningKey{
+		SigningKey: &config.Key{
 			Private: b32.EncodeToString(signingKey.PrivateKey().Value()),
 			Public:  b32.EncodeToString(signingKey.PublicKey().Value()),
 			Type:    signingKey.Algorithm().String(),
 		},
-		TransportCert: &config.TransportCert{
+		TransportCert: &config.Key{
 			Private: cert.Private,
 			Public:  cert.Public,
 			Type:    cert.Type.String(),
@@ -49,10 +49,10 @@ func genKeys(path string) (signature.KeyPair, *transport.Cert, error) {
 }
 
 func cmdGenKey(args []string, usage string) {
-	opts := newOpts("genkey OPTIONS", usage)
+	opts := newOpts("genkey NETWORK_ID NODE_ID", usage)
 	path := opts.Flags("-o", "--output").Label("PATH").String("path to write the generated keys [keys.yaml]")
-	opts.Parse(args)
-	if _, _, err := genKeys(*path); err != nil {
+	networkID, nodeID := getNetworkAndNodeIDs(opts, args)
+	if _, _, err := genKeys(*path, networkID, nodeID); err != nil {
 		log.Fatalf("%s", err)
 	}
 	log.Infof("Generated keys successfully written to %s", *path)

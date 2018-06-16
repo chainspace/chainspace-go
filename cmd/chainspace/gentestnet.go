@@ -25,17 +25,22 @@ func cmdGenTestnet(args []string, usage string) {
 	createUnlessExists(netDir)
 
 	peers := map[uint64]*config.Peer{}
+	network := &config.Network{
+		Shards:    1,
+		SeedNodes: peers,
+	}
 
 	for i := 1; i <= *nodeCount; i++ {
 
 		log.Infof("Generating %s node %d", *networkID, i)
 
+		nodeID := uint64(i)
 		dirName := fmt.Sprintf("node-%d", i)
 		nodeDir := filepath.Join(netDir, dirName)
 		createUnlessExists(nodeDir)
 
 		// Create keys.yaml
-		signingKey, cert, err := genKeys(filepath.Join(nodeDir, "keys.yaml"))
+		signingKey, cert, err := genKeys(filepath.Join(nodeDir, "keys.yaml"), *networkID, nodeID)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -43,15 +48,14 @@ func cmdGenTestnet(args []string, usage string) {
 		// Create node.yaml
 		address := fmt.Sprintf("%s:%d", *ip, *portOffset+i)
 		cfg := &config.Node{
-			Address: address,
-			ID:      uint64(i),
+			Address:   address,
+			Bootstrap: "mdns",
 		}
 		if err := writeYAML(filepath.Join(nodeDir, "node.yaml"), cfg); err != nil {
 			log.Fatal(err)
 		}
 
-		peers[uint64(i)] = &config.Peer{
-			Address: address,
+		peers[nodeID] = &config.Peer{
 			SigningKey: &config.PeerKey{
 				Type:  signingKey.Algorithm().String(),
 				Value: b32.EncodeToString(signingKey.PublicKey().Value()),
@@ -64,7 +68,7 @@ func cmdGenTestnet(args []string, usage string) {
 
 	}
 
-	if err := writeYAML(filepath.Join(netDir, "peers.yaml"), peers); err != nil {
+	if err := writeYAML(filepath.Join(netDir, "network.yaml"), network); err != nil {
 		log.Fatal(err)
 	}
 
