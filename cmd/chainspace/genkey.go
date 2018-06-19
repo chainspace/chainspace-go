@@ -49,10 +49,10 @@ func genKeys(path string, networkID string, nodeID uint64) (signature.KeyPair, *
 }
 
 func cmdGenKey(args []string, usage string) {
-	opts := newOpts("genkey NETWORK_ID NODE_ID", usage)
+	opts := newOpts("genkey NETWORK_NAME NODE_ID [OPTIONS]", usage)
 	path := opts.Flags("-o", "--output").Label("PATH").String("path to write the generated keys [keys.yaml]")
-	networkID, nodeID := getNetworkAndNodeIDs(opts, args)
-	if _, _, err := genKeys(*path, networkID, nodeID); err != nil {
+	networkName, nodeID := getNetworkNameAndNodeID(opts, args)
+	if _, _, err := genKeys(*path, networkName, nodeID); err != nil {
 		log.Fatalf("%s", err)
 	}
 	log.Infof("Generated keys successfully written to %s", *path)

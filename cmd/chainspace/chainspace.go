@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-
 	"github.com/tav/golly/optparse"
 )
 
@@ -14,10 +12,7 @@ const logo = `          [0;1;34;94m█[0m               [0;1;31;91m▀[0m
                                              [0;1;32;92m█[0m                          
                                              [0;1;36;96m▀[0m`
 
-var rootDir string
-
 func main() {
-	rootDir = os.ExpandEnv("$HOME/.chainspace")
 	cmds := map[string]func([]string, string){
 		"genkey":     cmdGenKey,
 		"gentestnet": cmdGenTestnet,

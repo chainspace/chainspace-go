@@ -18,12 +18,13 @@ type Keys struct {
 }
 
 type Network struct {
-	Shards    int
+	ID        string
+	Shards    uint32
 	SeedNodes map[uint64]*Peer `yaml:"seed.nodes"`
 }
 
 type Node struct {
-	Address   string
+	HostIP    string `yaml:"host.ip"`
 	Bootstrap string
 }
 

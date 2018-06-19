@@ -23,28 +23,36 @@ func createUnlessExists(path string) {
 	}
 }
 
-func ensureRootDir() error {
-	if exists, err := fsutil.Exists(rootDir); exists {
-		return err
-	}
-	return os.Mkdir(rootDir, dirPerms)
+func defaultRootDir() string {
+	return os.ExpandEnv("$HOME/.chainspace")
 }
 
-func getNetworkAndNodeIDs(opts *optparse.Parser, args []string) (string, uint64) {
+func ensureDir(path string) error {
+	_, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return os.Mkdir(path, dirPerms)
+		}
+		return err
+	}
+	return nil
+}
+
+func getNetworkNameAndNodeID(opts *optparse.Parser, args []string) (string, uint64) {
 	params := opts.Parse(args)
 	if len(params) != 2 {
 		opts.PrintUsage()
 		os.Exit(1)
 	}
-	networkID := params[0]
-	if networkID == "" {
-		log.Fatal("Network ID cannot be empty")
+	networkName := params[0]
+	if networkName == "" {
+		log.Fatal("Network name cannot be empty")
 	}
 	nodeID, err := strconv.ParseUint(params[1], 10, 64)
 	if err != nil {
 		log.Fatalf("Could not parse the Node ID: %s", err)
 	}
-	return networkID, nodeID
+	return networkName, nodeID
 }
 
 func newOpts(command string, usage string) *optparse.Parser {
