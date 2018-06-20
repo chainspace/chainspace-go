@@ -13,17 +13,20 @@ import (
 func cmdGenTestnet(args []string, usage string) {
 
 	opts := newOpts("gentestnet [OPTIONS]", usage)
-	count := opts.Flags("-c", "--count").Label("N").Int("number of nodes to instantiate [4]")
-	ip := opts.Flags("-i", "--ip").Label("ADDR").String("default ip to bind the nodes [127.0.0.1]")
-	name := opts.Flags("-n", "--name").Label("IDENT").String("the name of the network [testnet]")
-	rootDir := opts.Flags("-r", "--root").Label("DIR").String("path to the chainspace root directory", defaultRootDir())
+	bindAll := opts.Flags("--bind-all").Bool("override --host-ip and bind to all interfaces instead")
+	configRoot := opts.Flags("--config-root").Label("PATH").String("path to the chainspace root directory [~/.chainspace]", defaultRootDir())
+	hostIP := opts.Flags("--host-ip").Label("IP").String("the default ip to bind the nodes [127.0.0.1]")
+	networkName := opts.Flags("--network-name").Label("IDENT").String("the name of the network [testnet]")
+	runtimeRoot := opts.Flags("--runtime-root").Label("PATH").String("path to the runtime root directory [~/.chainspace]")
+	shardCount := opts.Flags("--shard-count").Label("N").Int("number of shards in the network [3]")
+	shardSize := opts.Flags("--shard-size").Label("N").Int("number of nodes in each shard [4]")
 	opts.Parse(args)
 
-	if err := ensureDir(*rootDir); err != nil {
+	if err := ensureDir(*configRoot); err != nil {
 		log.Fatal(err)
 	}
 
-	netDir := filepath.Join(*rootDir, *name)
+	netDir := filepath.Join(*configRoot, *networkName)
 	createUnlessExists(netDir)
 
 	buf := make([]byte, 36)
@@ -33,19 +36,33 @@ func cmdGenTestnet(args []string, usage string) {
 
 	networkID := b32.EncodeToString(buf)
 	peers := map[uint64]*config.Peer{}
+	shard := &config.Shard{
+		Count: *shardCount,
+		Size:  *shardSize,
+	}
+
 	network := &config.Network{
 		ID:        networkID,
-		Shards:    1,
+		Shard:     shard,
 		SeedNodes: peers,
 	}
 
-	if *ip != "" && net.ParseIP(*ip) == nil {
-		log.Fatalf("Could not parse the given IP address: %q", *ip)
+	ip := ""
+	if !*bindAll {
+		ip = *hostIP
+	}
+	if ip != "" && net.ParseIP(ip) == nil {
+		log.Fatalf("Could not parse the given IP address: %q", ip)
 	}
 
-	for i := 1; i <= *count; i++ {
+	if ((3 * (*shardSize / 3)) + 1) != *shardSize {
+		log.Fatalf("The given --shard-size of %d does not satisfy the 3f+1 requirement", *shardSize)
+	}
 
-		log.Infof("Generating %s node %d", *name, i)
+	totalNodes := *shardCount * *shardSize
+	for i := 1; i <= totalNodes; i++ {
+
+		log.Infof("Generating %s node %d", *networkName, i)
 
 		nodeID := uint64(i)
 		dirName := fmt.Sprintf("node-%d", i)
@@ -53,15 +70,17 @@ func cmdGenTestnet(args []string, usage string) {
 		createUnlessExists(nodeDir)
 
 		// Create keys.yaml
-		signingKey, cert, err := genKeys(filepath.Join(nodeDir, "keys.yaml"), *name, nodeID)
+		signingKey, cert, err := genKeys(filepath.Join(nodeDir, "keys.yaml"), *networkName, nodeID)
 		if err != nil {
 			log.Fatal(err)
 		}
 
 		// Create node.yaml
 		cfg := &config.Node{
-			Bootstrap: "mdns",
-			HostIP:    *ip,
+			Announce:         []string{"mdns"},
+			BootstrapMDNS:    true,
+			HostIP:           ip,
+			RuntimeDirectory: filepath.Join(*runtimeRoot, *networkName, dirName),
 		}
 		if err := writeYAML(filepath.Join(nodeDir, "node.yaml"), cfg); err != nil {
 			log.Fatal(err)
