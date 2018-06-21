@@ -14,16 +14,14 @@ const logo = `          [0;1;34;94m█[0m               [0;1;31;91m▀[0m
 
 func main() {
 	cmds := map[string]func([]string, string){
-		"genkey":     cmdGenKey,
-		"gentestnet": cmdGenTestnet,
-		"init":       cmdInit,
-		"run":        cmdRun,
+		"genkeys": cmdGenKeys,
+		"init":    cmdInit,
+		"run":     cmdRun,
 	}
 	info := map[string]string{
-		"genkey":     "generate a new node keypair",
-		"gentestnet": "generate a testnet of multiple nodes",
-		"init":       "initialise a new node",
-		"run":        "run the chainspace node",
+		"genkeys": "Generate new keys for a node",
+		"init":    "Initialise a new Chainspace network",
+		"run":     "Run a node in a Chainspace network",
 	}
 	optparse.Commands("chainspace", "0.0.1", cmds, info, logo)
 }

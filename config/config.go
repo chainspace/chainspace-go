@@ -4,6 +4,7 @@ package config // import "chainspace.io/prototype/config"
 // alphabetical order so as to generate a more pleasing ordering when serialised
 // to YAML.
 import (
+	"crypto/sha512"
 	"io/ioutil"
 
 	"gopkg.in/yaml.v2"
@@ -25,9 +26,27 @@ type Keys struct {
 
 // Network represents the configuration of a Chainspace network as a whole.
 type Network struct {
-	ID        string
+	ID        string           `yaml:",omitempty"`
 	SeedNodes map[uint64]*Peer `yaml:"seed.nodes"`
 	Shard     *Shard
+}
+
+// Hash returns the SHA-512/256 hash of the network's seed configuration by
+// first encoding it into YAML. The returned hash should then be used as the ID
+// for the network.
+func (n *Network) Hash() ([]byte, error) {
+	data, err := yaml.Marshal(&Network{
+		SeedNodes: n.SeedNodes,
+		Shard:     n.Shard,
+	})
+	if err != nil {
+		return nil, err
+	}
+	h := sha512.New512_256()
+	if _, err = h.Write(data); err != nil {
+		return nil, err
+	}
+	return h.Sum(nil), nil
 }
 
 // Node represents the configuration of an individual node in a Chainspace
@@ -35,8 +54,8 @@ type Network struct {
 type Node struct {
 	Announce         []string          `yaml:"announce,omitempty"`
 	BootstrapFile    string            `yaml:"bootstrap.file,omitempty"`
-	BootstrapMap     map[uint64]string `yaml:"bootstrap.map,omitempty"`
 	BootstrapMDNS    bool              `yaml:"bootstrap.mdns,omitempty"`
+	BootstrapStatic  map[uint64]string `yaml:"bootstrap.static,omitempty"`
 	BootstrapURL     string            `yaml:"bootstrap.url,omitempty"`
 	HostIP           string            `yaml:"host.ip,omitempty"`
 	RuntimeDirectory string            `yaml:"runtime.directory"`
