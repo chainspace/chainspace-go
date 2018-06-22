@@ -17,6 +17,7 @@ import (
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/log"
+
 	"github.com/grandcat/zeroconf"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/minio/highwayhash"
@@ -170,6 +171,7 @@ func (t *Topology) Dial(ctx context.Context, nodeID uint64) (*Conn, error) {
 	if _, err := rand.Read(buf); err != nil {
 		return nil, fmt.Errorf("network: could not generate randomness for node connection: %s", err)
 	}
+
 	addr := t.Lookup(nodeID)
 	if addr == "" {
 		return nil, fmt.Errorf("network: could not find address for node %d", nodeID)

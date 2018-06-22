@@ -300,7 +300,6 @@ func (s *Server) Shutdown() {
 
 // Run initialises a node with the given config.
 func Run(cfg *Config) (*Server, error) {
-
 	var err error
 
 	// Initialise the runtime directory for the node.

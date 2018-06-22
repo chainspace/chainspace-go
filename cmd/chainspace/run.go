@@ -56,11 +56,11 @@ func cmdRun(args []string, usage string) {
 		NodeID:      nodeID,
 		Node:        nodeCfg,
 	}
+
 	if _, err = node.Run(cfg); err != nil {
 		log.Fatalf("Could not start node %d: %s", nodeID, err)
 	}
 
 	wait := make(chan struct{})
 	<-wait
-
 }
