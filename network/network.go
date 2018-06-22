@@ -94,6 +94,7 @@ func (t *Topology) BootstrapMDNS() error {
 			}
 			if len(entry.AddrIPv4) > 0 && entry.Port > 0 {
 				addr := fmt.Sprintf("%s:%d", entry.AddrIPv4[0].String(), entry.Port)
+				log.Infof("FOUND NODE %d with address: %s", nodeID, addr)
 				t.contacts.set(nodeID, addr)
 			}
 		}
@@ -134,7 +135,11 @@ func (t *Topology) Dial(nodeID uint64) (*Conn, error) {
 	if _, err := rand.Read(buf); err != nil {
 		return nil, fmt.Errorf("network: could not generate randomness for node connection: %s", err)
 	}
-	session, err := quic.DialAddr(fmt.Sprintf("localhost:900%d", nodeID), cfg.tls, nil)
+	addr := t.Lookup(nodeID)
+	if addr == "" {
+		return nil, fmt.Errorf("network: could not find address for node %d", nodeID)
+	}
+	session, err := quic.DialAddr(addr, cfg.tls, nil)
 	if err != nil {
 		return nil, fmt.Errorf("network: could not connect to node %d: %s", nodeID, err)
 	}
