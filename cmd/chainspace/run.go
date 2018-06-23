@@ -13,9 +13,8 @@ import (
 func cmdRun(args []string, usage string) {
 
 	opts := newOpts("run NETWORK_NAME NODE_ID [OPTIONS]", usage)
-	bindAll := opts.Flags("-b", "--bind-all").Bool("override host.ip in node.yaml and bind to all interfaces instead")
-	configRoot := opts.Flags("-c", "--config-root").Label("PATH").String("path to the chainspace root directory [$HOME/.chainspace]", defaultRootDir())
-	runtimeRoot := opts.Flags("-r", "--runtime-root").Label("PATH").String("path to the runtime root directory [$HOME/.chainspace]")
+	configRoot := opts.Flags("-c", "--config-root").Label("PATH").String("path to the chainspace root directory [~/.chainspace]", defaultRootDir())
+	runtimeRoot := opts.Flags("-r", "--runtime-root").Label("PATH").String("path to the runtime root directory [~/.chainspace]", defaultRootDir())
 	networkName, nodeID := getNetworkNameAndNodeID(opts, args)
 
 	_, err := os.Stat(*configRoot)
@@ -42,10 +41,6 @@ func cmdRun(args []string, usage string) {
 	keys, err := config.LoadKeys(filepath.Join(nodePath, "keys.yaml"))
 	if err != nil {
 		log.Fatalf("Could not load keys.yaml: %s", err)
-	}
-
-	if *bindAll {
-		nodeCfg.HostIP = ""
 	}
 
 	root := *configRoot

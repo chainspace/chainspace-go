@@ -52,13 +52,12 @@ func (n *Network) Hash() ([]byte, error) {
 // Node represents the configuration of an individual node in a Chainspace
 // network.
 type Node struct {
-	Announce         []string          `yaml:"announce,omitempty"`
-	BootstrapFile    string            `yaml:"bootstrap.file,omitempty"`
-	BootstrapMDNS    bool              `yaml:"bootstrap.mdns,omitempty"`
-	BootstrapStatic  map[uint64]string `yaml:"bootstrap.static,omitempty"`
-	BootstrapURL     string            `yaml:"bootstrap.url,omitempty"`
-	HostIP           string            `yaml:"host.ip,omitempty"`
-	RuntimeDirectory string            `yaml:"runtime.directory"`
+	Announce        []string          `yaml:"announce,omitempty"`
+	BootstrapFile   string            `yaml:"bootstrap.file,omitempty"`
+	BootstrapMDNS   bool              `yaml:"bootstrap.mdns,omitempty"`
+	BootstrapStatic map[uint64]string `yaml:"bootstrap.static,omitempty"`
+	BootstrapURL    string            `yaml:"bootstrap.url,omitempty"`
+	Storage         *Storage
 }
 
 // Peer represents the cryptographic public keys of a node in a Chainspace
@@ -79,6 +78,12 @@ type PeerKey struct {
 type Shard struct {
 	Count int
 	Size  int
+}
+
+// Storage represents the configuration for a node's underlying storage
+// mechanism.
+type Storage struct {
+	Type string
 }
 
 // LoadKeys will read the YAML file at the given path and return the

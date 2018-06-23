@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 
@@ -13,10 +12,7 @@ import (
 func cmdInit(args []string, usage string) {
 
 	opts := newOpts("init NETWORK_NAME [OPTIONS]", usage)
-	bindAll := opts.Flags("--bind-all").Bool("Override --host-ip and bind to all interfaces instead")
 	configRoot := opts.Flags("--config-root").Label("PATH").String("Path to the Chainspace root directory [~/.chainspace]", defaultRootDir())
-	hostIP := opts.Flags("--host-ip").Label("IP").String("The default ip to bind the nodes [127.0.0.1]")
-	runtimeRoot := opts.Flags("--runtime-root").Label("PATH").String("Path to the runtime root directory [~/.chainspace]")
 	shardCount := opts.Flags("--shard-count").Label("N").Int("Number of shards in the network [3]")
 	shardSize := opts.Flags("--shard-size").Label("N").Int("Number of nodes in each shard [4]")
 	params := opts.Parse(args)
@@ -45,12 +41,8 @@ func cmdInit(args []string, usage string) {
 		SeedNodes: peers,
 	}
 
-	ip := ""
-	if !*bindAll {
-		ip = *hostIP
-	}
-	if ip != "" && net.ParseIP(ip) == nil {
-		log.Fatalf("Could not parse the given IP address: %q", ip)
+	storage := &config.Storage{
+		Type: "memstore",
 	}
 
 	if ((3 * (*shardSize / 3)) + 1) != *shardSize {
@@ -75,11 +67,11 @@ func cmdInit(args []string, usage string) {
 
 		// Create node.yaml
 		cfg := &config.Node{
-			Announce:         []string{"mdns"},
-			BootstrapMDNS:    true,
-			HostIP:           ip,
-			RuntimeDirectory: filepath.Join(*runtimeRoot, networkName, dirName),
+			Announce:      []string{"mdns"},
+			BootstrapMDNS: true,
+			Storage:       storage,
 		}
+
 		if err := writeYAML(filepath.Join(nodeDir, "node.yaml"), cfg); err != nil {
 			log.Fatal(err)
 		}
