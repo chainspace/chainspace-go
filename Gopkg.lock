@@ -20,6 +20,12 @@
   revision = "198357931e6129b810c9c77c12e0dd754846170c"
 
 [[projects]]
+  name = "github.com/cenkalti/backoff"
+  packages = ["."]
+  revision = "2ea60e5f094469f9e65adb9cd103795b73ae743e"
+  version = "v2.0.0"
+
+[[projects]]
   branch = "master"
   name = "github.com/cheekybits/genny"
   packages = ["generic"]
@@ -38,6 +44,22 @@
   revision = "3f9db97f856818214da2e1057f8ad84803971cff"
 
 [[projects]]
+  name = "github.com/gogo/protobuf"
+  packages = [
+    "gogoproto",
+    "proto",
+    "protoc-gen-gogo/descriptor"
+  ]
+  revision = "1adfc126b41513cc696b209667c8656ea7aac67c"
+  version = "v1.0.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/grandcat/zeroconf"
+  packages = ["."]
+  revision = "df75bb3ccae13e625e5b60e68d9c9590056dded1"
+
+[[projects]]
   branch = "master"
   name = "github.com/hashicorp/golang-lru"
   packages = [
@@ -53,6 +75,7 @@
   revision = "cd47fb39b79f867c6e4e5cd39cf7abd799f71670"
 
 [[projects]]
+  branch = "master"
   name = "github.com/lucas-clemente/quic-go"
   packages = [
     ".",
@@ -66,7 +89,7 @@
     "internal/wire",
     "qerr"
   ]
-  revision = "7356fc05d5799392e5131b1a8865c00455158c4e"
+  revision = "e98228df9d83232b651e7b3fd47851acbe74bbe2"
 
 [[projects]]
   branch = "master"
@@ -93,6 +116,18 @@
   revision = "9520e82c474b0a04dd04f8a40959027271bab992"
 
 [[projects]]
+  name = "github.com/miekg/dns"
+  packages = ["."]
+  revision = "5a2b9fab83ff0f8bfc99684bd5f43a37abe560f1"
+  version = "v1.0.8"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/minio/highwayhash"
+  packages = ["."]
+  revision = "85fc8a2dacad36a6beb2865793cd81363a496696"
+
+[[projects]]
   branch = "master"
   name = "github.com/tav/golly"
   packages = [
@@ -112,9 +147,23 @@
     "ed25519",
     "ed25519/internal/edwards25519",
     "hkdf",
+    "sha3",
     "ssh/terminal"
   ]
   revision = "a8fb68e7206f8c78be19b432c58eb52a6aa34462"
+
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/net"
+  packages = [
+    "bpf",
+    "context",
+    "internal/iana",
+    "internal/socket",
+    "ipv4",
+    "ipv6"
+  ]
+  revision = "afe8f62b1d6bbd81f31868121a50b06d8188e1f9"
 
 [[projects]]
   branch = "master"
@@ -135,6 +184,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "d5321830d135c7025b6a866a87d841b476c990c66231d6b4b2af9b98ba0da65d"
+  inputs-digest = "2bc0d26eb70cc1806da07739d67c4d1d029945619ffdb92a8a7941a56c95124b"
   solver-name = "gps-cdcl"
   solver-version = 1
