@@ -54,6 +54,7 @@ type nodeConfig struct {
 // Topology represents a Chainspace network.
 type Topology struct {
 	contacts   *contacts
+	cxns       map[uint64]quic.Session
 	id         string
 	mu         sync.RWMutex
 	name       string
@@ -126,10 +127,17 @@ func (t *Topology) BootstrapURL(endpoint string) error {
 // unable to find a routing address for the given node.
 func (t *Topology) Dial(nodeID uint64) (*Conn, error) {
 	t.mu.RLock()
-	cfg, exists := t.nodes[nodeID]
+	cfg, cfgExists := t.nodes[nodeID]
+	conn, connExists := t.cxns[nodeID]
 	t.mu.RUnlock()
-	if !exists {
+	if !cfgExists {
 		return nil, fmt.Errorf("network: could not find config for node %d in the %s network", nodeID, t.name)
+	}
+	if connExists {
+		stream, err := conn.OpenStreamSync()
+		if err == nil {
+			return initConn(nodeID, stream), nil
+		}
 	}
 	buf := make([]byte, 8)
 	if _, err := rand.Read(buf); err != nil {
@@ -139,21 +147,18 @@ func (t *Topology) Dial(nodeID uint64) (*Conn, error) {
 	if addr == "" {
 		return nil, fmt.Errorf("network: could not find address for node %d", nodeID)
 	}
-	session, err := quic.DialAddr(addr, cfg.tls, nil)
+	conn, err := quic.DialAddr(addr, cfg.tls, nil)
 	if err != nil {
 		return nil, fmt.Errorf("network: could not connect to node %d: %s", nodeID, err)
 	}
-	stream, err := session.OpenStreamSync()
+	stream, err := conn.OpenStreamSync()
 	if err != nil {
 		return nil, fmt.Errorf("network: could not open a stream in the connection to %d: %s", nodeID, err)
 	}
-	_ = stream
-	c := &Conn{
-		nonceBase: buf,
-		// stream:    stream,
-	}
-	// go c.run()
-	return c, nil
+	t.mu.Lock()
+	t.cxns[nodeID] = conn
+	t.mu.Unlock()
+	return initConn(nodeID, stream), nil
 }
 
 // Lookup returns the latest host:port address for a given node ID.
@@ -240,6 +245,7 @@ func New(name string, cfg *config.Network) (*Topology, error) {
 	}
 	return &Topology{
 		contacts:   contacts,
+		cxns:       map[uint64]quic.Session{},
 		id:         cfg.ID,
 		name:       name,
 		nodes:      nodes,
