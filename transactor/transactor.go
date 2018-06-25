@@ -1,8 +1,13 @@
 package transactor
 
 import (
+	"time"
+
+	"github.com/tav/golly/log"
+
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/network"
+	"golang.org/x/net/context"
 )
 
 // Config represent the configuration required to send messages
@@ -35,6 +40,22 @@ func New(cfg *Config) (Client, error) {
 }
 
 func (c *client) SendTransaction(t *Transaction) error {
-	//c.topology.Listen(context.Background(), c.nodeID)
+	// Bootstrap using mDNS.
+	if err := c.topology.BootstrapMDNS(); err != nil {
+		return err
+	}
+
+	for c.topology.Lookup(3) == "" {
+	}
+
+	log.Infof("sending message to: %v", c.topology.Lookup(3))
+	conn, err := c.topology.Dial(context.Background(), 3)
+	if err != nil {
+		return err
+	}
+
+	conn.Send([]byte("testing"))
+	time.Sleep(5 * time.Second)
+
 	return nil
 }

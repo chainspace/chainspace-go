@@ -85,7 +85,10 @@ func cmdTransactor(args []string, usage string) {
 		if err != nil {
 			log.Fatalf("Invalid payload format for transaction: %v", err)
 		}
-		transactorClient.SendTransaction(nil)
+		err = transactorClient.SendTransaction(&tx)
+		if err != nil {
+			log.Fatalf("Unable to send transaction: %v", err)
+		}
 	case "query":
 		log.Fatalf("Unavailable command: %s", cmd)
 	default:
