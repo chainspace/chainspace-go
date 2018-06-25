@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/crypto/signature"
@@ -95,13 +96,33 @@ func (t *Topology) BootstrapMDNS() error {
 			}
 			if len(entry.AddrIPv4) > 0 && entry.Port > 0 {
 				addr := fmt.Sprintf("%s:%d", entry.AddrIPv4[0].String(), entry.Port)
-				log.Infof("FOUND NODE %d with address: %s", nodeID, addr)
-				t.contacts.set(nodeID, addr)
+				oldAddr := t.contacts.get(nodeID)
+				if oldAddr != addr {
+					log.Infof("FOUND NODE %d with address: %s", nodeID, addr)
+					t.contacts.set(nodeID, addr)
+				}
 			}
 		}
 	}()
 	service := fmt.Sprintf("_%s._chainspace", strings.ToLower(t.id))
-	return resolver.Browse(context.Background(), service, "local.", entries)
+	return t.browseMDNS(resolver, service, "local.", entries)
+}
+
+func (t *Topology) browseMDNS(resolver *zeroconf.Resolver, service, domain string, entries chan *zeroconf.ServiceEntry) error {
+	go func() {
+		for {
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			err := resolver.Browse(context.Background(), service, domain, entries)
+			if err != nil {
+				log.Errorf("error browsing services: %v", err)
+			}
+			select {
+			case <-ctx.Done():
+				cancel()
+			}
+		}
+	}()
+	return nil
 }
 
 // BootstrapStatic will use the given static map of addresses for the initial
