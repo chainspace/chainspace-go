@@ -74,13 +74,13 @@ func (t *Topology) BootstrapFile(path string) error {
 
 // BootstrapMDNS will try to auto-discover the addresses of initial nodes using
 // multicast DNS.
-func (t *Topology) BootstrapMDNS() error {
+func (t *Topology) BootstrapMDNS() {
 	log.Infof("Bootstrapping the %s network via mDNS", t.name)
 	go func() {
 		for {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second*1)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			if err := t.bootstrapMDNS(ctx); err != nil {
-				log.Errorf("Unable to start bootstrapping: %v", err)
+				log.Errorf("Unable to start bootstrapping mDNS: %v", err)
 			}
 			select {
 			case <-ctx.Done():
@@ -88,7 +88,6 @@ func (t *Topology) BootstrapMDNS() error {
 			}
 		}
 	}()
-	return nil
 }
 
 func (t *Topology) bootstrapMDNS(ctx context.Context) error {
@@ -100,9 +99,12 @@ func (t *Topology) bootstrapMDNS(ctx context.Context) error {
 	go func() {
 		for {
 			select {
-			case entry := <-entries:
+			case entry, ok := <-entries:
+				if !ok {
+					return
+				}
 				if entry == nil {
-					log.Fatal("mDNS entries channel got closed!")
+					log.Error("mDNS entries channel got closed!")
 				}
 				instance := entry.ServiceRecord.Instance
 				if !strings.HasPrefix(instance, "_") {
@@ -126,7 +128,7 @@ func (t *Topology) bootstrapMDNS(ctx context.Context) error {
 		}
 	}()
 	service := fmt.Sprintf("_%s._chainspace", strings.ToLower(t.id))
-	return resolver.Browse(context.Background(), service, "local.", entries)
+	return resolver.Browse(ctx, service, "local.", entries)
 }
 
 // BootstrapStatic will use the given static map of addresses for the initial

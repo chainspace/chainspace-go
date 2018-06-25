@@ -86,9 +86,7 @@ func Run(cfg *Config) (*Server, error) {
 
 	// Bootstrap using mDNS.
 	if cfg.Node.BootstrapMDNS {
-		if err = top.BootstrapMDNS(); err != nil {
-			return nil, err
-		}
+		top.BootstrapMDNS()
 	}
 
 	// Bootstrap using a static map of addresses.
