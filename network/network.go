@@ -76,45 +76,11 @@ func (t *Topology) BootstrapFile(path string) error {
 // multicast DNS.
 func (t *Topology) BootstrapMDNS() error {
 	log.Infof("Bootstrapping the %s network via mDNS", t.name)
-	resolver, err := zeroconf.NewResolver(nil)
-	if err != nil {
-		return err
-	}
-	entries := make(chan *zeroconf.ServiceEntry)
-	go func() {
-		for entry := range entries {
-			if entry == nil {
-				log.Fatal("mDNS entries channel got closed!")
-			}
-			instance := entry.ServiceRecord.Instance
-			if !strings.HasPrefix(instance, "_") {
-				continue
-			}
-			nodeID, err := strconv.ParseUint(instance[1:], 10, 64)
-			if err != nil {
-				continue
-			}
-			if len(entry.AddrIPv4) > 0 && entry.Port > 0 {
-				addr := fmt.Sprintf("%s:%d", entry.AddrIPv4[0].String(), entry.Port)
-				oldAddr := t.contacts.get(nodeID)
-				if oldAddr != addr {
-					log.Infof("FOUND NODE %d with address: %s", nodeID, addr)
-					t.contacts.set(nodeID, addr)
-				}
-			}
-		}
-	}()
-	service := fmt.Sprintf("_%s._chainspace", strings.ToLower(t.id))
-	return t.browseMDNS(resolver, service, "local.", entries)
-}
-
-func (t *Topology) browseMDNS(resolver *zeroconf.Resolver, service, domain string, entries chan *zeroconf.ServiceEntry) error {
 	go func() {
 		for {
-			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-			err := resolver.Browse(context.Background(), service, domain, entries)
-			if err != nil {
-				log.Errorf("error browsing services: %v", err)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*1)
+			if err := t.bootstrapMDNS(ctx); err != nil {
+				log.Errorf("Unable to start bootstrapping: %v", err)
 			}
 			select {
 			case <-ctx.Done():
@@ -123,6 +89,44 @@ func (t *Topology) browseMDNS(resolver *zeroconf.Resolver, service, domain strin
 		}
 	}()
 	return nil
+}
+
+func (t *Topology) bootstrapMDNS(ctx context.Context) error {
+	resolver, err := zeroconf.NewResolver(nil)
+	if err != nil {
+		return err
+	}
+	entries := make(chan *zeroconf.ServiceEntry)
+	go func() {
+		for {
+			select {
+			case entry := <-entries:
+				if entry == nil {
+					log.Fatal("mDNS entries channel got closed!")
+				}
+				instance := entry.ServiceRecord.Instance
+				if !strings.HasPrefix(instance, "_") {
+					continue
+				}
+				nodeID, err := strconv.ParseUint(instance[1:], 10, 64)
+				if err != nil {
+					continue
+				}
+				if len(entry.AddrIPv4) > 0 && entry.Port > 0 {
+					addr := fmt.Sprintf("%s:%d", entry.AddrIPv4[0].String(), entry.Port)
+					oldAddr := t.contacts.get(nodeID)
+					if oldAddr != addr {
+						log.Infof("FOUND NODE %d with address: %s", nodeID, addr)
+						t.contacts.set(nodeID, addr)
+					}
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	service := fmt.Sprintf("_%s._chainspace", strings.ToLower(t.id))
+	return resolver.Browse(context.Background(), service, "local.", entries)
 }
 
 // BootstrapStatic will use the given static map of addresses for the initial
