@@ -11,6 +11,7 @@ import (
 
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/transactor"
+	"chainspace.io/prototype/transactor/client"
 
 	"github.com/tav/golly/optparse"
 )
@@ -40,7 +41,8 @@ func getRequiredParams(
 func cmdTransactor(args []string, usage string) {
 	opts := newOpts("transactor NETWORK_NAME COMMAND COMMAND_PAYLOAD_PATH [OPTIONS]", usage)
 	configRoot := opts.Flags("-c", "--config-root").Label("PATH").String("path to the chainspace root directory [$HOME/.chainspace]", defaultRootDir())
-	nodeID := opts.Flags("-n", "--node-id").Label("NODE_ID").Int("node to send the command to (if not specified send the command to a random node)", 0)
+	shardID := opts.Flags("-n", "--shard-id").Label("SHARD_ID").Int("shard to send the transaction to.", 0)
+
 	networkName, cmd, payloadPath := getRequiredParams(opts, args)
 
 	_, err := os.Stat(*configRoot)
@@ -57,9 +59,9 @@ func cmdTransactor(args []string, usage string) {
 		log.Fatalf("Could not load network.yaml: %s", err)
 	}
 
-	if *nodeID == 0 {
+	if *shardID == 0 {
 		rand.Seed(time.Now().UTC().UnixNano())
-		*nodeID = 1 + (rand.Int() % (len(netCfg.SeedNodes)))
+		*shardID = 1 + (rand.Int() % (netCfg.Shard.Count))
 	}
 
 	payload, err := ioutil.ReadFile(payloadPath)
@@ -67,13 +69,13 @@ func cmdTransactor(args []string, usage string) {
 		log.Fatalf("Unable to read payload file: %v", err)
 	}
 
-	cfg := &transactor.Config{
+	cfg := &transactorclient.Config{
 		NetworkName:   networkName,
 		NetworkConfig: *netCfg,
-		NodeID:        uint64(*nodeID),
+		ShardID:       uint64(*shardID),
 	}
 
-	transactorClient, err := transactor.New(cfg)
+	transactorClient, err := transactorclient.New(cfg)
 	if err != nil {
 		log.Fatalf("Unable to create transactor.Client")
 	}

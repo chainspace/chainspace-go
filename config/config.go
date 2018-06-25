@@ -158,5 +158,9 @@ func LoadNode(path string) (*Node, error) {
 	}
 	cfg := &Node{}
 	err = yaml.Unmarshal(data, cfg)
+	if cfg.Storage == nil || len(cfg.Storage.Type) <= 0 {
+		cfg.Storage = &Storage{"memstore"}
+	}
+
 	return cfg, err
 }

@@ -3,12 +3,12 @@ package network // import "chainspace.io/prototype/network"
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base32"
 	"errors"
 	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
 	"sync"
@@ -188,6 +188,17 @@ func (t *Topology) Dial(ctx context.Context, nodeID uint64) (*Conn, error) {
 	t.cxns[nodeID] = conn
 	t.mu.Unlock()
 	return NewConn(stream), nil
+}
+
+// DialInShard opens a connection to any node of a given shard in the network
+func (t *Topology) DialAnyInShard(shardID uint64) (*Conn, error) {
+	if shardID > t.shardCount || shardID == 0 {
+		return nil, fmt.Errorf("Invalid shard ID %v: ", shardID)
+	}
+	nodes := t.NodesInShard(shardID)
+	nodeID := rand.Int()%len(nodes) + 1
+	log.Infof("Dialing node %v from shard %v", nodeID, shardID)
+	return t.Dial(uint64(nodeID))
 }
 
 // Lookup returns the latest host:port address for a given node ID.
