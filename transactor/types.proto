@@ -6,16 +6,15 @@ enum OpCode {
      UNKNOWN = 0;
      TRANSACTION = 1;
      QUERY = 2;
+     TRANSACTION_RESULT = 3;
+
+     ERROR = 100;
 }
 
-message Request {
+message RawMessage {
      OpCode op = 1;
-     string payload = 2;
-     string signature = 3;
-}
-
-message Response {
-
+     bytes payload = 2;
+     bytes signature = 3;
 }
 
 // TODO: strings should be bytes, but for the purpose of simplicity (testing with json)
@@ -40,6 +39,10 @@ message Trace {
     repeated string localParameters = 6;
     repeated string localReturns = 7;
     repeated Trace dep = 8;
+}
+
+message TransactionResult {
+     string hash = 1;
 }
 
 message Query {

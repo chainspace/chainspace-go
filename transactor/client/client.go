@@ -43,6 +43,7 @@ func New(cfg *Config) (Client, error) {
 func (c *client) SendTransaction(t *transactor.Transaction) error {
 	// Bootstrap using mDNS.
 
+	time.Sleep(time.Second)
 	conn, err := c.topology.DialAnyInShard(c.shardID)
 	if err != nil {
 		return err

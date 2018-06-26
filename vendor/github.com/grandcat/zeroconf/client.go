@@ -353,7 +353,7 @@ func (c *client) recv(ctx context.Context, l interface{}, msgCh chan *dns.Msg) {
 		}
 		msg := new(dns.Msg)
 		if err := msg.Unpack(buf[:n]); err != nil {
-			log.Printf("[WARN] mdns: Failed to unpack packet: %v", err)
+			// log.Printf("[WARN] mdns: Failed to unpack packet: %v", err)
 			continue
 		}
 		select {
@@ -396,7 +396,6 @@ func (c *client) periodicQuery(ctx context.Context, params *LookupParams) error 
 		case <-time.After(wait):
 			// Wait for next iteration.
 		case <-params.stopProbing:
-			log.Print("stop probing")
 			// Chan is closed (or happened in the past).
 			// Done here. Received a matching mDNS entry.
 			return nil
