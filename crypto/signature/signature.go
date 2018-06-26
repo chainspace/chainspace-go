@@ -16,6 +16,15 @@ const (
 // Algorithm represents a digital signature algorithm.
 type Algorithm uint8
 
+func AlgorithmFromString(s string) (Algorithm, error) {
+	switch s {
+	case Ed25519.String():
+		return Ed25519, nil
+	default:
+		return 0, fmt.Errorf("signature: unknown digitaly signature algorithm: %v", s)
+	}
+}
+
 func (s Algorithm) String() string {
 	switch s {
 	case Ed25519:

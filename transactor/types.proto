@@ -12,39 +12,36 @@ enum OpCode {
 }
 
 message RawMessage {
-     OpCode op = 1;
-     bytes payload = 2;
-     bytes signature = 3;
+  OpCode op = 1;
+  bytes payload = 2;
+  bytes signature = 3;
 }
 
-// TODO: strings should be bytes, but for the purpose of simplicity (testing with json)
-// now these are strings
 message Object {
-     string data = 1;
-     string key = 2;
+  bytes data = 1;
+  bytes key = 2;
+  bytes signature = 3;
 }
 
 message Transaction {
-    repeated Trace trace = 1;
+  repeated Trace traces = 1;
 }
 
-// TODO: strings should be bytes (localParameters and localReturns), but for the purpose of
-// simplicity (testing with json) now these are strings
 message Trace {
-    Object contract = 1;
-    string procedure = 2;
-    repeated Object inputObjects = 3;
-    repeated Object inputReference = 4;
-    repeated Object outputObjects = 5;
-    repeated string localParameters = 6;
-    repeated string localReturns = 7;
-    repeated Trace dep = 8;
+  Object contract = 1;
+  string procedure = 2;
+  repeated Object inputObjects = 3;
+  repeated Object inputReference = 4;
+  repeated Object outputObjects = 5;
+  repeated bytes localParameters = 6;
+  repeated bytes localReturns = 7;
+  repeated Trace dep = 8;
 }
 
 message TransactionResult {
-     string hash = 1;
+  repeated Object objects = 1;
 }
 
 message Query {
-    Object object = 1;
+  Object object = 1;
 }
