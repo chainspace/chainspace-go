@@ -1,0 +1,16 @@
+syntax = "proto3";
+package broadcast;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "chainspace.io/prototype/state/types.proto";
+
+enum Opcode {
+  UNKNOWN = 0;
+  BLOCK = 1;
+  BLOCKS_REQUEST = 2;
+  BLOCKS_RESPONSE = 3;
+}
+
+message BlocksRequest { repeated state.BlockReference blocks = 1; }
+
+message BlocksResponse { repeated state.Signed signed = 1; }
