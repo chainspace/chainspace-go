@@ -1,0 +1,33 @@
+syntax = "proto3";
+package state;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+message Block {
+  uint64 node = 1;
+  uint64 number = 2;
+  repeated Entry entries = 3;
+}
+
+message BlockReference {
+  uint64 node = 1;
+  uint64 number = 2;
+  bytes hash = 3;
+}
+
+message Entry {
+  oneof value {
+    BlockReference block = 1;
+    TransactionData transaction = 2;
+  }
+}
+
+message Signed {
+  bytes data = 1;
+  bytes signature = 2;
+}
+
+message TransactionData {
+  bytes data = 1;
+  uint64 fee = 2;
+}
