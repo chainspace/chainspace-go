@@ -1,0 +1,9 @@
+syntax = "proto3";
+package service;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+message Message {
+  uint32 opcode = 1;
+  bytes payload = 2;
+}
