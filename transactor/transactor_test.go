@@ -1,16 +1,13 @@
-package transactorserver
+package transactor
 
 import (
 	"testing"
 
-	"golang.org/x/net/context"
-
 	"github.com/gogo/protobuf/proto"
-
-	"chainspace.io/prototype/transactor"
+	"golang.org/x/net/context"
 )
 
-func marshalMessage(t *testing.T, m *transactor.RawMessage) []byte {
+func marshalMessage(t *testing.T, m *RawMessage) []byte {
 	b, err := proto.Marshal(m)
 	if err != nil {
 		t.Fatalf("unable to marshal test msg: %v", err)
@@ -28,15 +25,15 @@ func TestHandleTransaction(t *testing.T) {
 			Expected: ErrInvalidRequestFormat.Error(),
 		},
 		{
-			Data: marshalMessage(t, &transactor.RawMessage{
-				Op:      transactor.OpCode_TRANSACTION,
+			Data: marshalMessage(t, &RawMessage{
+				Op:      OpCode_TRANSACTION,
 				Payload: []byte("testing"),
 			}),
 			Expected: "transaction: operation not implemented",
 		},
 	}
 
-	s := Server{}
+	s := Transactor{}
 
 	for _, tc := range testCases {
 		resB, err := s.HandleMessage(context.Background(), tc.Data)
@@ -44,7 +41,7 @@ func TestHandleTransaction(t *testing.T) {
 			t.Fatalf("unexpected error from s.HandleMessage: %v", err)
 		}
 
-		resMsg := &transactor.RawMessage{}
+		resMsg := &RawMessage{}
 		err = proto.Unmarshal(resB, resMsg)
 		if err != nil {
 			t.Fatalf("unable to unmarshal result from s.HandleMessage: %v", err)
