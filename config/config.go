@@ -6,6 +6,7 @@ package config // import "chainspace.io/prototype/config"
 import (
 	"crypto/sha512"
 	"io/ioutil"
+	"time"
 
 	"gopkg.in/yaml.v2"
 )
@@ -52,12 +53,14 @@ func (n *Network) Hash() ([]byte, error) {
 // Node represents the configuration of an individual node in a Chainspace
 // network.
 type Node struct {
-	Announce        []string          `yaml:"announce,omitempty"`
-	BootstrapFile   string            `yaml:"bootstrap.file,omitempty"`
-	BootstrapMDNS   bool              `yaml:"bootstrap.mdns,omitempty"`
-	BootstrapStatic map[uint64]string `yaml:"bootstrap.static,omitempty"`
-	BootstrapURL    string            `yaml:"bootstrap.url,omitempty"`
-	Storage         *Storage
+	Announce               []string          `yaml:"announce,omitempty"`
+	BootstrapFile          string            `yaml:"bootstrap.file,omitempty"`
+	BootstrapMDNS          bool              `yaml:"bootstrap.mdns,omitempty"`
+	BootstrapStatic        map[uint64]string `yaml:"bootstrap.static,omitempty"`
+	BootstrapURL           string            `yaml:"bootstrap.url,omitempty"`
+	ConnectionReadTimeout  time.Duration     `yaml:"connection.read.timeout"`
+	ConnectionWriteTimeout time.Duration     `yaml:"connection.write.timeout"`
+	Storage                *Storage
 }
 
 // Peer represents the cryptographic public keys of a node in a Chainspace

@@ -3,6 +3,7 @@ package node // import "chainspace.io/prototype/node"
 import (
 	"context"
 	"crypto/tls"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -10,18 +11,27 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/lucas-clemente/quic-go"
 
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/freeport"
 	"chainspace.io/prototype/network"
+	"chainspace.io/prototype/service"
+	"chainspace.io/prototype/service/broadcast"
+	"chainspace.io/prototype/state"
 	"chainspace.io/prototype/storage"
 	"chainspace.io/prototype/storage/memstore"
 	"github.com/tav/golly/log"
 )
 
 const (
-	dirPerms = 0700
+	initialBackoff = 2 * time.Second
+	dirPerms       = 0700
+	maxBackoff     = 30 * time.Second
+	maxMessage     = 1 << 27 // 128MB
+	readTimeout    = 30 * time.Second
+	writeTimeout   = 30 * time.Second
 )
 
 // Error values.
@@ -41,8 +51,163 @@ type Config struct {
 
 // Server represents a running Chainspace node.
 type Server struct {
-	ctx context.Context
-	top *network.Topology
+	broadcaster  *broadcast.Service
+	cancel       context.CancelFunc
+	db           storage.DB
+	ctx          context.Context
+	id           uint64
+	readTimeout  time.Duration
+	sharder      service.Handler
+	top          *network.Topology
+	transactor   service.Handler
+	writeTimeout time.Duration
+}
+
+func (s *Server) handleConnection(conn quic.Session) {
+	for {
+		stream, err := conn.AcceptStream()
+		if err != nil {
+			log.Errorf("Unable to open new stream from session: %s", err)
+			return
+		}
+		go s.handleStream(stream)
+	}
+}
+
+func (s *Server) handleStream(stream quic.Stream) {
+	defer stream.Close()
+	buf := make([]byte, 1)
+	if _, err := stream.Read(buf); err != nil {
+		log.Errorf("Unable to read stream type: %s", err)
+		return
+	}
+	var svc service.Handler
+	switch buf[0] {
+	case 1:
+		svc = s.broadcaster
+	case 2:
+		svc = s.transactor
+	default:
+		log.Errorf("Unknown stream type: %#v", buf[0])
+		if err := stream.Close(); err != nil {
+			log.Errorf("Received error on attempt to close stream: %s", err)
+		}
+		return
+	}
+	ctx := stream.Context()
+	for {
+		msg, err := s.readMessage(stream)
+		if err != nil {
+			log.Errorf("Could not decode message from an incoming stream: %s", err)
+			return
+		}
+		resp, err := svc.Handle(ctx, msg)
+		if err != nil {
+			log.Errorf("Received error response from the %s service: %s", svc.Name(), err)
+			return
+		}
+		if resp != nil {
+			// send back response
+		}
+	}
+
+}
+
+func (s *Server) listen(l quic.Listener) {
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			s.cancel()
+			log.Fatalf("node: could not accept new connections: %s", err)
+		}
+		go s.handleConnection(conn)
+	}
+}
+
+func (s *Server) maintainBroadcast(ctx context.Context, peerID uint64) {
+	backoff := initialBackoff
+	for {
+		select {
+		case <-s.ctx.Done():
+			break
+		default:
+		}
+		conn, err := s.top.Dial(ctx, peerID)
+		if err == nil {
+			backoff = initialBackoff
+		} else {
+			log.Errorf("Couldn't dial %d: %s", peerID, err)
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+			time.Sleep(backoff)
+			continue
+		}
+		// conn.SendHello()
+		// for msg := range db.NextBlock(peerID) {
+		// 	select {
+		// 	case <-s.ctx.Done():
+		// 		break
+		// 	default:
+		// 	}
+		// 	if err := conn.SendMessage(msg); err != nil {
+		// 		break
+		// 	}
+		// }
+		// log.Infof("Connected to node %d", peerID)
+		// _, err = conn.Write([]byte("hello"))
+		// if err != nil {
+		// 	log.Infof("Failed to write on connection to node %d: %s", peerID, err)
+		// }
+		_ = conn
+		time.Sleep(60 * time.Second)
+	}
+}
+
+func (s *Server) readMessage(stream quic.Stream) (*service.Message, error) {
+	buf := make([]byte, 4)
+	need := 4
+	for need > 0 {
+		stream.SetReadDeadline(time.Now().Add(s.readTimeout))
+		n, err := stream.Read(buf[4-need:])
+		if err != nil {
+			log.Errorf("Got error reading from stream: %s", err)
+			return nil, err
+		}
+		need -= n
+	}
+	// TODO(tav): Fix for 32-bit systems.
+	size := int(binary.LittleEndian.Uint32(buf))
+	if size > maxMessage {
+		log.Errorf("Message size of %d exceeds the max message size", size)
+		return nil, fmt.Errorf("node: message size %d exceeds max message size", size)
+	}
+	buf = make([]byte, size)
+	need = size
+	for need > 0 {
+		stream.SetReadDeadline(time.Now().Add(s.readTimeout))
+		n, err := stream.Read(buf[size-need:])
+		if err != nil {
+			log.Errorf("Got error reading from stream: %s", err)
+			return nil, err
+		}
+		need -= n
+	}
+	msg := &service.Message{}
+	err := proto.Unmarshal(buf, msg)
+	return msg, err
+}
+
+// AddTransaction adds the provided raw transaction data to the node's
+// blockchain.
+// func (s *Server) AddTransaction(txdata *TransactionData) {
+// 	s.transactor.AddTransaction(txdata)
+// }
+
+// Shutdown closes all underlying connections associated with the node.
+func (s *Server) Shutdown() {
+	s.cancel()
 }
 
 // Run initialises a node with the given config.
@@ -124,9 +289,54 @@ func Run(cfg *Config) (*Server, error) {
 	switch cfg.Node.Storage.Type {
 	case "memstore":
 		db = memstore.New()
+	case "filestore":
+		//
 	default:
 		return nil, fmt.Errorf("node: unknown storage type: %q", cfg.Node.Storage.Type)
 	}
+
+	state := state.Load(db)
+	broadcaster := broadcast.New(&broadcast.Config{NodeID: cfg.NodeID}, top, state)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	node := &Server{
+		broadcaster: broadcaster,
+		cancel:      cancel,
+		ctx:         ctx,
+		db:          db,
+		id:          cfg.NodeID,
+		top:         top,
+	}
+
+	if cfg.Node.ConnectionReadTimeout == 0 {
+		node.readTimeout = readTimeout
+	} else {
+		node.readTimeout = cfg.Node.ConnectionReadTimeout
+	}
+
+	if cfg.Node.ConnectionWriteTimeout == 0 {
+		node.writeTimeout = writeTimeout
+	} else {
+		node.writeTimeout = cfg.Node.ConnectionWriteTimeout
+	}
+
+	// Maintain persistent connections to all other nodes in our shard.
+	shardID := top.ShardForNode(cfg.NodeID)
+	peers := top.NodesInShard(shardID)
+	for _, peerID := range peers {
+		if peerID != cfg.NodeID {
+			go node.maintainBroadcast(node.ctx, peerID)
+		}
+	}
+
+	// Start listening on the given port.
+	l, err := quic.ListenAddr(fmt.Sprintf(":%d", port), tlsConf, nil)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("node: unable to listen on port %d: %s", port, err)
+	}
+
+	go node.listen(l)
 
 	// Announce our location to the world.
 	for _, meth := range cfg.Node.Announce {
@@ -141,97 +351,8 @@ func Run(cfg *Config) (*Server, error) {
 		}
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	server := &Server{
-		ctx: ctx,
-		top: top,
-	}
-
-	// Maintain persistent connections to all other nodes in our shard.
-	shardID := top.ShardForNode(cfg.NodeID)
-	peers := top.NodesInShard(shardID)
-	for _, peerID := range peers {
-		if peerID != cfg.NodeID {
-			go server.maintainConnection(cfg.NodeID, peerID, db)
-		}
-	}
-
-	// Start listening on the given port.
-	l, err := quic.ListenAddr(fmt.Sprintf(":%d", port), tlsConf, nil)
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("node: unable to listen on port %d: %s", port, err)
-	}
-
-	go server.listen(l, cancel)
-
 	log.Infof("Node %d of the %s network is now running on port %d", cfg.NodeID, cfg.NetworkName, port)
 	log.Infof("Runtime directory: %s", dir)
-	return server, nil
+	return node, nil
 
-}
-
-const (
-	initialBackoff = 2 * time.Second
-	maxBackoff     = 30 * time.Second
-)
-
-// State represents the internal state of a node.
-type State struct {
-	db storage.DB
-}
-
-func (s *Server) maintainConnection(nodeID uint64, peerID uint64, db storage.DB) {
-	backoff := initialBackoff
-	for {
-		conn, err := s.top.Dial(peerID)
-		if err == nil {
-			backoff = initialBackoff
-		} else {
-			log.Errorf("Couldn't dial %d: %s", peerID, err)
-			backoff *= 2
-			if backoff > maxBackoff {
-				backoff = maxBackoff
-			}
-			time.Sleep(backoff)
-			continue
-		}
-		select {
-		case <-s.ctx.Done():
-			break
-		default:
-		}
-		log.Infof("Connected to node %d", peerID)
-		_, err = conn.Write([]byte("hello"))
-		if err != nil {
-			log.Infof("Failed to write on connection to node %d: %s", peerID, err)
-		}
-		time.Sleep(60 * time.Second)
-	}
-}
-
-func (s *Server) listen(l quic.Listener, cancel context.CancelFunc) {
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			cancel()
-			log.Fatalf("node: could not accept new connections: %s", err)
-		}
-		go handleConnection(conn)
-	}
-}
-
-func handleConnection(conn quic.Session) {
-	stream, err := conn.AcceptStream()
-	if err != nil {
-		log.Errorf("Unable to open new stream from session: %s", err)
-		return
-	}
-	buf := make([]byte, 5)
-	n, err := stream.Read(buf)
-	if err != nil {
-		log.Errorf("Unable to read incoming stream: %s", err)
-		return
-	}
-	log.Infof("Received %q from connection", string(buf[:n]))
 }

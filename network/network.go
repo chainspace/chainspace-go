@@ -152,7 +152,7 @@ func (t *Topology) BootstrapURL(endpoint string) error {
 
 // Dial opens a connection to a node in the given network. It will block if
 // unable to find a routing address for the given node.
-func (t *Topology) Dial(nodeID uint64) (*Conn, error) {
+func (t *Topology) Dial(ctx context.Context, nodeID uint64) (*Conn, error) {
 	t.mu.RLock()
 	cfg, cfgExists := t.nodes[nodeID]
 	conn, connExists := t.cxns[nodeID]
@@ -174,7 +174,7 @@ func (t *Topology) Dial(nodeID uint64) (*Conn, error) {
 	if addr == "" {
 		return nil, fmt.Errorf("network: could not find address for node %d", nodeID)
 	}
-	conn, err := quic.DialAddr(addr, cfg.tls, nil)
+	conn, err := quic.DialAddrContext(ctx, addr, cfg.tls, nil)
 	if err != nil {
 		return nil, fmt.Errorf("network: could not connect to node %d: %s", nodeID, err)
 	}
