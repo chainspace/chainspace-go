@@ -6,6 +6,7 @@ import (
 	"encoding/base32"
 	"encoding/binary"
 	"errors"
+	"hash"
 
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/crypto/signature"
@@ -26,6 +27,7 @@ var (
 var b32 = base32.StdEncoding.WithPadding(base32.NoPadding)
 
 type Server struct {
+	h               hash.Hash
 	state           *node.State
 	privkey         signature.PrivateKey
 	broadCastObject chan *transactor.Object
@@ -46,6 +48,7 @@ func New(state *node.State, signingKey *config.Key, broadCastObject chan *transa
 	}
 
 	return &Server{
+		h:               sha512.New512_256(),
 		state:           state,
 		privkey:         privkey,
 		broadCastObject: broadCastObject,
@@ -158,7 +161,7 @@ func (s *Server) handleTransaction(ctx context.Context, msg []byte) (*transactor
 	if err != nil {
 		return nil, err
 	}
-	payloadhash, err := hash(payload)
+	payloadhash, err := s.hash(payload)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +174,7 @@ func (s *Server) handleTransaction(ctx context.Context, msg []byte) (*transactor
 
 // newInputObject create a new object with the same existing data, just adding a signature
 func (s *Server) newInputObject(data, key []byte) (*transactor.Object, error) {
-	objhash, err := hash(data)
+	objhash, err := s.hash(data)
 	if err != nil {
 		return nil, err
 	}
@@ -187,11 +190,11 @@ func (s *Server) newInputObject(data, key []byte) (*transactor.Object, error) {
 // newOutputObject create new output object using the key created from the transaction objects
 // and add the signature
 func (s *Server) newOutputObject(data, key []byte) (*transactor.Object, error) {
-	objhash, err := hash(data)
+	objhash, err := s.hash(data)
 	if err != nil {
 		return nil, err
 	}
-	keyhash, err := hash(key)
+	keyhash, err := s.hash(key)
 	if err != nil {
 		return nil, err
 	}
@@ -203,12 +206,12 @@ func (s *Server) newOutputObject(data, key []byte) (*transactor.Object, error) {
 	return obj, nil
 }
 
-func hash(b []byte) ([]byte, error) {
-	h := sha512.New512_256()
-	if _, err := h.Write(b); err != nil {
+func (s *Server) hash(b []byte) ([]byte, error) {
+	s.h.Reset()
+	if _, err := s.h.Write(b); err != nil {
 		return nil, err
 	}
-	return h.Sum(nil), nil
+	return s.h.Sum(nil), nil
 
 }
 
