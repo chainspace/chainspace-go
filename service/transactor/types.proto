@@ -25,7 +25,7 @@ message Trace {
   repeated bytes inputObjectsKeys = 3;
   repeated bytes inputReferencesKeys = 4;
   repeated bytes outputObjects = 5;
-  repeated bytes params = 6;
+  repeated bytes parameters = 6;
   repeated bytes returns = 7;
   repeated Trace dependencies = 8;
 }
@@ -41,7 +41,7 @@ message AddTransactionRequest {
 }
 
 message AddTransactionResponse {
-  repeated Object objects = 1;
+  repeated Object objects = 2;
 }
 
 message QueryObjectRequest {

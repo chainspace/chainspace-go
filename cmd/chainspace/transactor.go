@@ -10,8 +10,7 @@ import (
 	"time"
 
 	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/transactor"
-	"chainspace.io/prototype/transactor/client"
+	"chainspace.io/prototype/service/transactor/client"
 
 	"github.com/tav/golly/optparse"
 )
@@ -82,7 +81,7 @@ func cmdTransactor(args []string, usage string) {
 
 	switch cmd {
 	case "transaction":
-		tx := transactor.Transaction{}
+		tx := transactorclient.ClientTransaction{}
 		err := json.Unmarshal(payload, &tx)
 		if err != nil {
 			log.Fatalf("Invalid payload format for transaction: %v", err)

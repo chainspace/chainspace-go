@@ -7,16 +7,15 @@ import (
 	"errors"
 	"fmt"
 
-	"golang.org/x/sync/errgroup"
-
-	"github.com/gogo/protobuf/proto"
-
 	"chainspace.io/prototype/combihash"
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
 	"chainspace.io/prototype/storage"
+
+	"github.com/gogo/protobuf/proto"
+	"golang.org/x/sync/errgroup"
 )
 
 var b32 = base32.StdEncoding.WithPadding(base32.NoPadding)
@@ -54,7 +53,7 @@ func (s *Service) Handle(ctx context.Context, m *service.Message) (*service.Mess
 		if err != nil {
 			return nil, fmt.Errorf("transactor: add_transaction unmarshaling error: %v", err)
 		}
-		objs, err := s.addTransaction(ctx, req.Transaction)
+		objs, err := s.addTransaction(ctx, req.Transaction, m.Payload)
 		res := &AddTransactionResponse{
 			Objects: objs,
 		}
@@ -63,7 +62,7 @@ func (s *Service) Handle(ctx context.Context, m *service.Message) (*service.Mess
 		if err != nil {
 			return nil, fmt.Errorf("transactor: unable to marshal add_transaction response")
 		}
-		return &service.Message{uint32(Opcode_ADD_TRANSACTION), b}, nil
+		return &service.Message{Opcode: uint32(Opcode_ADD_TRANSACTION), Payload: b}, nil
 	case Opcode_QUERY_OBJECT:
 		req := &QueryObjectRequest{}
 		err := proto.Unmarshal(m.Payload, req)
@@ -78,14 +77,14 @@ func (s *Service) Handle(ctx context.Context, m *service.Message) (*service.Mess
 		if err != nil {
 			return nil, fmt.Errorf("transactor: unable to marshal query_object response")
 		}
-		return &service.Message{uint32(Opcode_QUERY_OBJECT), b}, nil
+		return &service.Message{Opcode: uint32(Opcode_QUERY_OBJECT), Payload: b}, nil
 
 	default:
 		return nil, fmt.Errorf("transactor: unknown message opcode: %v", m.Opcode)
 	}
 }
 
-func (s *Service) addTransaction(ctx context.Context, tx *Transaction) ([]*Object, error) {
+func (s *Service) addTransaction(ctx context.Context, tx *Transaction, rawtx []byte) ([]*Object, error) {
 	ok, err := runCheckers(ctx, s.checkers, tx)
 	if err != nil {
 		return nil, fmt.Errorf("transactor: errors happend while running the checkers: %v", err)
@@ -98,6 +97,16 @@ func (s *Service) addTransaction(ctx context.Context, tx *Transaction) ([]*Objec
 	if err != nil {
 		return nil, fmt.Errorf("transactor: unable to create objects keys: %v", err)
 	}
+
+	ch := combihash.New()
+	if _, err := ch.Write(rawtx); err != nil {
+		return nil, fmt.Errorf("transactor: unable to hash transaction: %v", err)
+	}
+	txhash := ch.Digest()
+	txsignature := s.privkey.Sign(txhash)
+	_ = txsignature
+
+	// then start sending the tx to other nodes / shards in order to do the consensus thingy
 
 	return objects, nil
 }
@@ -115,7 +124,7 @@ func runCheckers(ctx context.Context, checkers CheckersMap, tx *Transaction) (bo
 		t := v.Trace
 		c := v.Checker
 		g.Go(func() error {
-			result := c.Check(t.InputObjectsKeys, t.InputReferencesKeys, t.Params,
+			result := c.Check(t.InputObjectsKeys, t.InputReferencesKeys, t.Parameters,
 				t.OutputObjects, t.Returns, t.Dependencies)
 			if !result {
 				return errors.New("check failed")
@@ -164,9 +173,15 @@ func (s *Service) queryObject(ctx context.Context, objectKey []byte) (*Object, e
 	shardID := s.top.ShardForKey(objectKey)
 	if shardID == s.top.ShardForNode(s.nodeID) {
 		var err error
-		// obj, err := s.store.GetObjectByKey(objectKey)
+		value, status, err := s.store.GetByKey(objectKey)
 		if err != nil {
 			return nil, fmt.Errorf("transactor: unable to get object by key from local store: %v", err)
+		}
+
+		obj = &Object{
+			Value:  value,
+			Key:    objectKey,
+			Status: ObjectStatus(status),
 		}
 	} else {
 		// call a node from another shard to get the object
