@@ -174,7 +174,7 @@ func init() {
 	proto.RegisterEnum("service.CONNECTION", CONNECTION_name, CONNECTION_value)
 }
 
-func init() { proto.RegisterFile("types.proto", fileDescriptorTypes) }
+func init() { proto.RegisterFile("service/types.proto", fileDescriptorTypes) }
 
 var fileDescriptorTypes = []byte{
 	// 376 bytes of a gzipped FileDescriptorProto

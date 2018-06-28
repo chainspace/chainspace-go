@@ -3,6 +3,8 @@ package transactorclient
 import (
 	"time"
 
+	"golang.org/x/net/context"
+
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/transactor"
@@ -30,9 +32,7 @@ func New(cfg *Config) (Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := topology.BootstrapMDNS(); err != nil {
-		return nil, err
-	}
+	topology.BootstrapMDNS()
 
 	return &client{
 		shardID:  cfg.ShardID,
@@ -44,7 +44,7 @@ func (c *client) SendTransaction(t *transactor.Transaction) error {
 	// Bootstrap using mDNS.
 
 	time.Sleep(time.Second)
-	conn, err := c.topology.DialAnyInShard(c.shardID)
+	conn, err := c.topology.DialAnyInShard(context.TODO(), c.shardID)
 	if err != nil {
 		return err
 	}

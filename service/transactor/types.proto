@@ -1,0 +1,53 @@
+syntax = "proto3";
+package transactor;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+enum Opcode {
+  UNKNOWN = 0;
+  ADD_TRANSACTION = 1;
+  QUERY_OBJECT = 2;
+}
+
+enum ObjectStatus {
+  ACTIVE = 0;
+  INACTIVE = 1;
+  LOCKED = 2;
+}
+
+message Transaction {
+  repeated Trace traces = 1;
+}
+
+message Trace {
+  string contractID = 1;
+  string procedure = 2;
+  repeated bytes inputObjectsKeys = 3;
+  repeated bytes inputReferencesKeys = 4;
+  repeated bytes outputObjects = 5;
+  repeated bytes params = 6;
+  repeated bytes returns = 7;
+  repeated Trace dependencies = 8;
+}
+
+message Object {
+  bytes value = 1;
+  bytes key = 2;
+  ObjectStatus status = 3;
+}
+
+message AddTransactionRequest {
+  Transaction transaction = 1;
+}
+
+message AddTransactionResponse {
+  repeated Object objects = 1;
+}
+
+message QueryObjectRequest {
+  bytes objectKey = 1;
+}
+
+message QueryObjectResponse {
+  Object object = 1;
+}

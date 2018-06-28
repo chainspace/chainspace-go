@@ -191,14 +191,14 @@ func (t *Topology) Dial(ctx context.Context, nodeID uint64) (*Conn, error) {
 }
 
 // DialInShard opens a connection to any node of a given shard in the network
-func (t *Topology) DialAnyInShard(shardID uint64) (*Conn, error) {
+func (t *Topology) DialAnyInShard(ctx context.Context, shardID uint64) (*Conn, error) {
 	if shardID > t.shardCount || shardID == 0 {
 		return nil, fmt.Errorf("Invalid shard ID %v: ", shardID)
 	}
 	nodes := t.NodesInShard(shardID)
 	nodeID := rand.Int()%len(nodes) + 1
 	log.Infof("Dialing node %v from shard %v", nodeID, shardID)
-	return t.Dial(uint64(nodeID))
+	return t.Dial(ctx, uint64(nodeID))
 }
 
 // Lookup returns the latest host:port address for a given node ID.
