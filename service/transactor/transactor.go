@@ -55,7 +55,7 @@ func (s *Service) Handle(ctx context.Context, m *service.Message) (*service.Mess
 		}
 		objs, err := s.addTransaction(ctx, req.Transaction, m.Payload)
 		res := &AddTransactionResponse{
-			Objects: objs,
+			Pairs: objs,
 		}
 
 		b, err := proto.Marshal(res)
@@ -84,7 +84,7 @@ func (s *Service) Handle(ctx context.Context, m *service.Message) (*service.Mess
 	}
 }
 
-func (s *Service) addTransaction(ctx context.Context, tx *Transaction, rawtx []byte) ([]*Object, error) {
+func (s *Service) addTransaction(ctx context.Context, tx *Transaction, rawtx []byte) ([]*ObjectTraceIDPair, error) {
 	ok, err := runCheckers(ctx, s.checkers, tx)
 	if err != nil {
 		return nil, fmt.Errorf("transactor: errors happend while running the checkers: %v", err)
@@ -93,9 +93,22 @@ func (s *Service) addTransaction(ctx context.Context, tx *Transaction, rawtx []b
 		return nil, errors.New("transactor: some checks were not successful")
 	}
 
-	objects, err := MakeObjectKeys(ctx, tx.Traces)
+	tracesidpairs, err := MakeTraceIDs(tx.Traces)
+	if err != nil {
+		return nil, fmt.Errorf("transactor: unable to create traces ids: %v", err)
+	}
+	objects, err := MakeTraceObjectPairs(tracesidpairs)
 	if err != nil {
 		return nil, fmt.Errorf("transactor: unable to create objects keys: %v", err)
+	}
+
+	result := make([]*ObjectTraceIDPair, 0, len(objects))
+	for _, v := range objects {
+		r := &ObjectTraceIDPair{
+			TraceID: v.Trace.ID,
+			Objects: v.OutputObjects,
+		}
+		result = append(result, r)
 	}
 
 	ch := combihash.New()
@@ -106,9 +119,10 @@ func (s *Service) addTransaction(ctx context.Context, tx *Transaction, rawtx []b
 	txsignature := s.privkey.Sign(txhash)
 	_ = txsignature
 
-	// then start sending the tx to other nodes / shards in order to do the consensus thingy
+	// Start sending the tx to other nodes / shards in order to do the consensus thingy
+	// then return the output objects to the users.
 
-	return objects, nil
+	return result, nil
 }
 
 // runCheckers will run concurently all the checkers for this transaction
@@ -124,8 +138,7 @@ func runCheckers(ctx context.Context, checkers CheckersMap, tx *Transaction) (bo
 		t := v.Trace
 		c := v.Checker
 		g.Go(func() error {
-			result := c.Check(t.InputObjectsKeys, t.InputReferencesKeys, t.Parameters,
-				t.OutputObjects, t.Returns, t.Dependencies)
+			result := c.Check(t.InputObjectsKeys, t.InputReferencesKeys, t.Parameters, t.OutputObjects, t.Returns, t.Dependencies)
 			if !result {
 				return errors.New("check failed")
 			}
@@ -195,33 +208,108 @@ func (s *Service) Name() string {
 	return "transactor"
 }
 
-func MakeObjectKeys(ctx context.Context, traces []*Trace) ([]*Object, error) {
+// TraceIdentifierPair is a pair of a trace and it's identifier
+type TraceIdentifierPair struct {
+	ID    []byte
+	Trace *Trace
+}
+
+// TraceOutputObjectIDPair is composed of a trace and the list of output object IDs it create
+// ordered in the same order than the orginal output objects
+type TraceObjectPair struct {
+	OutputObjects []*Object
+	Trace         TraceIdentifierPair
+}
+
+// MakeTraceIDs generate trace IDs for all traces in the given list
+func MakeTraceIDs(traces []*Trace) ([]TraceIdentifierPair, error) {
+	out := make([]TraceIdentifierPair, 0, len(traces))
+	for _, trace := range traces {
+		trace := trace
+		id, err := MakeTraceID(trace)
+		if err != nil {
+			return nil, err
+		}
+		p := TraceIdentifierPair{
+			ID:    id,
+			Trace: trace,
+		}
+		out = append(out, p)
+	}
+
+	return out, nil
+}
+
+// MakeTraceID generate an identifier for the given trace
+// the ID is composed of: the contract ID, the procedure, input objects keys, input
+// reference keys, trace ID of the dependencies
+func MakeTraceID(trace *Trace) ([]byte, error) {
+	ch := combihash.New()
+	data := []byte{}
+	data = append(data, []byte(trace.ContractID)...)
+	data = append(data, []byte(trace.Procedure)...)
+	for _, v := range trace.InputObjectsKeys {
+		data = append(data, v...)
+	}
+	for _, v := range trace.InputReferencesKeys {
+		data = append(data, v...)
+	}
+	for _, v := range trace.Dependencies {
+		v := v
+		id, err := MakeTraceID(v)
+		if err != nil {
+			return nil, err
+		}
+		data = append(data, id...)
+	}
+	_, err := ch.Write(data)
+	if err != nil {
+		return nil, fmt.Errorf("transactor: unable to create hash: %v", err)
+	}
+
+	return ch.Digest(), nil
+}
+
+// MakeTraceObjectIDs create a list of Objects based on the Trace / Trace ID input
+// Objects are ordered the same as the output objects of the trace
+func MakeObjectIDs(pair *TraceIdentifierPair) ([]*Object, error) {
 	ch := combihash.New()
 	out := []*Object{}
+	for i, outobj := range pair.Trace.OutputObjects {
+		ch.Reset()
+		id := make([]byte, len(pair.ID))
+		copy(id, pair.ID)
+		id = append(id, outobj...)
+		index := make([]byte, 4)
+		binary.LittleEndian.PutUint32(index, uint32(i))
+		id = append(id, index...)
+		_, err := ch.Write(id)
+		if err != nil {
+			return nil, fmt.Errorf("transactor: unable to create hash: %v", err)
+		}
+		o := &Object{
+			Value:  outobj,
+			Key:    ch.Digest(),
+			Status: ObjectStatus_ACTIVE,
+		}
+		out = append(out, o)
+	}
+	return out, nil
+}
+
+// MakeObjectID create a list of Object based on the traces / traces identifier
+func MakeTraceObjectPairs(traces []TraceIdentifierPair) ([]TraceObjectPair, error) {
+	out := []TraceObjectPair{}
 	for _, trace := range traces {
-		baseKey := []byte{}
-		for _, inobj := range trace.InputObjectsKeys {
-			baseKey = append(baseKey, inobj...)
+		objs, err := MakeObjectIDs(&trace)
+		if err != nil {
+			return nil, err
 		}
-		for i, outobj := range trace.OutputObjects {
-			ch.Reset()
-			key := make([]byte, len(baseKey))
-			copy(key, baseKey)
-			key = append(key, outobj...)
-			index := make([]byte, 4)
-			binary.LittleEndian.PutUint32(index, uint32(i))
-			key = append(key, index...)
-			_, err := ch.Write(key)
-			if err != nil {
-				return nil, fmt.Errorf("transactor: unable to create hash: %v", err)
-			}
-			o := &Object{
-				Value:  outobj,
-				Key:    ch.Digest(),
-				Status: ObjectStatus_ACTIVE,
-			}
-			out = append(out, o)
+		pair := TraceObjectPair{
+			OutputObjects: objs,
+			Trace:         trace,
 		}
+		out = append(out, pair)
 	}
 	return out, nil
 }

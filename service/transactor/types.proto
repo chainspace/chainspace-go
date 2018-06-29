@@ -40,8 +40,13 @@ message AddTransactionRequest {
   Transaction transaction = 1;
 }
 
-message AddTransactionResponse {
+message ObjectTraceIDPair {
+  bytes traceID = 1;
   repeated Object objects = 2;
+}
+
+message AddTransactionResponse {
+  repeated ObjectTraceIDPair pairs = 1;
 }
 
 message QueryObjectRequest {
