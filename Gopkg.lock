@@ -3,6 +3,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/AndreasBriese/bbloom"
+  packages = ["."]
+  revision = "28f7e881ca57bc00e028f9ede9f0d9104cfeef5e"
+
+[[projects]]
+  branch = "master"
   name = "github.com/aead/chacha20"
   packages = [
     ".",
@@ -38,6 +44,25 @@
   version = "v1.1.0"
 
 [[projects]]
+  name = "github.com/dgraph-io/badger"
+  packages = [
+    ".",
+    "options",
+    "protos",
+    "skl",
+    "table",
+    "y"
+  ]
+  revision = "a6f0866f06a0ef6ac612e427ffe5d081db4e6fab"
+  version = "v1.5.2"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/dgryski/go-farm"
+  packages = ["."]
+  revision = "2de33835d10275975374b37b2dcfd22c9020a1f5"
+
+[[projects]]
   branch = "master"
   name = "github.com/flynn/go-shlex"
   packages = ["."]
@@ -52,6 +77,15 @@
   ]
   revision = "1adfc126b41513cc696b209667c8656ea7aac67c"
   version = "v1.0.0"
+
+[[projects]]
+  name = "github.com/golang/protobuf"
+  packages = [
+    "proto",
+    "ptypes/timestamp"
+  ]
+  revision = "b4deda0973fb4c70b50d226b1af49f3da59f5265"
+  version = "v1.1.0"
 
 [[projects]]
   branch = "master"
@@ -128,6 +162,12 @@
   revision = "85fc8a2dacad36a6beb2865793cd81363a496696"
 
 [[projects]]
+  name = "github.com/pkg/errors"
+  packages = ["."]
+  revision = "645ef00459ed84a119197bfb8d8205042c6df63d"
+  version = "v0.8.0"
+
+[[projects]]
   branch = "master"
   name = "github.com/tav/golly"
   packages = [
@@ -160,8 +200,10 @@
     "context",
     "internal/iana",
     "internal/socket",
+    "internal/timeseries",
     "ipv4",
-    "ipv6"
+    "ipv6",
+    "trace"
   ]
   revision = "afe8f62b1d6bbd81f31868121a50b06d8188e1f9"
 
@@ -184,6 +226,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "2bc0d26eb70cc1806da07739d67c4d1d029945619ffdb92a8a7941a56c95124b"
+  inputs-digest = "dcd1d14fbf9b07565cb2ad7f6c8bc5bc05b2d2fcdb409bf45e5d1de4311a1991"
   solver-name = "gps-cdcl"
   solver-version = 1
