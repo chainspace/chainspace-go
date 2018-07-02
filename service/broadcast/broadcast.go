@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"chainspace.io/prototype/crypto/signature"
+	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
 	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
-	"github.com/tav/golly/log"
 )
 
 var (
@@ -48,19 +48,19 @@ type Config struct {
 type Service struct {
 	blocks   map[uint64]*SignedBlock
 	cb       Callback
-	cond     *sync.Cond
 	ctx      context.Context
 	db       *badger.DB
 	entries  chan *Entry
 	interval time.Duration
 	key      signature.KeyPair
 	keys     map[uint64]signature.PublicKey
-	mu       sync.RWMutex // protects blocks, previous, round, sent
+	mu       sync.RWMutex // protects blocks, previous, round, sent, signal
 	nodeID   uint64
 	peers    []uint64
 	previous []byte
 	round    uint64
 	sent     map[uint64]uint64
+	signal   chan struct{}
 	top      *network.Topology
 }
 
@@ -69,9 +69,7 @@ func (s *Service) genBlocks() {
 	// TODO(tav): time.Ticker's behaviour around slow receivers may not be the
 	// exact semantics we want.
 	tick := time.NewTicker(s.interval)
-	s.mu.Lock()
 	round := s.round
-	s.mu.Unlock()
 	for {
 		select {
 		case entry := <-s.entries:
@@ -93,17 +91,19 @@ func (s *Service) genBlocks() {
 				Signature: s.key.Sign(data),
 			}
 			s.previous = signed.Digest()
-			// if err := s.db.Sync(); err != nil {
-			// 	log.Fatalf("Got unexpected error when syncing the DB: %s", err)
-			// }
 			s.mu.Lock()
 			s.blocks[block.Number] = signed
 			s.round = round
+			signal := s.signal
+			s.signal = make(chan struct{})
 			s.mu.Unlock()
-			s.cond.Broadcast()
-			log.Infof("Created new block: %#v", signed)
+			close(signal)
+			log.Infof("Created block %d", block.Number)
 		case <-s.ctx.Done():
 			tick.Stop()
+			if err := s.db.Close(); err != nil {
+				log.Errorf("Could not close the broadcast DB successfully: %s", err)
+			}
 			return
 		}
 	}
@@ -115,6 +115,10 @@ func (s *Service) handleBlock(peerID uint64, msg *service.Message) error {
 		return err
 	}
 	return s.processBlock(signed)
+}
+
+func (s *Service) handleBlocksRequest(peerID uint64, msg *service.Message) (*service.Message, error) {
+	return nil, nil
 }
 
 func (s *Service) handleBlocksResponse(peerID uint64, msg *service.Message) error {
@@ -139,6 +143,7 @@ func (s *Service) loadState() {
 	for _, peer := range s.peers {
 		s.sent[peer] = 0
 	}
+	s.signal = make(chan struct{})
 }
 
 func (s *Service) processBlock(signed *SignedBlock) error {
@@ -163,9 +168,33 @@ func (s *Service) Acknowledge(round uint64) {
 }
 
 // AddTransaction adds the given transaction data onto a queue to be added to
-// the current block.
+// the current block. Register should be used to register a Callback before any
+// AddTransaction calls are made.
 func (s *Service) AddTransaction(txdata *TransactionData) {
 	s.entries <- &Entry{Value: &Entry_Transaction{txdata}}
+}
+
+// GetUnsent returns a slice of unsent blocks for the given peer. If it looks
+// like the peer is up-to-date, then the call blocks until a new block is
+// available.
+func (s *Service) GetUnsent(peerID uint64) []*SignedBlock {
+	for {
+		s.mu.RLock()
+		cur := s.round
+		last := s.sent[peerID]
+		if cur > last {
+			blocks := make([]*SignedBlock, last-cur)
+			for i := last; i < last; i++ {
+				blocks[i-last] = s.blocks[i]
+			}
+			s.mu.RUnlock()
+			return blocks
+		}
+		signal := s.signal
+		s.mu.RUnlock()
+		<-signal
+	}
+	return nil
 }
 
 // Handle implements the service Handler interface for handling messages
@@ -175,7 +204,7 @@ func (s *Service) Handle(ctx context.Context, peerID uint64, msg *service.Messag
 	case OP_BLOCK:
 		return nil, s.handleBlock(peerID, msg)
 	case OP_BLOCKS_REQUEST:
-		return nil, nil
+		return s.handleBlocksRequest(peerID, msg)
 	case OP_BLOCKS_RESPONSE:
 		return nil, s.handleBlocksResponse(peerID, msg)
 	default:
@@ -202,7 +231,7 @@ func (s *Service) Name() string {
 }
 
 // Register saves the given callback to be called when transactions have reached
-// consensus.
+// consensus. Register should be called before any AddTransaction calls.
 func (s *Service) Register(cb Callback) {
 	s.cb = cb
 }
@@ -229,7 +258,6 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		peers:    cfg.Peers,
 		top:      top,
 	}
-	s.cond = sync.NewCond(&s.mu)
 	s.loadState()
 	go s.genBlocks()
 	return s, nil
