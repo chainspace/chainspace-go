@@ -163,7 +163,7 @@ func (t *Topology) Dial(ctx context.Context, nodeID uint64) (*Conn, error) {
 	if connExists {
 		stream, err := conn.OpenStreamSync()
 		if err == nil {
-			return initConn(nodeID, stream), nil
+			return NewConn(stream), nil
 		}
 	}
 	buf := make([]byte, 8)
@@ -185,23 +185,12 @@ func (t *Topology) Dial(ctx context.Context, nodeID uint64) (*Conn, error) {
 	t.mu.Lock()
 	t.cxns[nodeID] = conn
 	t.mu.Unlock()
-	return initConn(nodeID, stream), nil
+	return NewConn(stream), nil
 }
 
 // Lookup returns the latest host:port address for a given node ID.
 func (t *Topology) Lookup(nodeID uint64) string {
 	return t.contacts.get(nodeID)
-}
-
-// ShardForKey returns the shard ID for the given object key.
-func (t *Topology) ShardForKey(key []byte) uint64 {
-	hash := highwayhash.Sum64(key, t.rawID)
-	return (hash % t.shardCount) + 1
-}
-
-// ShardForNode returns the shard ID for the given node ID.
-func (t *Topology) ShardForNode(nodeID uint64) uint64 {
-	return ((nodeID - 1) % t.shardCount) + 1
 }
 
 // NodesInShard returns a slice of node IDs for the given shard ID.
@@ -215,6 +204,26 @@ func (t *Topology) NodesInShard(shardID uint64) []uint64 {
 		nodes = append(nodes, i)
 	}
 	return nodes
+}
+
+// SeedPublicKeys returns a map of the signing keys for each of the seed nodes.
+func (t *Topology) SeedPublicKeys() map[uint64]signature.PublicKey {
+	keys := map[uint64]signature.PublicKey{}
+	for nodeID, cfg := range t.nodes {
+		keys[nodeID] = cfg.key
+	}
+	return keys
+}
+
+// ShardForKey returns the shard ID for the given object key.
+func (t *Topology) ShardForKey(key []byte) uint64 {
+	hash := highwayhash.Sum64(key, t.rawID)
+	return (hash % t.shardCount) + 1
+}
+
+// ShardForNode returns the shard ID for the given node ID.
+func (t *Topology) ShardForNode(nodeID uint64) uint64 {
+	return ((nodeID - 1) % t.shardCount) + 1
 }
 
 // New parses the given network configuration and creates a network topology for
