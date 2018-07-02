@@ -38,3 +38,16 @@ func BroadcastHello(clientID uint64, serverID uint64, key signature.KeyPair) (*H
 		Type:      CONNECTION_BROADCAST,
 	}, nil
 }
+
+// EncodeMessage takes a protobuf-compatible struct and encodes it into a
+// service Message.
+func EncodeMessage(opcode uint32, pb proto.Message) *Message {
+	payload, err := proto.Marshal(pb)
+	if err != nil {
+		panic(err)
+	}
+	return &Message{
+		Opcode:  opcode,
+		Payload: payload,
+	}
+}
