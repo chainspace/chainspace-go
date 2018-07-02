@@ -18,35 +18,41 @@ import (
 
 // packetHandler handles packets
 type packetHandler interface {
-	Session
-	getCryptoStream() cryptoStreamI
 	handlePacket(*receivedPacket)
+	Close(error) error
+	GetVersion() protocol.VersionNumber
+}
+
+type packetHandlerManager interface {
+	Add(protocol.ConnectionID, packetHandler)
+	Get(protocol.ConnectionID) (packetHandler, bool)
+	Remove(protocol.ConnectionID)
+	Close(error)
+}
+
+type quicSession interface {
+	Session
+	handlePacket(*receivedPacket)
+	getCryptoStream() cryptoStreamI
 	GetVersion() protocol.VersionNumber
 	run() error
 	closeRemote(error)
 }
 
 type sessionRunner interface {
-	onHandshakeComplete(packetHandler)
+	onHandshakeComplete(Session)
 	removeConnectionID(protocol.ConnectionID)
 }
 
 type runner struct {
-	onHandshakeCompleteImpl func(packetHandler)
+	onHandshakeCompleteImpl func(Session)
 	removeConnectionIDImpl  func(protocol.ConnectionID)
 }
 
-func (r *runner) onHandshakeComplete(p packetHandler)        { r.onHandshakeCompleteImpl(p) }
+func (r *runner) onHandshakeComplete(s Session)              { r.onHandshakeCompleteImpl(s) }
 func (r *runner) removeConnectionID(c protocol.ConnectionID) { r.removeConnectionIDImpl(c) }
 
 var _ sessionRunner = &runner{}
-
-type sessionHandler interface {
-	Add(protocol.ConnectionID, packetHandler)
-	Get(protocol.ConnectionID) (packetHandler, bool)
-	Remove(protocol.ConnectionID)
-	Close()
-}
 
 // A Listener of QUIC
 type server struct {
@@ -61,7 +67,7 @@ type server struct {
 	certChain crypto.CertChain
 	scfg      *handshake.ServerConfig
 
-	sessionHandler sessionHandler
+	sessionHandler packetHandlerManager
 
 	serverError error
 
@@ -70,7 +76,7 @@ type server struct {
 
 	sessionRunner sessionRunner
 	// set as a member, so they can be set in the tests
-	newSession func(connection, sessionRunner, protocol.VersionNumber, protocol.ConnectionID, *handshake.ServerConfig, *tls.Config, *Config, utils.Logger) (packetHandler, error)
+	newSession func(connection, sessionRunner, protocol.VersionNumber, protocol.ConnectionID, *handshake.ServerConfig, *tls.Config, *Config, utils.Logger) (quicSession, error)
 
 	logger utils.Logger
 }
@@ -124,7 +130,7 @@ func Listen(conn net.PacketConn, tlsConf *tls.Config, config *Config) (Listener,
 		certChain:      certChain,
 		scfg:           scfg,
 		newSession:     newSession,
-		sessionHandler: newSessionMap(),
+		sessionHandler: newPacketHandlerMap(),
 		sessionQueue:   make(chan Session, 5),
 		errorChan:      make(chan struct{}),
 		supportsTLS:    supportsTLS,
@@ -143,7 +149,7 @@ func Listen(conn net.PacketConn, tlsConf *tls.Config, config *Config) (Listener,
 
 func (s *server) setup() {
 	s.sessionRunner = &runner{
-		onHandshakeCompleteImpl: func(sess packetHandler) { s.sessionQueue <- sess },
+		onHandshakeCompleteImpl: func(sess Session) { s.sessionQueue <- sess },
 		removeConnectionIDImpl:  s.sessionHandler.Remove,
 	}
 }
@@ -165,11 +171,9 @@ func (s *server) setupTLS() error {
 			case <-s.errorChan:
 				return
 			case tlsSession := <-sessionChan:
-				sess := tlsSession.sess
 				// The connection ID is a randomly chosen 8 byte value.
 				// It is safe to assume that it doesn't collide with other randomly chosen values.
-				s.sessionHandler.Add(tlsSession.connID, sess)
-				go sess.run()
+				s.sessionHandler.Add(tlsSession.connID, tlsSession.sess)
 			}
 		}
 	}()
@@ -285,7 +289,7 @@ func (s *server) Accept() (Session, error) {
 
 // Close the server
 func (s *server) Close() error {
-	s.sessionHandler.Close()
+	s.sessionHandler.Close(nil)
 	err := s.conn.Close()
 	<-s.errorChan // wait for serve() to return
 	return err
@@ -300,7 +304,20 @@ func (s *server) handlePacket(remoteAddr net.Addr, packet []byte) error {
 	rcvTime := time.Now()
 
 	r := bytes.NewReader(packet)
-	hdr, err := wire.ParseHeaderSentByClient(r)
+	iHdr, err := wire.ParseInvariantHeader(r)
+	if err != nil {
+		return qerr.Error(qerr.InvalidPacketHeader, err.Error())
+	}
+	session, sessionKnown := s.sessionHandler.Get(iHdr.DestConnectionID)
+	if sessionKnown && session == nil {
+		// Late packet for closed session
+		return nil
+	}
+	version := protocol.VersionUnknown
+	if sessionKnown {
+		version = session.GetVersion()
+	}
+	hdr, err := iHdr.Parse(r, protocol.PerspectiveClient, version)
 	if err != nil {
 		return qerr.Error(qerr.InvalidPacketHeader, err.Error())
 	}
@@ -308,12 +325,18 @@ func (s *server) handlePacket(remoteAddr net.Addr, packet []byte) error {
 	packetData := packet[len(packet)-r.Len():]
 
 	if hdr.IsPublicHeader {
-		return s.handleGQUICPacket(hdr, packetData, remoteAddr, rcvTime)
+		return s.handleGQUICPacket(session, hdr, packetData, remoteAddr, rcvTime)
 	}
-	return s.handleIETFQUICPacket(hdr, packetData, remoteAddr, rcvTime)
+	return s.handleIETFQUICPacket(session, hdr, packetData, remoteAddr, rcvTime)
 }
 
-func (s *server) handleIETFQUICPacket(hdr *wire.Header, packetData []byte, remoteAddr net.Addr, rcvTime time.Time) error {
+func (s *server) handleIETFQUICPacket(
+	session packetHandler,
+	hdr *wire.Header,
+	packetData []byte,
+	remoteAddr net.Addr,
+	rcvTime time.Time,
+) error {
 	if hdr.IsLongHeader {
 		if !s.supportsTLS {
 			return errors.New("Received an IETF QUIC Long Header")
@@ -336,12 +359,7 @@ func (s *server) handleIETFQUICPacket(hdr *wire.Header, packetData []byte, remot
 		}
 	}
 
-	session, sessionKnown := s.sessionHandler.Get(hdr.DestConnectionID)
-	if sessionKnown && session == nil {
-		// Late packet for closed session
-		return nil
-	}
-	if !sessionKnown {
+	if session == nil {
 		s.logger.Debugf("Received %s packet for unknown connection %s.", hdr.Type, hdr.DestConnectionID)
 		return nil
 	}
@@ -355,18 +373,20 @@ func (s *server) handleIETFQUICPacket(hdr *wire.Header, packetData []byte, remot
 	return nil
 }
 
-func (s *server) handleGQUICPacket(hdr *wire.Header, packetData []byte, remoteAddr net.Addr, rcvTime time.Time) error {
+func (s *server) handleGQUICPacket(
+	session packetHandler,
+	hdr *wire.Header,
+	packetData []byte,
+	remoteAddr net.Addr,
+	rcvTime time.Time,
+) error {
 	// ignore all Public Reset packets
 	if hdr.ResetFlag {
 		s.logger.Infof("Received unexpected Public Reset for connection %s.", hdr.DestConnectionID)
 		return nil
 	}
 
-	session, sessionKnown := s.sessionHandler.Get(hdr.DestConnectionID)
-	if sessionKnown && session == nil {
-		// Late packet for closed session
-		return nil
-	}
+	sessionKnown := session != nil
 
 	// If we don't have a session for this connection, and this packet cannot open a new connection, send a Public Reset
 	// This should only happen after a server restart, when we still receive packets for connections that we lost the state for.
@@ -390,7 +410,7 @@ func (s *server) handleGQUICPacket(hdr *wire.Header, packetData []byte, remoteAd
 			return errors.New("dropping small packet with unknown version")
 		}
 		s.logger.Infof("Client offered version %s, sending Version Negotiation Packet", hdr.Version)
-		_, err := s.conn.WriteTo(wire.ComposeGQUICVersionNegotiation(hdr.SrcConnectionID, s.config.Versions), remoteAddr)
+		_, err := s.conn.WriteTo(wire.ComposeGQUICVersionNegotiation(hdr.DestConnectionID, s.config.Versions), remoteAddr)
 		return err
 	}
 
@@ -407,8 +427,7 @@ func (s *server) handleGQUICPacket(hdr *wire.Header, packetData []byte, remoteAd
 		}
 
 		s.logger.Infof("Serving new connection: %s, version %s from %v", hdr.DestConnectionID, version, remoteAddr)
-		var err error
-		session, err = s.newSession(
+		sess, err := s.newSession(
 			&conn{pconn: s.conn, currentAddr: remoteAddr},
 			s.sessionRunner,
 			version,
@@ -421,9 +440,10 @@ func (s *server) handleGQUICPacket(hdr *wire.Header, packetData []byte, remoteAd
 		if err != nil {
 			return err
 		}
-		s.sessionHandler.Add(hdr.DestConnectionID, session)
+		s.sessionHandler.Add(hdr.DestConnectionID, sess)
 
-		go session.run()
+		go sess.run()
+		session = sess
 	}
 
 	session.handlePacket(&receivedPacket{

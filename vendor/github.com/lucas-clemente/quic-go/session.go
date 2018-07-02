@@ -156,7 +156,7 @@ func newSession(
 	tlsConf *tls.Config,
 	config *Config,
 	logger utils.Logger,
-) (packetHandler, error) {
+) (quicSession, error) {
 	paramsChan := make(chan handshake.TransportParameters)
 	handshakeEvent := make(chan struct{}, 1)
 	s := &session{
@@ -205,7 +205,7 @@ func newSession(
 	s.streamFramer = newStreamFramer(s.cryptoStream, s.streamsMap, s.version)
 	s.packer = newPacketPacker(
 		connectionID,
-		connectionID,
+		nil, // no src connection ID
 		1,
 		s.sentPacketHandler.GetPacketNumberLen,
 		s.RemoteAddr(),
@@ -230,7 +230,7 @@ var newClientSession = func(
 	initialVersion protocol.VersionNumber,
 	negotiatedVersions []protocol.VersionNumber, // needed for validation of the GQUIC version negotiation
 	logger utils.Logger,
-) (packetHandler, error) {
+) (quicSession, error) {
 	paramsChan := make(chan handshake.TransportParameters)
 	handshakeEvent := make(chan struct{}, 1)
 	s := &session{
@@ -275,7 +275,7 @@ var newClientSession = func(
 	s.streamFramer = newStreamFramer(s.cryptoStream, s.streamsMap, s.version)
 	s.packer = newPacketPacker(
 		connectionID,
-		connectionID,
+		nil, // no src connection ID
 		1,
 		s.sentPacketHandler.GetPacketNumberLen,
 		s.RemoteAddr(),
@@ -301,7 +301,7 @@ func newTLSServerSession(
 	peerParams *handshake.TransportParameters,
 	v protocol.VersionNumber,
 	logger utils.Logger,
-) (packetHandler, error) {
+) (quicSession, error) {
 	handshakeEvent := make(chan struct{}, 1)
 	s := &session{
 		conn:           conn,
@@ -359,7 +359,7 @@ var newTLSClientSession = func(
 	paramsChan <-chan handshake.TransportParameters,
 	initialPacketNumber protocol.PacketNumber,
 	logger utils.Logger,
-) (packetHandler, error) {
+) (quicSession, error) {
 	handshakeEvent := make(chan struct{}, 1)
 	s := &session{
 		conn:           conn,
@@ -643,7 +643,7 @@ func (s *session) handlePacketImpl(p *receivedPacket) error {
 	}
 
 	// The server can change the source connection ID with the first Handshake packet.
-	if s.perspective == protocol.PerspectiveClient && !s.receivedFirstPacket && !hdr.SrcConnectionID.Equal(s.destConnID) {
+	if s.perspective == protocol.PerspectiveClient && !s.receivedFirstPacket && hdr.IsLongHeader && !hdr.SrcConnectionID.Equal(s.destConnID) {
 		s.logger.Debugf("Received first packet. Switching destination connection ID to: %s", hdr.SrcConnectionID)
 		s.destConnID = hdr.SrcConnectionID
 		s.packer.ChangeDestConnectionID(s.destConnID)
