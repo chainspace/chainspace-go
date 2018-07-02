@@ -8,7 +8,7 @@ import (
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/crypto/transport"
-	"github.com/tav/golly/log"
+	"chainspace.io/prototype/log"
 	"gopkg.in/yaml.v2"
 )
 

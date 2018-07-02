@@ -16,10 +16,10 @@ import (
 
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/crypto/signature"
+	"chainspace.io/prototype/log"
 	"github.com/grandcat/zeroconf"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/minio/highwayhash"
-	"github.com/tav/golly/log"
 )
 
 // Error values.

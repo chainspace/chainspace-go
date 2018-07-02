@@ -16,12 +16,12 @@ import (
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/freeport"
+	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
 	"chainspace.io/prototype/service/broadcast"
 	"github.com/gogo/protobuf/proto"
 	"github.com/lucas-clemente/quic-go"
-	"github.com/tav/golly/log"
 	"github.com/tav/golly/process"
 )
 

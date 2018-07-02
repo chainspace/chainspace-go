@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/service"
 	"github.com/gogo/protobuf/proto"
 	"github.com/lucas-clemente/quic-go"
-	"github.com/tav/golly/log"
 )
 
 const (

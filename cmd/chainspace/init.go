@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"chainspace.io/prototype/config"
-	"github.com/tav/golly/log"
+	"chainspace.io/prototype/log"
 )
 
 func cmdInit(args []string, usage string) {

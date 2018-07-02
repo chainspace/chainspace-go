@@ -6,8 +6,8 @@ import (
 	"strconv"
 
 	"chainspace.io/prototype/config"
+	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/node"
-	"github.com/tav/golly/log"
 )
 
 func cmdRun(args []string, usage string) {
