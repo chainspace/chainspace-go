@@ -11,7 +11,6 @@ import (
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
-	"chainspace.io/prototype/storage"
 	"github.com/gogo/protobuf/proto"
 	"github.com/tav/golly/log"
 )
@@ -36,6 +35,7 @@ type Callback interface {
 // Config for the broadcast service.
 type Config struct {
 	ConsensusInterval time.Duration
+	Directory         string
 	Key               signature.KeyPair
 	Keys              map[uint64]signature.PublicKey
 	NodeID            uint64
@@ -48,7 +48,7 @@ type Service struct {
 	cb       Callback
 	cond     *sync.Cond
 	ctx      context.Context
-	db       storage.DB
+	dir      string
 	entries  chan *Entry
 	interval time.Duration
 	key      signature.KeyPair
@@ -91,9 +91,9 @@ func (s *Service) genBlocks() {
 				Signature: s.key.Sign(data),
 			}
 			s.previous = signed.Digest()
-			if err := s.db.Sync(); err != nil {
-				log.Fatalf("Got unexpected error when syncing the DB: %s", err)
-			}
+			// if err := s.db.Sync(); err != nil {
+			// 	log.Fatalf("Got unexpected error when syncing the DB: %s", err)
+			// }
 			s.mu.Lock()
 			s.blocks[block.Number] = signed
 			s.round = round
@@ -208,10 +208,10 @@ func (s *Service) Register(cb Callback) {
 // New returns a fully instantiated broadcaster service. Soon after the service
 // is instantiated, Register should be called on it to register a callback,
 // before any AddTransaction calls are made.
-func New(ctx context.Context, cfg *Config, top *network.Topology, db storage.DB) *Service {
+func New(ctx context.Context, cfg *Config, top *network.Topology) *Service {
 	s := &Service{
 		ctx:      ctx,
-		db:       db,
+		dir:      cfg.Directory,
 		entries:  make(chan *Entry, 10000),
 		interval: cfg.ConsensusInterval,
 		key:      cfg.Key,

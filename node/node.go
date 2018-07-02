@@ -19,8 +19,6 @@ import (
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
 	"chainspace.io/prototype/service/broadcast"
-	"chainspace.io/prototype/storage"
-	"chainspace.io/prototype/storage/memstore"
 	"github.com/gogo/protobuf/proto"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/tav/golly/log"
@@ -57,7 +55,6 @@ type Config struct {
 type Server struct {
 	broadcaster    *broadcast.Service
 	cancel         context.CancelFunc
-	db             storage.DB
 	ctx            context.Context
 	id             uint64
 	initialBackoff time.Duration
@@ -369,19 +366,6 @@ func Run(cfg *Config) (*Server, error) {
 	}
 
 	keys := top.SeedPublicKeys()
-
-	// Initialise the datastore.
-	var db storage.DB
-
-	switch cfg.Node.Storage.Type {
-	case "memstore":
-		db = memstore.New()
-	case "filestore":
-		//
-	default:
-		return nil, fmt.Errorf("node: unknown storage type: %q", cfg.Node.Storage.Type)
-	}
-
 	shardID := top.ShardForNode(cfg.NodeID)
 	nodes := top.NodesInShard(shardID)
 	if len(nodes) == 0 {
@@ -400,18 +384,18 @@ func Run(cfg *Config) (*Server, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	bcfg := &broadcast.Config{
 		ConsensusInterval: cfg.Node.Consensus.Interval,
+		Directory:         dir,
 		Key:               key,
 		Keys:              keys,
 		NodeID:            cfg.NodeID,
 		Peers:             peers,
 	}
 
-	broadcaster := broadcast.New(ctx, bcfg, top, db)
+	broadcaster := broadcast.New(ctx, bcfg, top)
 	node := &Server{
 		broadcaster:    broadcaster,
 		cancel:         cancel,
 		ctx:            ctx,
-		db:             db,
 		id:             cfg.NodeID,
 		initialBackoff: cfg.Node.Broadcast.InitialBackoff,
 		key:            key,
