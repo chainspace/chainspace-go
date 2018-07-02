@@ -22,6 +22,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/tav/golly/log"
+	"github.com/tav/golly/process"
 )
 
 const (
@@ -298,6 +299,10 @@ func Run(cfg *Config) (*Server, error) {
 		}
 	}
 
+	if err := process.Init(dir, "chainspace"); err != nil {
+		return nil, err
+	}
+
 	// Initialise the topology.
 	top, err := network.New(cfg.NetworkName, cfg.Network)
 	if err != nil {
@@ -391,7 +396,12 @@ func Run(cfg *Config) (*Server, error) {
 		Peers:             peers,
 	}
 
-	broadcaster := broadcast.New(ctx, bcfg, top)
+	broadcaster, err := broadcast.New(ctx, bcfg, top)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("node: unable to instantiate the broadcast service: %s", err)
+	}
+
 	node := &Server{
 		broadcaster:    broadcaster,
 		cancel:         cancel,

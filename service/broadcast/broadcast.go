@@ -5,12 +5,14 @@ package broadcast
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
+	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
 	"github.com/tav/golly/log"
 )
@@ -48,7 +50,7 @@ type Service struct {
 	cb       Callback
 	cond     *sync.Cond
 	ctx      context.Context
-	dir      string
+	db       *badger.DB
 	entries  chan *Entry
 	interval time.Duration
 	key      signature.KeyPair
@@ -208,10 +210,17 @@ func (s *Service) Register(cb Callback) {
 // New returns a fully instantiated broadcaster service. Soon after the service
 // is instantiated, Register should be called on it to register a callback,
 // before any AddTransaction calls are made.
-func New(ctx context.Context, cfg *Config, top *network.Topology) *Service {
+func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, error) {
+	opts := badger.DefaultOptions
+	opts.Dir = filepath.Join(cfg.Directory, "broadcast")
+	opts.ValueDir = opts.Dir
+	db, err := badger.Open(opts)
+	if err != nil {
+		return nil, err
+	}
 	s := &Service{
+		db:       db,
 		ctx:      ctx,
-		dir:      cfg.Directory,
 		entries:  make(chan *Entry, 10000),
 		interval: cfg.ConsensusInterval,
 		key:      cfg.Key,
@@ -223,5 +232,5 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) *Service {
 	s.cond = sync.NewCond(&s.mu)
 	s.loadState()
 	go s.genBlocks()
-	return s
+	return s, nil
 }
