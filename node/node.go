@@ -143,11 +143,26 @@ func (s *Server) listen(l quic.Listener) {
 }
 
 func (s *Server) maintainBroadcast(peerID uint64) {
+	var (
+		blocks []*broadcast.SignedBlock
+		round  uint64
+	)
 	backoff := s.initialBackoff
+	msg := &service.Message{Opcode: uint32(broadcast.OP_LISTING)}
+	listing := &broadcast.Listing{}
+	retry := false
 	for {
+		if retry {
+			backoff *= 2
+			if backoff > s.maxBackoff {
+				backoff = s.maxBackoff
+			}
+			time.Sleep(backoff)
+			retry = false
+		}
 		select {
 		case <-s.ctx.Done():
-			break
+			return
 		default:
 		}
 		conn, err := s.top.Dial(s.ctx, peerID)
@@ -155,31 +170,40 @@ func (s *Server) maintainBroadcast(peerID uint64) {
 			backoff = s.initialBackoff
 		} else {
 			log.Errorf("Couldn't dial %d: %s", peerID, err)
-			backoff *= 2
-			if backoff > s.maxBackoff {
-				backoff = s.maxBackoff
-			}
-			time.Sleep(backoff)
+			retry = true
 			continue
 		}
-		// conn.SendHello()
-		// for msg := range db.NextBlock(peerID) {
-		// 	select {
-		// 	case <-s.ctx.Done():
-		// 		break
-		// 	default:
-		// 	}
-		// 	if err := conn.SendMessage(msg); err != nil {
-		// 		break
-		// 	}
-		// }
-		// log.Infof("Connected to node %d", peerID)
-		// _, err = conn.Write([]byte("hello"))
-		// if err != nil {
-		// 	log.Infof("Failed to write on connection to node %d: %s", peerID, err)
-		// }
-		_ = conn
-		time.Sleep(60 * time.Second)
+		hello, err := service.BroadcastHello(s.id, peerID, s.key)
+		if err != nil {
+			log.Errorf("Couldn't create Hello payload for broadcast: %s", err)
+			retry = true
+			continue
+		}
+		if err = conn.WritePayload(hello, s.writeTimeout); err != nil {
+			log.Errorf("Couldn't send Hello to node %d: %s", peerID, err)
+			retry = true
+			continue
+		}
+		for {
+			if len(blocks) == 0 {
+				blocks, round = s.broadcaster.GetUnsent(peerID)
+				if blocks == nil {
+					return
+				}
+			}
+			listing.Blocks = blocks
+			msg.Payload, err = proto.Marshal(listing)
+			if err != nil {
+				log.Fatalf("Could not encode listing for broadcast: %s", err)
+			}
+			if err = conn.WritePayload(msg, s.writeTimeout); err != nil {
+				log.Errorf("Could not write listing to node %d for broadcast: %s", peerID, err)
+				retry = true
+				break
+			}
+			s.broadcaster.MarkSent(peerID, round)
+			blocks = nil
+		}
 	}
 }
 
