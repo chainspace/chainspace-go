@@ -11,6 +11,32 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// Bootstrap represents the configuration for bootstrapping peer addresses.
+type Bootstrap struct {
+	File   string            `yaml:",omitempty"`
+	MDNS   bool              `yaml:",omitempty"`
+	Static map[uint64]string `yaml:",omitempty"`
+	URL    string            `yaml:",omitempty"`
+}
+
+// Broadcast represents the configuration for maintaining the shard broadcast.
+type Broadcast struct {
+	InitialBackoff time.Duration `yaml:"initial.backoff"`
+	MaxBackoff     time.Duration `yaml:"max.backoff"`
+	MaxClockSkew   time.Duration `yaml:"max.clock.skew"`
+}
+
+// Connections represents the configuration for network connections.
+type Connections struct {
+	ReadTimeout  time.Duration `yaml:"read.timeout"`
+	WriteTimeout time.Duration `yaml:"write.timeout"`
+}
+
+// Consensus represents the configuration for the consensus protocol.
+type Consensus struct {
+	Interval time.Duration
+}
+
 // Key represents a cryptographic key of some kind.
 type Key struct {
 	Type    string
@@ -53,14 +79,12 @@ func (n *Network) Hash() ([]byte, error) {
 // Node represents the configuration of an individual node in a Chainspace
 // network.
 type Node struct {
-	Announce               []string          `yaml:"announce,omitempty"`
-	BootstrapFile          string            `yaml:"bootstrap.file,omitempty"`
-	BootstrapMDNS          bool              `yaml:"bootstrap.mdns,omitempty"`
-	BootstrapStatic        map[uint64]string `yaml:"bootstrap.static,omitempty"`
-	BootstrapURL           string            `yaml:"bootstrap.url,omitempty"`
-	ConnectionReadTimeout  time.Duration     `yaml:"connection.read.timeout"`
-	ConnectionWriteTimeout time.Duration     `yaml:"connection.write.timeout"`
-	Storage                *Storage
+	Announce    []string `yaml:"announce,omitempty"`
+	Bootstrap   *Bootstrap
+	Broadcast   *Broadcast
+	Connections *Connections
+	Consensus   *Consensus
+	Storage     *Storage
 }
 
 // Peer represents the cryptographic public keys of a node in a Chainspace

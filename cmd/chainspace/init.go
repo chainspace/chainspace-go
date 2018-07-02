@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"chainspace.io/prototype/config"
 	"github.com/tav/golly/log"
@@ -41,6 +42,25 @@ func cmdInit(args []string, usage string) {
 		SeedNodes: peers,
 	}
 
+	bootstrap := &config.Bootstrap{
+		MDNS: true,
+	}
+
+	broadcast := &config.Broadcast{
+		InitialBackoff: 2 * time.Second,
+		MaxBackoff:     30 * time.Second,
+		MaxClockSkew:   30 * time.Second,
+	}
+
+	connections := &config.Connections{
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+	}
+
+	consensus := &config.Consensus{
+		Interval: time.Second,
+	}
+
 	storage := &config.Storage{
 		Type: "memstore",
 	}
@@ -67,9 +87,12 @@ func cmdInit(args []string, usage string) {
 
 		// Create node.yaml
 		cfg := &config.Node{
-			Announce:      []string{"mdns"},
-			BootstrapMDNS: true,
-			Storage:       storage,
+			Announce:    []string{"mdns"},
+			Bootstrap:   bootstrap,
+			Broadcast:   broadcast,
+			Connections: connections,
+			Consensus:   consensus,
+			Storage:     storage,
 		}
 
 		if err := writeYAML(filepath.Join(nodeDir, "node.yaml"), cfg); err != nil {
