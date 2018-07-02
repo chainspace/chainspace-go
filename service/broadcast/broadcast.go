@@ -3,6 +3,7 @@
 package broadcast
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -91,10 +92,10 @@ func (s *Service) genBlocks() {
 				Signature: s.key.Sign(data),
 			}
 			s.previous = signed.Digest()
+			signal := s.signal
 			s.mu.Lock()
 			s.blocks[block.Number] = signed
 			s.round = round
-			signal := s.signal
 			s.signal = make(chan struct{})
 			s.mu.Unlock()
 			close(signal)
@@ -118,7 +119,41 @@ func (s *Service) handleBlock(peerID uint64, msg *service.Message) error {
 }
 
 func (s *Service) handleBlocksRequest(peerID uint64, msg *service.Message) (*service.Message, error) {
-	return nil, nil
+	req := &BlocksRequest{}
+	if err := proto.Unmarshal(msg.Payload, req); err != nil {
+		return nil, err
+	}
+	blocks := make([]*SignedBlock, len(req.Blocks))
+	for idx, ref := range req.Blocks {
+		// TODO(tav): For now, only deal with blocks created by ourselves.
+		if ref.Node != s.nodeID {
+			return nil, fmt.Errorf("broadcast: received blocks request for block created by node %d", ref.Node)
+		}
+		s.mu.RLock()
+		block, exists := s.blocks[ref.Number]
+		s.mu.RUnlock()
+		if !exists {
+			blocks[idx] = nil
+			log.Errorf("Got request from node %d for unknown block %d", peerID, ref.Number)
+			continue
+		}
+		if !bytes.Equal(block.Digest(), ref.Hash) {
+			blocks[idx] = nil
+			log.Errorf("Got request from node %d for block %d with a bad hash", peerID, ref.Number)
+			continue
+		}
+		blocks[idx] = block
+	}
+	data, err := proto.Marshal(&BlocksResponse{
+		Blocks: blocks,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &service.Message{
+		Opcode:  uint32(OP_BLOCKS_RESPONSE),
+		Payload: data,
+	}, nil
 }
 
 func (s *Service) handleBlocksResponse(peerID uint64, msg *service.Message) error {
@@ -126,8 +161,8 @@ func (s *Service) handleBlocksResponse(peerID uint64, msg *service.Message) erro
 	if err := proto.Unmarshal(msg.Payload, resp); err != nil {
 		return err
 	}
-	for _, signed := range resp.Signed {
-		if err := s.processBlock(signed); err != nil {
+	for _, block := range resp.Blocks {
+		if err := s.processBlock(block); err != nil {
 			return err
 		}
 	}

@@ -25,7 +25,7 @@ message BlockReference {
 
 message BlocksRequest { repeated BlockReference blocks = 1; }
 
-message BlocksResponse { repeated SignedBlock signed = 1; }
+message BlocksResponse { repeated SignedBlock blocks = 1; }
 
 message Entry {
   oneof value {
