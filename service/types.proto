@@ -2,6 +2,28 @@ syntax = "proto3";
 package service;
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
+
+enum CONNECTION {
+  UNKNOWN = 0;
+  BROADCAST = 1;
+  TRANSACTOR = 2;
+}
+
+message Hello {
+  string agent = 1;
+  bytes payload = 2;
+  bytes signature = 3;
+  CONNECTION type = 4;
+}
+
+message HelloInfo {
+  uint64 client = 1;
+  bytes nonce = 2;
+  uint64 server = 3;
+  google.protobuf.Timestamp timestamp = 4
+      [ (gogoproto.stdtime) = true, (gogoproto.nullable) = false ];
+}
 
 message Message {
   uint32 opcode = 1;
