@@ -5,9 +5,8 @@ import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 
 enum OP {
   UNKNOWN = 0;
-  BLOCK = 1;
-  BLOCKS_REQUEST = 2;
-  BLOCKS_RESPONSE = 3;
+  BLOCKS_REQUEST = 1;
+  LISTING = 2;
 }
 
 message Block {
@@ -25,14 +24,14 @@ message BlockReference {
 
 message BlocksRequest { repeated BlockReference blocks = 1; }
 
-message BlocksResponse { repeated SignedBlock blocks = 1; }
-
 message Entry {
   oneof value {
     BlockReference block = 1;
     TransactionData transaction = 2;
   }
 }
+
+message Listing { repeated SignedBlock blocks = 1; }
 
 message SignedBlock {
   bytes data = 1;

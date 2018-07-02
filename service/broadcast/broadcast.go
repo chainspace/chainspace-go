@@ -110,14 +110,6 @@ func (s *Service) genBlocks() {
 	}
 }
 
-func (s *Service) handleBlock(peerID uint64, msg *service.Message) error {
-	signed := &SignedBlock{}
-	if err := proto.Unmarshal(msg.Payload, signed); err != nil {
-		return err
-	}
-	return s.processBlock(signed)
-}
-
 func (s *Service) handleBlocksRequest(peerID uint64, msg *service.Message) (*service.Message, error) {
 	req := &BlocksRequest{}
 	if err := proto.Unmarshal(msg.Payload, req); err != nil {
@@ -144,24 +136,24 @@ func (s *Service) handleBlocksRequest(peerID uint64, msg *service.Message) (*ser
 		}
 		blocks[idx] = block
 	}
-	data, err := proto.Marshal(&BlocksResponse{
+	data, err := proto.Marshal(&Listing{
 		Blocks: blocks,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &service.Message{
-		Opcode:  uint32(OP_BLOCKS_RESPONSE),
+		Opcode:  uint32(OP_LISTING),
 		Payload: data,
 	}, nil
 }
 
-func (s *Service) handleBlocksResponse(peerID uint64, msg *service.Message) error {
-	resp := &BlocksResponse{}
-	if err := proto.Unmarshal(msg.Payload, resp); err != nil {
+func (s *Service) handleListing(peerID uint64, msg *service.Message) error {
+	listing := &Listing{}
+	if err := proto.Unmarshal(msg.Payload, listing); err != nil {
 		return err
 	}
-	for _, block := range resp.Blocks {
+	for _, block := range listing.Blocks {
 		if err := s.processBlock(block); err != nil {
 			return err
 		}
@@ -193,6 +185,7 @@ func (s *Service) processBlock(signed *SignedBlock) error {
 	if !key.Verify(signed.Data, signed.Signature) {
 		return fmt.Errorf("broadcast: unable to verify signature for block %d from node %d", block.Number, block.Node)
 	}
+	log.Infof("Received block %d from node %d", block.Number, block.Node)
 	return nil
 }
 
@@ -212,52 +205,49 @@ func (s *Service) AddTransaction(txdata *TransactionData) {
 // GetUnsent returns a slice of unsent blocks for the given peer. If it looks
 // like the peer is up-to-date, then the call blocks until a new block is
 // available.
-func (s *Service) GetUnsent(peerID uint64) []*SignedBlock {
+func (s *Service) GetUnsent(peerID uint64) ([]*SignedBlock, uint64) {
 	for {
 		s.mu.RLock()
 		cur := s.round
-		last := s.sent[peerID]
-		if cur > last {
-			blocks := make([]*SignedBlock, last-cur)
-			for i := last; i < last; i++ {
+		last := s.sent[peerID] + 1
+		if cur >= last {
+			// TODO(tav): Take size into consideration so as to not overflow max
+			// message limit on connections.
+			blocks := make([]*SignedBlock, (cur-last)+1)
+			for i := last; i <= cur; i++ {
 				blocks[i-last] = s.blocks[i]
 			}
 			s.mu.RUnlock()
-			return blocks
+			return blocks, cur
 		}
 		signal := s.signal
 		s.mu.RUnlock()
-		<-signal
+		select {
+		case <-signal:
+		case <-s.ctx.Done():
+			return nil, 0
+		}
 	}
-	return nil
 }
 
 // Handle implements the service Handler interface for handling messages
 // received over a connection.
 func (s *Service) Handle(ctx context.Context, peerID uint64, msg *service.Message) (*service.Message, error) {
 	switch OP(msg.Opcode) {
-	case OP_BLOCK:
-		return nil, s.handleBlock(peerID, msg)
 	case OP_BLOCKS_REQUEST:
 		return s.handleBlocksRequest(peerID, msg)
-	case OP_BLOCKS_RESPONSE:
-		return nil, s.handleBlocksResponse(peerID, msg)
+	case OP_LISTING:
+		return nil, s.handleListing(peerID, msg)
 	default:
 		return nil, fmt.Errorf("broadcast: unknown message opcode: %d", msg.Opcode)
 	}
 }
 
-// MarkSent marks blocks for the given round as being sent to the peer in the
-// shard.
-func (s *Service) MarkSent(peerID uint64, round uint64) error {
+// MarkSent marks the given round as being sent to the peer in the shard.
+func (s *Service) MarkSent(peerID uint64, round uint64) {
 	s.mu.Lock()
-	last := s.sent[peerID]
-	if round != last+1 {
-		return fmt.Errorf("broadcast: MarkSent called with round %d for node %d, when last round sent was only %d", round, peerID, last)
-	}
 	s.sent[peerID] = round
 	s.mu.Unlock()
-	return nil
 }
 
 // Name specifies the name of the service for use in debugging service handlers.
