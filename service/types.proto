@@ -26,6 +26,8 @@ message HelloInfo {
 }
 
 message Message {
-  uint32 opcode = 1;
-  bytes payload = 2;
+  uint64 id = 1 [(gogoproto.customname) = "ID"];
+  string error = 2;
+  uint32 opcode = 3;
+  bytes payload = 4;
 }

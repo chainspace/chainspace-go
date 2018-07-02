@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"sync"
 	"time"
 
 	"chainspace.io/prototype/log"
@@ -18,6 +19,8 @@ const (
 
 // Conn represents a connection to a Chainspace node.
 type Conn struct {
+	lastID uint64
+	mu     sync.Mutex
 	stream quic.Stream
 }
 
@@ -132,6 +135,17 @@ func (c *Conn) WritePayload(pb proto.Message, timeout time.Duration) error {
 		size -= n
 	}
 	return nil
+}
+
+// WriteRequest adds a connection-specific ID to the given message before
+// writing it out on the underlying connection.
+func (c *Conn) WriteRequest(msg *service.Message, timeout time.Duration) error {
+	c.mu.Lock()
+	c.lastID++
+	id := c.lastID
+	c.mu.Unlock()
+	msg.ID = id
+	return c.WritePayload(msg, timeout)
 }
 
 // NewConn instantiates a connection value with the given QUIC stream.
