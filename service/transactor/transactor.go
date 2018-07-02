@@ -6,16 +6,21 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"path"
 
 	"chainspace.io/prototype/combihash"
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
-	"chainspace.io/prototype/storage"
 
+	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
 	"golang.org/x/sync/errgroup"
+)
+
+const (
+	badgerStorePath = "/transactor/"
 )
 
 var b32 = base32.StdEncoding.WithPadding(base32.NoPadding)
@@ -24,10 +29,10 @@ var b32 = base32.StdEncoding.WithPadding(base32.NoPadding)
 type CheckersMap map[string]map[string]Checker
 
 type Config struct {
+	Directory  string
 	NodeID     uint64
 	Top        *network.Topology
 	SigningKey *config.Key
-	Store      storage.DB
 	Checkers   []Checker
 }
 
@@ -42,7 +47,7 @@ type Service struct {
 	nodeID   uint64
 	privkey  signature.PrivateKey
 	top      *network.Topology
-	store    storage.DB
+	store    *badger.DB
 }
 
 func (s *Service) Handle(ctx context.Context, m *service.Message) (*service.Message, error) {
@@ -125,7 +130,6 @@ func (s *Service) addTransaction(ctx context.Context, tx *Transaction, rawtx []b
 	return result, nil
 }
 
-// runCheckers will run concurently all the checkers for this transaction
 func runCheckers(ctx context.Context, checkers CheckersMap, tx *Transaction) (bool, error) {
 	ctpairs, err := aggregateCheckers(checkers, tx.Traces)
 	if err != nil {
@@ -185,17 +189,17 @@ func (s *Service) queryObject(ctx context.Context, objectKey []byte) (*Object, e
 	var obj *Object
 	shardID := s.top.ShardForKey(objectKey)
 	if shardID == s.top.ShardForNode(s.nodeID) {
-		var err error
-		value, status, err := s.store.GetByKey(objectKey)
-		if err != nil {
-			return nil, fmt.Errorf("transactor: unable to get object by key from local store: %v", err)
-		}
+		/*		var err error
+				value, status, err := s.store.GetByKey(objectKey)
+				if err != nil {
+					return nil, fmt.Errorf("transactor: unable to get object by key from local store: %v", err)
+				}
 
-		obj = &Object{
-			Value:  value,
-			Key:    objectKey,
-			Status: ObjectStatus(status),
-		}
+				obj = &Object{
+					Value:  value,
+					Key:    objectKey,
+					Status: ObjectStatus(status),
+				} */
 	} else {
 		// call a node from another shard to get the object
 		return nil, fmt.Errorf("not implemented")
@@ -206,6 +210,10 @@ func (s *Service) queryObject(ctx context.Context, objectKey []byte) (*Object, e
 
 func (s *Service) Name() string {
 	return "transactor"
+}
+
+func (s *Service) Stop() error {
+	return s.store.Close()
 }
 
 // TraceIdentifierPair is a pair of a trace and it's identifier
@@ -337,11 +345,20 @@ func New(cfg *Config) (*Service, error) {
 		return nil, err
 	}
 
+	opts := badger.DefaultOptions
+	badgerPath := path.Join(cfg.Directory, badgerStorePath)
+	opts.Dir = badgerPath
+	opts.ValueDir = badgerPath
+	store, err := badger.Open(opts)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Service{
 		checkers: checkers,
 		nodeID:   cfg.NodeID,
 		privkey:  privkey,
 		top:      cfg.Top,
-		store:    cfg.Store,
+		store:    store,
 	}, nil
 }
