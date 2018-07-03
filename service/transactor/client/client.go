@@ -5,8 +5,12 @@ import (
 
 	"golang.org/x/net/context"
 
+	"github.com/gogo/protobuf/proto"
+
 	"chainspace.io/prototype/config"
+	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/network"
+	"chainspace.io/prototype/service"
 	"chainspace.io/prototype/service/transactor"
 )
 
@@ -69,11 +73,18 @@ type Config struct {
 
 type Client interface {
 	SendTransaction(t *ClientTransaction) error
+	Close()
 }
 
 type client struct {
-	shardID  uint64
-	topology *network.Topology
+	top *network.Topology
+	// map of shardID, to a list of nodes connections
+	nodesConn map[uint64][]NodeIDConnPair
+}
+
+type NodeIDConnPair struct {
+	NodeID uint64
+	Conn   *network.Conn
 }
 
 func New(cfg *Config) (Client, error) {
@@ -82,23 +93,97 @@ func New(cfg *Config) (Client, error) {
 		return nil, err
 	}
 	topology.BootstrapMDNS()
+	time.Sleep(time.Second)
 
 	return &client{
-		shardID:  cfg.ShardID,
-		topology: topology,
+		top:       topology,
+		nodesConn: map[uint64][]NodeIDConnPair{},
 	}, nil
 }
 
-func (c *client) SendTransaction(t *ClientTransaction) error {
-	// Bootstrap using mDNS.
+func (c *client) Close() {
+	for _, conns := range c.nodesConn {
+		for _, c := range conns {
+			if err := c.Conn.Close(); err != nil {
+				log.Errorf("transactor client: error closing connection: %v", err)
+			}
+		}
+	}
+}
 
-	time.Sleep(time.Second)
-	conn, err := c.topology.DialAnyInShard(context.TODO(), c.shardID)
-	if err != nil {
-		return err
+func (c *client) dialNodes(t *ClientTransaction) error {
+	shardIDs := map[uint64]struct{}{}
+	// for each input object / reference, send the transaction.
+	for _, trace := range t.Traces {
+		for _, v := range trace.InputObjectsKeys {
+			shardID := c.top.ShardForKey([]byte(v))
+			shardIDs[shardID] = struct{}{}
+		}
+		for _, v := range trace.InputReferencesKeys {
+			shardID := c.top.ShardForKey([]byte(v))
+			shardIDs[shardID] = struct{}{}
+		}
 	}
 
-	conn.Write([]byte("testing"))
+	ctx := context.TODO()
+	for k, _ := range shardIDs {
+		c.nodesConn[k] = []NodeIDConnPair{}
+		for _, n := range c.top.NodesInShard(k) {
+			conn, err := c.top.Dial(ctx, n)
+			if err != nil {
+				log.Errorf("transactor client: unable to connect to shard(%v)->node(%v): %v", n, k, err)
+				return err
+			}
+			c.nodesConn[k] = append(c.nodesConn[k], NodeIDConnPair{n, conn})
+
+		}
+	}
+	return nil
+}
+
+func (c *client) helloNodes() error {
+	hellomsg := &service.Hello{
+		Type: service.CONNECTION_TRANSACTOR,
+	}
+	for k, v := range c.nodesConn {
+		for _, nc := range v {
+			log.Infof("sending hello to shard shard(%v)->node(%v)", k, nc.NodeID)
+			err := nc.Conn.WritePayload(hellomsg, 5*time.Second)
+			if err != nil {
+				log.Errorf("transactor client: unable to send hello message to shard(%v)->node(%v): %v", k, nc.NodeID, err)
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (c *client) SendTransaction(t *ClientTransaction) error {
+	if err := c.dialNodes(t); err != nil {
+		return err
+	}
+	if err := c.helloNodes(); err != nil {
+		return err
+	}
+	req := &transactor.AddTransactionRequest{
+		Transaction: t.ToTransaction(),
+	}
+	txbytes, err := proto.Marshal(req)
+	if err != nil {
+		log.Errorf("transctor client: unable to marshal transaction: %v", err)
+		return err
+	}
+	msg := &service.Message{
+		Opcode:  uint32(transactor.Opcode_ADD_TRANSACTION),
+		Payload: txbytes,
+	}
+	for s, nc := range c.nodesConn {
+		for _, v := range nc {
+			log.Infof("sending transaction to shard(%v)->node(%v)", s, v.NodeID)
+			v.Conn.WriteRequest(msg, 5*time.Second)
+		}
+	}
+
 	time.Sleep(5 * time.Second)
 
 	return nil

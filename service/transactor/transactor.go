@@ -14,6 +14,7 @@ import (
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
 
+	"chainspace.io/prototype/log"
 	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
 	"golang.org/x/sync/errgroup"
@@ -50,7 +51,8 @@ type Service struct {
 	store    *badger.DB
 }
 
-func (s *Service) Handle(ctx context.Context, m *service.Message) (*service.Message, error) {
+func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message) (*service.Message, error) {
+
 	switch Opcode(m.Opcode) {
 	case Opcode_ADD_TRANSACTION:
 		req := &AddTransactionRequest{}
@@ -59,6 +61,9 @@ func (s *Service) Handle(ctx context.Context, m *service.Message) (*service.Mess
 			return nil, fmt.Errorf("transactor: add_transaction unmarshaling error: %v", err)
 		}
 		objs, err := s.addTransaction(ctx, req.Transaction, m.Payload)
+		if err != nil {
+			log.Errorf("transactor: failed to add transaction: %v", err)
+		}
 		res := &AddTransactionResponse{
 			Pairs: objs,
 		}
@@ -67,6 +72,7 @@ func (s *Service) Handle(ctx context.Context, m *service.Message) (*service.Mess
 		if err != nil {
 			return nil, fmt.Errorf("transactor: unable to marshal add_transaction response")
 		}
+		log.Infof("transactor: transaction added successfully")
 		return &service.Message{Opcode: uint32(Opcode_ADD_TRANSACTION), Payload: b}, nil
 	case Opcode_QUERY_OBJECT:
 		req := &QueryObjectRequest{}

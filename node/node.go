@@ -20,6 +20,7 @@ import (
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
 	"chainspace.io/prototype/service/broadcast"
+	"chainspace.io/prototype/service/transactor"
 	"github.com/gogo/protobuf/proto"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/tav/golly/process"
@@ -106,6 +107,7 @@ func (s *Server) handleStream(stream quic.Stream) {
 		}
 	case service.CONNECTION_TRANSACTOR:
 		svc = s.transactor
+		log.Infof("new transactor hello nesssage")
 	default:
 		log.Errorf("Unknown connection type: %#v", hello.Type)
 		return
@@ -441,6 +443,21 @@ func Run(cfg *Config) (*Server, error) {
 		return nil, fmt.Errorf("node: unable to instantiate the broadcast service: %s", err)
 	}
 
+	tcfg := &transactor.Config{
+		Broadcaster: broadcaster,
+		Checkers: []transactor.Checker{
+			&transactor.DummyCheckerOK{}, &transactor.DummyCheckerKO{}},
+		Directory:  dir,
+		NodeID:     cfg.NodeID,
+		Top:        top,
+		SigningKey: cfg.Keys.SigningKey,
+	}
+	txtor, err := transactor.New(tcfg)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("node: unable to instanciate the transactor service: %v", err)
+	}
+
 	node := &Server{
 		broadcaster:     broadcaster,
 		cancel:          cancel,
@@ -455,6 +472,7 @@ func Run(cfg *Config) (*Server, error) {
 		payloadLimit:    maxPayload,
 		readTimeout:     cfg.Node.Connections.ReadTimeout,
 		top:             top,
+		transactor:      txtor,
 		writeTimeout:    cfg.Node.Connections.WriteTimeout,
 	}
 
