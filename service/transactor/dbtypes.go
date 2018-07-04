@@ -274,7 +274,7 @@ func GetObjects(store *badger.DB, keys [][]byte) ([]*Object, error) {
 }
 
 // testing purpose only, allow us to create an new object in the node without consensus
-// completely arbitrary
+// in a completely arbitrary way
 func CreateObject(store *badger.DB, key, value []byte) (*Object, error) {
 	var o *Object
 	return o, store.Update(func(txn *badger.Txn) error {
@@ -305,7 +305,9 @@ func CreateObject(store *badger.DB, key, value []byte) (*Object, error) {
 	})
 }
 
-func RemoveObjects(store *badger.DB, objkeys [][]byte) error {
+// testing purpose only, allow us to delete an object in the node without consensus
+// in a completely arbitrary way
+func DeleteObjects(store *badger.DB, objkeys [][]byte) error {
 	return store.Update(func(tx *badger.Txn) error {
 		return setObjectsInactive(tx, objkeys)
 	})

@@ -235,7 +235,7 @@ func (c *client) Delete(key []byte) error {
 		return err
 	}
 
-	req := &transactor.RemoveObjectRequest{
+	req := &transactor.DeleteObjectRequest{
 		ObjectKey: key,
 	}
 	bytes, err := proto.Marshal(req)
@@ -243,12 +243,12 @@ func (c *client) Delete(key []byte) error {
 		return err
 	}
 	msg := &service.Message{
-		Opcode:  uint32(transactor.Opcode_REMOVE_OBJECT),
+		Opcode:  uint32(transactor.Opcode_DELETE_OBJECT),
 		Payload: bytes,
 	}
 
 	f := func(s, n uint64, msg *service.Message) error {
-		res := &transactor.RemoveObjectResponse{}
+		res := &transactor.DeleteObjectResponse{}
 		err = proto.Unmarshal(msg.Payload, res)
 		if err != nil {
 			log.Errorf("unable unmarshal message from shard(%v)->node(%v): %v", s, n, err)
