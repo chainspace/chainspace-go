@@ -35,6 +35,7 @@ type Config struct {
 	Top        *network.Topology
 	SigningKey *config.Key
 	Checkers   []Checker
+	ShardSize  uint64
 }
 
 // a pair of a trace and it's associated checker to be store in a slice
@@ -80,6 +81,9 @@ func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message)
 			return nil, fmt.Errorf("transactor: query_object unmarshaling error: %v", err)
 		}
 		obj, err := s.queryObject(ctx, req.ObjectKey)
+		if err != nil {
+			return nil, err
+		}
 		res := &QueryObjectResponse{
 			Object: obj,
 		}
@@ -88,7 +92,42 @@ func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message)
 			return nil, fmt.Errorf("transactor: unable to marshal query_object response")
 		}
 		return &service.Message{Opcode: uint32(Opcode_QUERY_OBJECT), Payload: b}, nil
-
+	case Opcode_REMOVE_OBJECT:
+		req := &RemoveObjectRequest{}
+		err := proto.Unmarshal(m.Payload, req)
+		if err != nil {
+			return nil, fmt.Errorf("transactor: remove_object unmarshaling error: %v", err)
+		}
+		obj, err := s.removeObject(ctx, req.ObjectKey)
+		if err != nil {
+			return nil, err
+		}
+		res := &RemoveObjectResponse{
+			Object: obj,
+		}
+		b, err := proto.Marshal(res)
+		if err != nil {
+			return nil, fmt.Errorf("transactor: unable to marshal remove_object response")
+		}
+		return &service.Message{Opcode: uint32(Opcode_REMOVE_OBJECT), Payload: b}, nil
+	case Opcode_CREATE_OBJECT:
+		req := &NewObjectRequest{}
+		err := proto.Unmarshal(m.Payload, req)
+		if err != nil {
+			return nil, fmt.Errorf("transactor: new_object unmarshaling error: %v", err)
+		}
+		id, err := s.newObject(ctx, req.Object)
+		if err != nil {
+			return nil, err
+		}
+		res := &NewObjectResponse{
+			ID: id,
+		}
+		b, err := proto.Marshal(res)
+		if err != nil {
+			return nil, fmt.Errorf("transactor: unable to marshal new_object response")
+		}
+		return &service.Message{Opcode: uint32(Opcode_CREATE_OBJECT), Payload: b}, nil
 	default:
 		return nil, fmt.Errorf("transactor: unknown message opcode: %v", m.Opcode)
 	}
@@ -191,26 +230,50 @@ func (s *Service) queryObject(ctx context.Context, objectKey []byte) (*Object, e
 	if objectKey == nil {
 		return nil, fmt.Errorf("transactor: nil object key")
 	}
-	var obj *Object
-	shardID := s.top.ShardForKey(objectKey)
-	if shardID == s.top.ShardForNode(s.nodeID) {
-		/*		var err error
-				value, status, err := s.store.GetByKey(objectKey)
-				if err != nil {
-					return nil, fmt.Errorf("transactor: unable to get object by key from local store: %v", err)
-				}
-
-				obj = &Object{
-					Value:  value,
-					Key:    objectKey,
-					Status: ObjectStatus(status),
-				} */
-	} else {
-		// call a node from another shard to get the object
-		return nil, fmt.Errorf("not implemented")
+	objects, err := GetObjects(s.store, [][]byte{objectKey})
+	if err != nil {
+		return nil, err
+	}
+	if len(objects) != 1 {
+		return nil, fmt.Errorf("transactor: invalid number of objects found, expected %v found %v", 1, len(objects))
 	}
 
-	return obj, nil
+	return objects[0], nil
+}
+
+func (s *Service) removeObject(ctx context.Context, objectKey []byte) (*Object, error) {
+	if objectKey == nil {
+		return nil, fmt.Errorf("transactor: nil object key")
+	}
+	err := RemoveObjects(s.store, [][]byte{objectKey})
+	if err != nil {
+		return nil, err
+	}
+	objects, err := GetObjects(s.store, [][]byte{objectKey})
+	if err != nil {
+		return nil, err
+	}
+	if len(objects) != 1 {
+		return nil, fmt.Errorf("transactor: invalid number of objects removed, expected %v found %v", 1, len(objects))
+	}
+
+	return objects[0], nil
+}
+
+func (s *Service) newObject(ctx context.Context, object []byte) ([]byte, error) {
+	if object == nil || len(object) <= 0 {
+		return nil, fmt.Errorf("transactor: nil object key")
+	}
+	ch := combihash.New()
+	ch.Write([]byte(object))
+	key := ch.Digest()
+	log.Infof("transactor: creating new object(%v) with id(%v)", string(object), string(key))
+	o, err := CreateObject(s.store, key, object)
+	if err != nil {
+		log.Infof("transactor: unable to create object(%v) with id(%v): %v", object, key, err)
+		return nil, err
+	}
+	return o.Key, nil
 }
 
 func (s *Service) Name() string {

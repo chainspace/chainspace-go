@@ -7,7 +7,9 @@ enum Opcode {
   UNKNOWN = 0;
   ADD_TRANSACTION = 1;
   QUERY_OBJECT = 2;
-}
+  CREATE_OBJECT = 3;
+  REMOVE_OBJECT = 4;
+ }
 
 enum ObjectStatus {
   ACTIVE = 0;
@@ -15,12 +17,23 @@ enum ObjectStatus {
   LOCKED = 2;
 }
 
+enum SBACStep {
+  LOCAL_PREPARED = 0;
+  SOME_PREPARED = 1;
+  ALL_PREPARED = 2;
+}
+
+enum StepStatus {
+  ABORT = 0;
+  COMMIT = 1;
+}
+
 message Transaction {
   repeated Trace traces = 1;
 }
 
 message Trace {
-  string contractID = 1;
+  string contractID = 1 [(gogoproto.customname) = "ContractID"];;
   string procedure = 2;
   repeated bytes inputObjectsKeys = 3;
   repeated bytes inputReferencesKeys = 4;
@@ -41,7 +54,7 @@ message AddTransactionRequest {
 }
 
 message ObjectTraceIDPair {
-  bytes traceID = 1;
+  bytes traceID = 1 [(gogoproto.customname) = "TraceID"];;
   repeated Object objects = 2;
 }
 
@@ -55,4 +68,26 @@ message QueryObjectRequest {
 
 message QueryObjectResponse {
   Object object = 1;
+}
+
+message RemoveObjectRequest {
+  bytes objectKey = 1;
+}
+
+message RemoveObjectResponse {
+  Object object = 1;
+}
+
+message SBACStepRequest {
+  SBACStep step = 1;
+  StepStatus status = 2;
+  Transaction tx = 3;
+}
+
+message NewObjectRequest {
+  bytes object = 1;
+}
+
+message NewObjectResponse {
+  bytes id = 1 [(gogoproto.customname) = "ID"];
 }

@@ -2,9 +2,11 @@ package transactorclient // import "chainspace.io/prototype/service/transactor/c
 
 import (
 	"context"
+	"encoding/base64"
 	"sync"
 	"time"
 
+	"chainspace.io/prototype/combihash"
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/network"
@@ -73,6 +75,9 @@ type Config struct {
 
 type Client interface {
 	SendTransaction(t *ClientTransaction) error
+	Create(obj string) error
+	Query(key []byte) error
+	Delete(key []byte) error
 	Close()
 }
 
@@ -93,7 +98,7 @@ func New(cfg *Config) (Client, error) {
 		return nil, err
 	}
 	topology.BootstrapMDNS()
-	time.Sleep(time.Second)
+	time.Sleep(100 * time.Millisecond)
 
 	return &client{
 		top:       topology,
@@ -111,7 +116,7 @@ func (c *client) Close() {
 	}
 }
 
-func (c *client) dialNodes(t *ClientTransaction) error {
+func (c *client) dialNodesForTransaction(t *ClientTransaction) error {
 	shardIDs := map[uint64]struct{}{}
 	// for each input object / reference, send the transaction.
 	for _, trace := range t.Traces {
@@ -124,7 +129,10 @@ func (c *client) dialNodes(t *ClientTransaction) error {
 			shardIDs[shardID] = struct{}{}
 		}
 	}
+	return c.dialNodes(shardIDs)
+}
 
+func (c *client) dialNodes(shardIDs map[uint64]struct{}) error {
 	ctx := context.TODO()
 	for k, _ := range shardIDs {
 		c.nodesConn[k] = []NodeIDConnPair{}
@@ -158,7 +166,7 @@ func (c *client) helloNodes() error {
 }
 
 func (c *client) SendTransaction(t *ClientTransaction) error {
-	if err := c.dialNodes(t); err != nil {
+	if err := c.dialNodesForTransaction(t); err != nil {
 		return err
 	}
 	if err := c.helloNodes(); err != nil {
@@ -176,6 +184,85 @@ func (c *client) SendTransaction(t *ClientTransaction) error {
 		Opcode:  uint32(transactor.Opcode_ADD_TRANSACTION),
 		Payload: txbytes,
 	}
+	f := func(s, n uint64, msg *service.Message) error {
+		log.Infof("shard(%v)->node(%v) answered with: %v", s, n, msg)
+		return nil
+	}
+	return c.sendMessages(msg, f)
+}
+
+func (c *client) Query(key []byte) error {
+	shardID := c.top.ShardForKey(key)
+	if err := c.dialNodes(map[uint64]struct{}{shardID: struct{}{}}); err != nil {
+		return err
+	}
+	if err := c.helloNodes(); err != nil {
+		return err
+	}
+
+	req := &transactor.QueryObjectRequest{
+		ObjectKey: key,
+	}
+	bytes, err := proto.Marshal(req)
+	if err != nil {
+		return err
+	}
+	msg := &service.Message{
+		Opcode:  uint32(transactor.Opcode_QUERY_OBJECT),
+		Payload: bytes,
+	}
+
+	f := func(s, n uint64, msg *service.Message) error {
+		res := transactor.QueryObjectResponse{}
+		err = proto.Unmarshal(msg.Payload, &res)
+		if err != nil {
+			log.Errorf("unable unmarshal message from shard(%v)->node(%v): %v", s, n, err)
+			return err
+		}
+		keybase64 := base64.StdEncoding.EncodeToString(res.Object.Key)
+		log.Infof("shard(%v)->node(%v) answered with {id(%v), value(%v), status(%v)}", s, n, keybase64, string(res.Object.Value), res.Object.Status)
+		return nil
+	}
+	return c.sendMessages(msg, f)
+}
+
+func (c *client) Delete(key []byte) error {
+	shardID := c.top.ShardForKey(key)
+	if err := c.dialNodes(map[uint64]struct{}{shardID: struct{}{}}); err != nil {
+		return err
+	}
+	if err := c.helloNodes(); err != nil {
+		return err
+	}
+
+	req := &transactor.RemoveObjectRequest{
+		ObjectKey: key,
+	}
+	bytes, err := proto.Marshal(req)
+	if err != nil {
+		return err
+	}
+	msg := &service.Message{
+		Opcode:  uint32(transactor.Opcode_REMOVE_OBJECT),
+		Payload: bytes,
+	}
+
+	f := func(s, n uint64, msg *service.Message) error {
+		res := &transactor.RemoveObjectResponse{}
+		err = proto.Unmarshal(msg.Payload, res)
+		if err != nil {
+			log.Errorf("unable unmarshal message from shard(%v)->node(%v): %v", s, n, err)
+			return err
+		}
+		keybase64 := base64.StdEncoding.EncodeToString(res.Object.Key)
+		log.Infof("shard(%v)->node(%v) answered with {id(%v), value(%v), status(%v)}", s, n, keybase64, string(res.Object.Value), res.Object.Status)
+
+		return err
+	}
+	return c.sendMessages(msg, f)
+}
+
+func (c *client) sendMessages(msg *service.Message, f func(uint64, uint64, *service.Message) error) error {
 	wg := &sync.WaitGroup{}
 	for s, nc := range c.nodesConn {
 		for _, v := range nc {
@@ -187,17 +274,55 @@ func (c *client) SendTransaction(t *ClientTransaction) error {
 				err := v.Conn.WriteRequest(msg, 5*time.Second)
 				if err != nil {
 					log.Errorf("unable to write request to shard(%v)->node(%v): %v", s, v.NodeID, err)
+					return
 				}
-				msg, err := v.Conn.ReadMessage(5 * time.Second)
+				rmsg, err := v.Conn.ReadMessage(5 * time.Second)
 				if err != nil {
 					log.Errorf("unable to read message from shard(%v)->node(%v): %v", s, v.NodeID, err)
+					return
 				}
-				log.Infof("%v", msg)
-
+				_ = f(s, v.NodeID, rmsg)
 			}()
 		}
 	}
 
 	wg.Wait()
 	return nil
+}
+
+func (c *client) Create(obj string) error {
+	ch := combihash.New()
+	ch.Write([]byte(obj))
+	key := ch.Digest()
+	shardID := c.top.ShardForKey(key)
+	if err := c.dialNodes(map[uint64]struct{}{shardID: struct{}{}}); err != nil {
+		return err
+	}
+	if err := c.helloNodes(); err != nil {
+		return err
+	}
+	req := &transactor.NewObjectRequest{
+		Object: []byte(obj),
+	}
+	bytes, err := proto.Marshal(req)
+	if err != nil {
+		return err
+	}
+	msg := &service.Message{
+		Opcode:  uint32(transactor.Opcode_CREATE_OBJECT),
+		Payload: bytes,
+	}
+
+	f := func(s, n uint64, msg *service.Message) error {
+		res := transactor.NewObjectResponse{}
+		err = proto.Unmarshal(msg.Payload, &res)
+		if err != nil {
+			log.Errorf("unable unmarshal message from shard(%v)->node(%v): %v", s, n, err)
+			return err
+		}
+		idbase64 := base64.StdEncoding.EncodeToString(res.ID)
+		log.Infof("shard(%v)->node(%v) answered with id: %v", s, n, idbase64)
+		return nil
+	}
+	return c.sendMessages(msg, f)
 }

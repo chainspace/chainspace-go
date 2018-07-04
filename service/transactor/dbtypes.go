@@ -272,3 +272,41 @@ func GetObjects(store *badger.DB, keys [][]byte) ([]*Object, error) {
 	}
 	return objects, nil
 }
+
+// testing purpose only, allow us to create an new object in the node without consensus
+// completely arbitrary
+func CreateObject(store *badger.DB, key, value []byte) (*Object, error) {
+	var o *Object
+	return o, store.Update(func(txn *badger.Txn) error {
+		objkey := objectKey(key)
+		_, err := txn.Get(objkey)
+		if err == nil {
+			return ErrObjectAlreadyExists
+		}
+		err = txn.Set(objkey, value)
+		if err != nil {
+			return err
+		}
+		objstatuskey := objectStatusKey(key)
+		_, err = txn.Get(objstatuskey)
+		if err == nil {
+			return ErrObjectAlreadyExists
+		}
+		err = txn.Set(objstatuskey, []byte{byte(ObjectStatus_ACTIVE)})
+		if err != nil {
+			return err
+		}
+		o = &Object{
+			Key:    key,
+			Value:  value,
+			Status: ObjectStatus_ACTIVE,
+		}
+		return nil
+	})
+}
+
+func RemoveObjects(store *badger.DB, objkeys [][]byte) error {
+	return store.Update(func(tx *badger.Txn) error {
+		return setObjectsInactive(tx, objkeys)
+	})
+}
