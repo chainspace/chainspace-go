@@ -52,7 +52,6 @@ type Service struct {
 }
 
 func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message) (*service.Message, error) {
-
 	switch Opcode(m.Opcode) {
 	case Opcode_ADD_TRANSACTION:
 		req := &AddTransactionRequest{}

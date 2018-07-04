@@ -1,17 +1,17 @@
 package transactorclient // import "chainspace.io/prototype/service/transactor/client"
 
 import (
+	"context"
+	"sync"
 	"time"
-
-	"golang.org/x/net/context"
-
-	"github.com/gogo/protobuf/proto"
 
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
 	"chainspace.io/prototype/service/transactor"
+
+	"github.com/gogo/protobuf/proto"
 )
 
 type ClientTransaction struct {
@@ -135,7 +135,6 @@ func (c *client) dialNodes(t *ClientTransaction) error {
 				return err
 			}
 			c.nodesConn[k] = append(c.nodesConn[k], NodeIDConnPair{n, conn})
-
 		}
 	}
 	return nil
@@ -177,14 +176,28 @@ func (c *client) SendTransaction(t *ClientTransaction) error {
 		Opcode:  uint32(transactor.Opcode_ADD_TRANSACTION),
 		Payload: txbytes,
 	}
+	wg := &sync.WaitGroup{}
 	for s, nc := range c.nodesConn {
 		for _, v := range nc {
-			log.Infof("sending transaction to shard(%v)->node(%v)", s, v.NodeID)
-			v.Conn.WriteRequest(msg, 5*time.Second)
+			v := v
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				log.Infof("sending transaction to shard(%v)->node(%v)", s, v.NodeID)
+				err := v.Conn.WriteRequest(msg, 5*time.Second)
+				if err != nil {
+					log.Errorf("unable to write request to shard(%v)->node(%v): %v", s, v.NodeID, err)
+				}
+				msg, err := v.Conn.ReadMessage(5 * time.Second)
+				if err != nil {
+					log.Errorf("unable to read message from shard(%v)->node(%v): %v", s, v.NodeID, err)
+				}
+				log.Infof("%v", msg)
+
+			}()
 		}
 	}
 
-	time.Sleep(5 * time.Second)
-
+	wg.Wait()
 	return nil
 }
