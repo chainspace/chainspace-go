@@ -78,10 +78,11 @@ message DeleteObjectResponse {
   Object object = 1;
 }
 
-message SBACStepRequest {
+message SBACMessageRequest {
   SBACStep step = 1;
   StepStatus status = 2;
   Transaction tx = 3;
+  bytes transactionID = 4 [(gogoproto.customname) = "transctionID"];
 }
 
 message NewObjectRequest {

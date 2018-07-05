@@ -140,9 +140,10 @@ func (c *client) dialNodes(shardIDs map[uint64]struct{}) error {
 			conn, err := c.top.Dial(ctx, n)
 			if err != nil {
 				log.Errorf("transactor client: unable to connect to shard(%v)->node(%v): %v", n, k, err)
-				return err
+
+			} else {
+				c.nodesConn[k] = append(c.nodesConn[k], NodeIDConnPair{n, conn})
 			}
-			c.nodesConn[k] = append(c.nodesConn[k], NodeIDConnPair{n, conn})
 		}
 	}
 	return nil
