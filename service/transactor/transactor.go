@@ -46,9 +46,11 @@ type checkerTracePair struct {
 
 type Service struct {
 	checkers CheckersMap
+	events   chan interface{}
 	nodeID   uint64
 	privkey  signature.PrivateKey
 	top      *network.Topology
+	state    *StateMachine
 	store    *badger.DB
 }
 
@@ -422,11 +424,15 @@ func New(cfg *Config) (*Service, error) {
 		return nil, err
 	}
 
-	return &Service{
+	s := &Service{
 		checkers: checkers,
 		nodeID:   cfg.NodeID,
 		privkey:  privkey,
 		top:      cfg.Top,
 		store:    store,
-	}, nil
+	}
+	actionTable, transitionTable := s.makeStatesMappings()
+	s.state, s.events = NewStateMachine(actionTable, transitionTable)
+
+	return s, nil
 }
