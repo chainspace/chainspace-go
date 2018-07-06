@@ -54,22 +54,23 @@ type Config struct {
 
 // Server represents a running Chainspace node.
 type Server struct {
-	broadcaster    *broadcast.Service
-	cancel         context.CancelFunc
-	ctx            context.Context
-	id             uint64
-	initialBackoff time.Duration
-	key            signature.KeyPair
-	keys           map[uint64]signature.PublicKey
-	readTimeout    time.Duration
-	maxBackoff     time.Duration
-	maxClockSkew   time.Duration
-	mu             sync.RWMutex // protects nonceMap
-	nonceMap       map[uint64][]usedNonce
-	sharder        service.Handler
-	top            *network.Topology
-	transactor     service.Handler
-	writeTimeout   time.Duration
+	broadcaster     *broadcast.Service
+	cancel          context.CancelFunc
+	ctx             context.Context
+	id              uint64
+	initialBackoff  time.Duration
+	key             signature.KeyPair
+	keys            map[uint64]signature.PublicKey
+	readTimeout     time.Duration
+	maxBackoff      time.Duration
+	mu              sync.RWMutex // protects nonceMap
+	nonceExpiration time.Duration
+	nonceMap        map[uint64][]usedNonce
+	payloadLimit    int
+	sharder         service.Handler
+	top             *network.Topology
+	transactor      service.Handler
+	writeTimeout    time.Duration
 }
 
 func (s *Server) handleConnection(conn quic.Session) {
@@ -86,7 +87,7 @@ func (s *Server) handleConnection(conn quic.Session) {
 func (s *Server) handleStream(stream quic.Stream) {
 	defer stream.Close()
 	c := network.NewConn(stream)
-	hello, err := c.ReadHello(s.readTimeout)
+	hello, err := c.ReadHello(s.payloadLimit, s.readTimeout)
 	if err != nil {
 		log.Errorf("Unable to read hello message from stream: %s", err)
 		return
@@ -111,7 +112,7 @@ func (s *Server) handleStream(stream quic.Stream) {
 	}
 	ctx := stream.Context()
 	for {
-		msg, err := c.ReadMessage(s.readTimeout)
+		msg, err := c.ReadMessage(s.payloadLimit, s.readTimeout)
 		if err != nil {
 			log.Errorf("Could not decode message from an incoming stream: %s", err)
 			return
@@ -122,7 +123,7 @@ func (s *Server) handleStream(stream quic.Stream) {
 			return
 		}
 		if resp != nil {
-			if err = c.WritePayload(resp, s.writeTimeout); err != nil {
+			if err = c.WritePayload(resp, s.payloadLimit, s.writeTimeout); err != nil {
 				log.Errorf("Unable to write response to peer %d: %s", peerID, err)
 				return
 			}
@@ -169,7 +170,7 @@ func (s *Server) maintainBroadcast(peerID uint64) {
 		if err == nil {
 			backoff = s.initialBackoff
 		} else {
-			log.Errorf("Couldn't dial %d: %s", peerID, err)
+			log.Errorf("Couldn't dial node %d: %s", peerID, err)
 			retry = true
 			continue
 		}
@@ -179,7 +180,7 @@ func (s *Server) maintainBroadcast(peerID uint64) {
 			retry = true
 			continue
 		}
-		if err = conn.WritePayload(hello, s.writeTimeout); err != nil {
+		if err = conn.WritePayload(hello, s.payloadLimit, s.writeTimeout); err != nil {
 			log.Errorf("Couldn't send Hello to node %d: %s", peerID, err)
 			retry = true
 			continue
@@ -196,7 +197,7 @@ func (s *Server) maintainBroadcast(peerID uint64) {
 			if err != nil {
 				log.Fatalf("Could not encode listing for broadcast: %s", err)
 			}
-			if err = conn.WritePayload(msg, s.writeTimeout); err != nil {
+			if err = conn.WritePayload(msg, s.payloadLimit, s.writeTimeout); err != nil {
 				log.Errorf("Could not write listing to node %d for broadcast: %s", peerID, err)
 				retry = true
 				break
@@ -208,8 +209,8 @@ func (s *Server) maintainBroadcast(peerID uint64) {
 }
 
 func (s *Server) pruneNonceMap() {
-	maxSkew := s.maxClockSkew
-	tick := time.NewTicker(maxSkew)
+	exp := s.nonceExpiration
+	tick := time.NewTicker(exp)
 	var xs []usedNonce
 	for {
 		select {
@@ -224,7 +225,7 @@ func (s *Server) pruneNonceMap() {
 					if diff < 0 {
 						diff = -diff
 					}
-					if diff < maxSkew {
+					if diff < exp {
 						xs = append(xs, used)
 					}
 				}
@@ -263,7 +264,7 @@ func (s *Server) verifyPeerID(hello *service.Hello) (uint64, error) {
 	if diff < 0 {
 		diff = -diff
 	}
-	if diff > s.maxClockSkew {
+	if diff > s.nonceExpiration {
 		return 0, fmt.Errorf("node: timestamp in client hello is outside of the max clock skew range: %d", diff)
 	}
 	s.mu.RLock()
@@ -412,12 +413,12 @@ func Run(cfg *Config) (*Server, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	bcfg := &broadcast.Config{
-		ConsensusInterval: cfg.Node.Consensus.Interval,
-		Directory:         dir,
-		Key:               key,
-		Keys:              keys,
-		NodeID:            cfg.NodeID,
-		Peers:             peers,
+		RoundInterval: cfg.Network.Consensus.RoundInterval,
+		Directory:     dir,
+		Key:           key,
+		Keys:          keys,
+		NodeID:        cfg.NodeID,
+		Peers:         peers,
 	}
 
 	broadcaster, err := broadcast.New(ctx, bcfg, top)
@@ -426,20 +427,22 @@ func Run(cfg *Config) (*Server, error) {
 		return nil, fmt.Errorf("node: unable to instantiate the broadcast service: %s", err)
 	}
 
+	// transactor := transactor.New(broadcaste)
+
 	node := &Server{
-		broadcaster:    broadcaster,
-		cancel:         cancel,
-		ctx:            ctx,
-		id:             cfg.NodeID,
-		initialBackoff: cfg.Node.Broadcast.InitialBackoff,
-		key:            key,
-		keys:           keys,
-		maxBackoff:     cfg.Node.Broadcast.MaxBackoff,
-		maxClockSkew:   cfg.Node.Broadcast.MaxClockSkew,
-		nonceMap:       map[uint64][]usedNonce{},
-		readTimeout:    cfg.Node.Connections.ReadTimeout,
-		top:            top,
-		writeTimeout:   cfg.Node.Connections.WriteTimeout,
+		broadcaster:     broadcaster,
+		cancel:          cancel,
+		ctx:             ctx,
+		id:              cfg.NodeID,
+		initialBackoff:  cfg.Node.Broadcast.InitialBackoff,
+		key:             key,
+		keys:            keys,
+		maxBackoff:      cfg.Node.Broadcast.MaxBackoff,
+		nonceExpiration: cfg.Network.Consensus.NonceExpiration,
+		nonceMap:        map[uint64][]usedNonce{},
+		readTimeout:     cfg.Node.Connections.ReadTimeout,
+		top:             top,
+		writeTimeout:    cfg.Node.Connections.WriteTimeout,
 	}
 
 	// Maintain persistent connections to all other nodes in our shard.

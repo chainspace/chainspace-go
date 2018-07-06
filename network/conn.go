@@ -13,10 +13,6 @@ import (
 	"github.com/lucas-clemente/quic-go"
 )
 
-const (
-	maxPayload = 1 << 27 // 128MB
-)
-
 // Conn represents a connection to a Chainspace node.
 type Conn struct {
 	lastID uint64
@@ -40,8 +36,8 @@ func (c *Conn) Read(p []byte) (int, error) {
 }
 
 // ReadHello reads a service.Hello from the underlying connection.
-func (c *Conn) ReadHello(timeout time.Duration) (*service.Hello, error) {
-	payload, err := c.ReadPayload(timeout)
+func (c *Conn) ReadHello(limit int, timeout time.Duration) (*service.Hello, error) {
+	payload, err := c.ReadPayload(limit, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -51,8 +47,8 @@ func (c *Conn) ReadHello(timeout time.Duration) (*service.Hello, error) {
 }
 
 // ReadMessage reads a service.Message from the underlying connection.
-func (c *Conn) ReadMessage(timeout time.Duration) (*service.Message, error) {
-	payload, err := c.ReadPayload(timeout)
+func (c *Conn) ReadMessage(limit int, timeout time.Duration) (*service.Message, error) {
+	payload, err := c.ReadPayload(limit, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +59,7 @@ func (c *Conn) ReadMessage(timeout time.Duration) (*service.Message, error) {
 
 // ReadPayload returns the next protobuf-marshalled payload from the underlying
 // connection.
-func (c *Conn) ReadPayload(timeout time.Duration) ([]byte, error) {
+func (c *Conn) ReadPayload(limit int, timeout time.Duration) ([]byte, error) {
 	buf := make([]byte, 4)
 	need := 4
 	for need > 0 {
@@ -77,7 +73,7 @@ func (c *Conn) ReadPayload(timeout time.Duration) ([]byte, error) {
 	}
 	// TODO(tav): Fix for 32-bit systems.
 	size := int(binary.LittleEndian.Uint32(buf))
-	if size > maxPayload {
+	if size > limit {
 		log.Errorf("Payload size of %d exceeds the max payload size", size)
 		return nil, fmt.Errorf("network: payload size %d exceeds max payload size", size)
 	}
@@ -103,13 +99,13 @@ func (c *Conn) Write(p []byte) (int, error) {
 // WritePayload encodes the given payload into protobuf and writes the
 // marshalled data to the underlying connection, along with a header indicating
 // the length of the data.
-func (c *Conn) WritePayload(pb proto.Message, timeout time.Duration) error {
+func (c *Conn) WritePayload(pb proto.Message, limit int, timeout time.Duration) error {
 	payload, err := proto.Marshal(pb)
 	if err != nil {
 		return err
 	}
 	size := len(payload)
-	if size > maxPayload {
+	if size > limit {
 		log.Errorf("Payload size of %d exceeds the max payload size", size)
 		return fmt.Errorf("network: payload size %d exceeds max payload size", size)
 	}
@@ -139,13 +135,13 @@ func (c *Conn) WritePayload(pb proto.Message, timeout time.Duration) error {
 
 // WriteRequest adds a connection-specific ID to the given message before
 // writing it out on the underlying connection.
-func (c *Conn) WriteRequest(msg *service.Message, timeout time.Duration) error {
+func (c *Conn) WriteRequest(msg *service.Message, limit int, timeout time.Duration) (id uint64, err error) {
 	c.mu.Lock()
 	c.lastID++
-	id := c.lastID
+	id = c.lastID
 	c.mu.Unlock()
 	msg.ID = id
-	return c.WritePayload(msg, timeout)
+	return id, c.WritePayload(msg, limit, timeout)
 }
 
 // NewConn instantiates a connection value with the given QUIC stream.

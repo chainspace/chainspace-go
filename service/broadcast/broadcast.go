@@ -31,50 +31,65 @@ var (
 // the round as successful.
 type Callback interface {
 	BroadcastStart(round uint64)
-	BroadcastTransaction(txdata *TransactionData, block *Block)
+	BroadcastTransaction(txdata *TransactionData)
 	BroadcastEnd(round uint64)
 }
 
 // Config for the broadcast service.
 type Config struct {
-	ConsensusInterval time.Duration
-	Directory         string
-	Key               signature.KeyPair
-	Keys              map[uint64]signature.PublicKey
-	NodeID            uint64
-	Peers             []uint64
+	BlockLimit    int
+	Directory     string
+	Key           signature.KeyPair
+	Keys          map[uint64]signature.PublicKey
+	NodeID        uint64
+	Peers         []uint64
+	RoundInterval time.Duration
 }
 
 // Service implements the broadcast and consensus system.
 type Service struct {
-	blocks   map[uint64]*SignedBlock
-	cb       Callback
-	ctx      context.Context
-	db       *badger.DB
-	entries  chan *Entry
-	interval time.Duration
-	key      signature.KeyPair
-	keys     map[uint64]signature.PublicKey
-	mu       sync.RWMutex // protects blocks, previous, round, sent, signal
-	nodeID   uint64
-	peers    []uint64
-	previous []byte
-	round    uint64
-	sent     map[uint64]uint64
-	signal   chan struct{}
-	top      *network.Topology
+	blocks     map[uint64]*SignedBlock
+	blockLimit int
+	cb         Callback
+	ctx        context.Context
+	db         *badger.DB
+	entries    chan *Entry
+	interval   time.Duration
+	key        signature.KeyPair
+	keys       map[uint64]signature.PublicKey
+	mu         sync.RWMutex // protects blocks, previous, round, sent, signal
+	nodeID     uint64
+	peers      []uint64
+	previous   []byte
+	round      uint64
+	sent       map[uint64]uint64
+	signal     chan struct{}
+	top        *network.Topology
 }
 
 func (s *Service) genBlocks() {
-	entries := []*Entry{}
+	var (
+		entries []*Entry
+		pending []*Entry
+	)
 	// TODO(tav): time.Ticker's behaviour around slow receivers may not be the
 	// exact semantics we want.
 	tick := time.NewTicker(s.interval)
 	round := s.round
+	total := 0
 	for {
 		select {
 		case entry := <-s.entries:
-			entries = append(entries, entry)
+			if len(pending) > 0 {
+				pending = append(pending, entry)
+			} else {
+				total += entry.Size()
+				if total < s.blockLimit {
+					entries = append(entries, entry)
+				} else {
+					pending = append(pending, entry)
+				}
+			}
 		case <-tick.C:
 			round++
 			block := &Block{
@@ -100,6 +115,24 @@ func (s *Service) genBlocks() {
 			s.mu.Unlock()
 			close(signal)
 			log.Infof("Created block %d", block.Number)
+			entries = nil
+			total = 0
+			if len(pending) > 0 {
+				var npending []*Entry
+				for _, entry := range pending {
+					if len(npending) > 0 {
+						npending = append(npending, entry)
+					} else {
+						total += entry.Size()
+						if total < s.blockLimit {
+							entries = append(entries, entry)
+						} else {
+							npending = append(npending, entry)
+						}
+					}
+				}
+				pending = npending
+			}
 		case <-s.ctx.Done():
 			tick.Stop()
 			if err := s.db.Close(); err != nil {
@@ -211,11 +244,19 @@ func (s *Service) GetUnsent(peerID uint64) ([]*SignedBlock, uint64) {
 		cur := s.round
 		last := s.sent[peerID] + 1
 		if cur >= last {
-			// TODO(tav): Take size into consideration so as to not overflow max
-			// message limit on connections.
-			blocks := make([]*SignedBlock, (cur-last)+1)
+			blocks := []*SignedBlock{}
+			total := 0
 			for i := last; i <= cur; i++ {
-				blocks[i-last] = s.blocks[i]
+				block := s.blocks[i]
+				total += len(block.Data) + len(block.Signature) + 100
+				if total > s.blockLimit {
+					if i == last {
+						panic("broadcast: size of individual block exceeds max payload size")
+					}
+					s.mu.RUnlock()
+					return blocks, i - 1
+				}
+				blocks = append(blocks, block)
 			}
 			s.mu.RUnlock()
 			return blocks, cur
@@ -273,15 +314,16 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		return nil, err
 	}
 	s := &Service{
-		db:       db,
-		ctx:      ctx,
-		entries:  make(chan *Entry, 10000),
-		interval: cfg.ConsensusInterval,
-		key:      cfg.Key,
-		keys:     cfg.Keys,
-		nodeID:   cfg.NodeID,
-		peers:    cfg.Peers,
-		top:      top,
+		blockLimit: cfg.BlockLimit,
+		db:         db,
+		ctx:        ctx,
+		entries:    make(chan *Entry, 10000),
+		interval:   cfg.RoundInterval,
+		key:        cfg.Key,
+		keys:       cfg.Keys,
+		nodeID:     cfg.NodeID,
+		peers:      cfg.Peers,
+		top:        top,
 	}
 	s.loadState()
 	go s.genBlocks()

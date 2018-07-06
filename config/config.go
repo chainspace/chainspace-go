@@ -19,14 +19,17 @@ type Bootstrap struct {
 	URL    string            `yaml:",omitempty"`
 }
 
-// Broadcast represents the configuration for maintaining the shard broadcast.
+// Broadcast represents the configuration for maintaining the shard broadcast by
+// a node.
 type Broadcast struct {
 	InitialBackoff time.Duration `yaml:"initial.backoff"`
 	MaxBackoff     time.Duration `yaml:"max.backoff"`
-	MaxClockSkew   time.Duration `yaml:"max.clock.skew"`
+	ProbeIntervals time.Duration `yaml:"probe.intervals"`
 }
 
-// Connections represents the configuration for network connections.
+// Connections represents the configuration for network connections. MaxPayload
+// when used as part of the Network.NodeConnections configuration, also
+// implicitly defines the maximum size of blocks.
 type Connections struct {
 	ReadTimeout  time.Duration `yaml:"read.timeout"`
 	WriteTimeout time.Duration `yaml:"write.timeout"`
@@ -34,7 +37,11 @@ type Connections struct {
 
 // Consensus represents the configuration for the consensus protocol.
 type Consensus struct {
-	Interval time.Duration
+	BlockLimit      ByteSize      `yaml:"block.limit"`
+	CommitWindow    int           `yaml:"commit.window"`
+	Epoch           time.Time     `yaml:"epoch"`
+	NonceExpiration time.Duration `yaml:"nonce.expiration"`
+	RoundInterval   time.Duration `yaml:"round.interval"`
 }
 
 // Key represents a cryptographic key of some kind.
@@ -51,11 +58,18 @@ type Keys struct {
 	TransportCert *Key `yaml:"transport.cert"`
 }
 
+// Logging represents the logging configuration for individual nodes.
+type Logging struct {
+	ConsoleOutput bool `yaml:"console.output"`
+}
+
 // Network represents the configuration of a Chainspace network as a whole.
 type Network struct {
-	ID        string           `yaml:",omitempty"`
-	SeedNodes map[uint64]*Peer `yaml:"seed.nodes"`
-	Shard     *Shard
+	ID         string           `yaml:",omitempty"`
+	Consensus  *Consensus       `yaml:"consensus"`
+	MaxPayload ByteSize         `yaml:"max.payload"`
+	SeedNodes  map[uint64]*Peer `yaml:"seed.nodes"`
+	Shard      *Shard
 }
 
 // Hash returns the SHA-512/256 hash of the network's seed configuration by
@@ -82,8 +96,8 @@ type Node struct {
 	Announce    []string `yaml:"announce,omitempty"`
 	Bootstrap   *Bootstrap
 	Broadcast   *Broadcast
-	Connections *Connections
-	Consensus   *Consensus
+	Connections *Connections `yaml:"connections"`
+	Logging     *Logging
 	Storage     *Storage
 }
 

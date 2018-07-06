@@ -13,7 +13,7 @@ import (
 func cmdInit(args []string, usage string) {
 
 	opts := newOpts("init NETWORK_NAME [OPTIONS]", usage)
-	configRoot := opts.Flags("--config-root").Label("PATH").String("Path to the Chainspace root directory [~/.chainspace]", defaultRootDir())
+	configRoot := opts.Flags("-c", "--config-root").Label("PATH").String("Path to the Chainspace root directory [~/.chainspace]", defaultRootDir())
 	shardCount := opts.Flags("--shard-count").Label("N").Int("Number of shards in the network [3]")
 	shardSize := opts.Flags("--shard-size").Label("N").Int("Number of nodes in each shard [4]")
 	params := opts.Parse(args)
@@ -31,6 +31,14 @@ func cmdInit(args []string, usage string) {
 	netDir := filepath.Join(*configRoot, networkName)
 	createUnlessExists(netDir)
 
+	consensus := &config.Consensus{
+		BlockLimit:      128 * config.MB,
+		CommitWindow:    15,
+		Epoch:           time.Date(2018, 3, 18, 0, 0, 0, 0, time.UTC),
+		NonceExpiration: 30 * time.Second,
+		RoundInterval:   time.Second,
+	}
+
 	peers := map[uint64]*config.Peer{}
 	shard := &config.Shard{
 		Count: *shardCount,
@@ -38,8 +46,10 @@ func cmdInit(args []string, usage string) {
 	}
 
 	network := &config.Network{
-		Shard:     shard,
-		SeedNodes: peers,
+		Consensus:  consensus,
+		MaxPayload: 128 * config.MB,
+		Shard:      shard,
+		SeedNodes:  peers,
 	}
 
 	bootstrap := &config.Bootstrap{
@@ -47,9 +57,9 @@ func cmdInit(args []string, usage string) {
 	}
 
 	broadcast := &config.Broadcast{
-		InitialBackoff: 2 * time.Second,
+		InitialBackoff: 1 * time.Second,
 		MaxBackoff:     30 * time.Second,
-		MaxClockSkew:   30 * time.Second,
+		ProbeIntervals: 2 * time.Second,
 	}
 
 	connections := &config.Connections{
@@ -57,12 +67,12 @@ func cmdInit(args []string, usage string) {
 		WriteTimeout: 30 * time.Second,
 	}
 
-	consensus := &config.Consensus{
-		Interval: time.Second,
+	logging := &config.Logging{
+		ConsoleOutput: true,
 	}
 
 	storage := &config.Storage{
-		Type: "memstore",
+		Type: "badger",
 	}
 
 	if ((3 * (*shardSize / 3)) + 1) != *shardSize {
@@ -91,7 +101,7 @@ func cmdInit(args []string, usage string) {
 			Bootstrap:   bootstrap,
 			Broadcast:   broadcast,
 			Connections: connections,
-			Consensus:   consensus,
+			Logging:     logging,
 			Storage:     storage,
 		}
 

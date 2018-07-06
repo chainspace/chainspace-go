@@ -12,8 +12,9 @@ enum OP {
 message Block {
   uint64 node = 1;
   uint64 number = 2;
-  repeated Entry entries = 3;
-  bytes previous = 4;
+  uint64 round = 3;
+  repeated Entry entries = 4;
+  bytes previous = 5;
 }
 
 message BlockReference {
