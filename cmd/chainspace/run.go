@@ -20,9 +20,9 @@ func cmdRun(args []string, usage string) {
 	_, err := os.Stat(*configRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Fatal("Could not find the Chainspace root directory at %s", *configRoot)
+			log.Fatalf("Could not find the Chainspace root directory at %s", *configRoot)
 		}
-		log.Fatal("Unable to access the Chainspace root directory at %s: %s", *configRoot, err)
+		log.Fatalf("Unable to access the Chainspace root directory at %s: %s", *configRoot, err)
 	}
 
 	netPath := filepath.Join(*configRoot, networkName)
