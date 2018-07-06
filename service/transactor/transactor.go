@@ -36,6 +36,7 @@ type Config struct {
 	SigningKey *config.Key
 	Checkers   []Checker
 	ShardSize  uint64
+	ShardCount uint64
 }
 
 // a pair of a trace and it's associated checker to be store in a slice
@@ -45,13 +46,16 @@ type checkerTracePair struct {
 }
 
 type Service struct {
-	checkers CheckersMap
-	events   chan interface{}
-	nodeID   uint64
-	privkey  signature.PrivateKey
-	top      *network.Topology
-	state    *StateMachine
-	store    *badger.DB
+	checkers   CheckersMap
+	events     chan interface{}
+	nodeID     uint64
+	privkey    signature.PrivateKey
+	top        *network.Topology
+	state      *StateMachine
+	store      *badger.DB
+	shardCount uint64
+	shardID    uint64
+	shardSize  uint64
 }
 
 func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message) (*service.Message, error) {
@@ -425,11 +429,14 @@ func New(cfg *Config) (*Service, error) {
 	}
 
 	s := &Service{
-		checkers: checkers,
-		nodeID:   cfg.NodeID,
-		privkey:  privkey,
-		top:      cfg.Top,
-		store:    store,
+		checkers:   checkers,
+		nodeID:     cfg.NodeID,
+		privkey:    privkey,
+		top:        cfg.Top,
+		store:      store,
+		shardID:    cfg.Top.ShardForNode(cfg.NodeID),
+		shardCount: cfg.ShardCount,
+		shardSize:  cfg.ShardSize,
 	}
 	actionTable, transitionTable := s.makeStatesMappings()
 	s.state, s.events = NewStateMachine(actionTable, transitionTable)

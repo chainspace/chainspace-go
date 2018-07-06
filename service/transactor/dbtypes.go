@@ -273,6 +273,21 @@ func GetObjects(store *badger.DB, keys [][]byte) ([]*Object, error) {
 	return objects, nil
 }
 
+// DeactivateObjects set to inactive all objects in the list
+// this will return an error if one+ objects are already inactive
+func DeactivateObjects(store *badger.DB, keys [][]byte) error {
+	return store.Update(func(tx *badger.Txn) error {
+		return setObjectsInactive(tx, keys)
+	})
+}
+
+// CreateObjects
+func CreateObjects(store *badger.DB, objs []*Object) error {
+	return store.Update(func(tx *badger.Txn) error {
+		return createObjects(tx, objs)
+	})
+}
+
 // testing purpose only, allow us to create an new object in the node without consensus
 // in a completely arbitrary way
 func CreateObject(store *badger.DB, key, value []byte) (*Object, error) {
