@@ -33,10 +33,9 @@ func cmdInit(args []string, usage string) {
 
 	consensus := &config.Consensus{
 		BlockLimit:      128 * config.MB,
-		CommitWindow:    15,
-		Epoch:           time.Date(2018, 3, 18, 0, 0, 0, 0, time.UTC),
 		NonceExpiration: 30 * time.Second,
 		RoundInterval:   time.Second,
+		ViewTimeout:     15,
 	}
 
 	peers := map[uint64]*config.Peer{}
@@ -59,7 +58,6 @@ func cmdInit(args []string, usage string) {
 	broadcast := &config.Broadcast{
 		InitialBackoff: 1 * time.Second,
 		MaxBackoff:     30 * time.Second,
-		ProbeIntervals: 2 * time.Second,
 	}
 
 	connections := &config.Connections{

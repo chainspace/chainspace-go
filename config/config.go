@@ -24,7 +24,6 @@ type Bootstrap struct {
 type Broadcast struct {
 	InitialBackoff time.Duration `yaml:"initial.backoff"`
 	MaxBackoff     time.Duration `yaml:"max.backoff"`
-	ProbeIntervals time.Duration `yaml:"probe.intervals"`
 }
 
 // Connections represents the configuration for network connections. MaxPayload
@@ -38,10 +37,9 @@ type Connections struct {
 // Consensus represents the configuration for the consensus protocol.
 type Consensus struct {
 	BlockLimit      ByteSize      `yaml:"block.limit"`
-	CommitWindow    int           `yaml:"commit.window"`
-	Epoch           time.Time     `yaml:"epoch"`
 	NonceExpiration time.Duration `yaml:"nonce.expiration"`
 	RoundInterval   time.Duration `yaml:"round.interval"`
+	ViewTimeout     int           `yaml:"view.timeout"`
 }
 
 // Key represents a cryptographic key of some kind.

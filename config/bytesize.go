@@ -14,8 +14,19 @@ const (
 	TB = 1024 * GB
 )
 
+const maxInt = ByteSize(^uint(0) >> 1)
+
 // ByteSize provides a YAML-serializable format for byte size definitions.
 type ByteSize uint64
+
+// Int returns the ByteSize value as an int as long as it'd fit within the
+// system's int limits.
+func (b ByteSize) Int() (int, error) {
+	if b > maxInt {
+		return 0, fmt.Errorf("config: ByteSize value %d overflows platform int", b)
+	}
+	return int(b), nil
+}
 
 // MarshalYAML implements the YAML encoding interface.
 func (b ByteSize) MarshalYAML() (interface{}, error) {
@@ -41,7 +52,7 @@ func (b *ByteSize) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if err := unmarshal(&raw); err != nil {
 		return err
 	}
-	// // TODO(tav): Insert overflow checks.
+	// TODO(tav): Insert overflow checks.
 	suffix := ""
 	for i := len(raw) - 1; i >= 0; i-- {
 		char := raw[i]

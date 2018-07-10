@@ -328,6 +328,10 @@ func Run(cfg *Config) (*Server, error) {
 		return nil, err
 	}
 
+	if err := log.InitFileLogger(filepath.Join(dir, "server.log"), log.DebugLevel); err != nil {
+		log.Fatal(err)
+	}
+
 	// Initialise the topology.
 	top, err := network.New(cfg.NetworkName, cfg.Network)
 	if err != nil {
@@ -411,14 +415,25 @@ func Run(cfg *Config) (*Server, error) {
 		}
 	}
 
+	blockLimit, err := cfg.Network.Consensus.BlockLimit.Int()
+	if err != nil {
+		return nil, err
+	}
+
+	maxPayload, err := cfg.Network.MaxPayload.Int()
+	if err != nil {
+		return nil, err
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	bcfg := &broadcast.Config{
-		RoundInterval: cfg.Network.Consensus.RoundInterval,
+		BlockLimit:    blockLimit,
 		Directory:     dir,
 		Key:           key,
 		Keys:          keys,
 		NodeID:        cfg.NodeID,
 		Peers:         peers,
+		RoundInterval: cfg.Network.Consensus.RoundInterval,
 	}
 
 	broadcaster, err := broadcast.New(ctx, bcfg, top)
@@ -426,8 +441,6 @@ func Run(cfg *Config) (*Server, error) {
 		cancel()
 		return nil, fmt.Errorf("node: unable to instantiate the broadcast service: %s", err)
 	}
-
-	// transactor := transactor.New(broadcaste)
 
 	node := &Server{
 		broadcaster:     broadcaster,
@@ -440,6 +453,7 @@ func Run(cfg *Config) (*Server, error) {
 		maxBackoff:      cfg.Node.Broadcast.MaxBackoff,
 		nonceExpiration: cfg.Network.Consensus.NonceExpiration,
 		nonceMap:        map[uint64][]usedNonce{},
+		payloadLimit:    maxPayload,
 		readTimeout:     cfg.Node.Connections.ReadTimeout,
 		top:             top,
 		writeTimeout:    cfg.Node.Connections.WriteTimeout,
