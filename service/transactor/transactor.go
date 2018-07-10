@@ -180,31 +180,18 @@ func (s *Service) checkTransaction(ctx context.Context, payload []byte) (*servic
 }
 
 func (s *Service) addTransaction(ctx context.Context, tx *Transaction, rawtx []byte) ([]*ObjectTraceIDPair, error) {
-	tracesidpairs, err := MakeTraceIDs(tx.Traces)
+	ids, err := MakeIDs(tx)
 	if err != nil {
-		return nil, fmt.Errorf("transactor: unable to create traces ids: %v", err)
+		return nil, err
 	}
-	objects, err := MakeTraceObjectPairs(tracesidpairs)
-	if err != nil {
-		return nil, fmt.Errorf("transactor: unable to create objects keys: %v", err)
-	}
-
-	result := make([]*ObjectTraceIDPair, 0, len(objects))
-	for _, v := range objects {
+	result := make([]*ObjectTraceIDPair, 0, len(ids.TraceObjectPairs))
+	for _, v := range ids.TraceObjectPairs {
 		r := &ObjectTraceIDPair{
-			TraceID: v.Trace.ID,
 			Objects: v.OutputObjects,
+			TraceID: v.Trace.ID,
 		}
 		result = append(result, r)
 	}
-
-	ch := combihash.New()
-	if _, err := ch.Write(rawtx); err != nil {
-		return nil, fmt.Errorf("transactor: unable to hash transaction: %v", err)
-	}
-	txhash := ch.Digest()
-	txsignature := s.privkey.Sign(txhash)
-	_ = txsignature
 
 	// Start sending the tx to other nodes / shards in order to do the consensus thingy
 	// then return the output objects to the users.

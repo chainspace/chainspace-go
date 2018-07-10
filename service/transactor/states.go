@@ -56,7 +56,7 @@ func (s *Service) makeStatesMappings() (map[State]Action, map[StateTransition]Tr
 	return actionTable, transitionTable
 }
 
-func (s *Service) onEvidenceReceived(tx *Transaction, txID []byte, event interface{}) (State, error) {
+func (s *Service) onEvidenceReceived(tx *TxDetails, event interface{}) (State, error) {
 	// new evidences are received, store / do stuff with them
 	// then run the checkers
 	// check objects
@@ -73,7 +73,7 @@ func (s *Service) onEvidenceReceived(tx *Transaction, txID []byte, event interfa
 
 // can recevied decision from other nodes/shard
 // but should also be able to change state in the case a node is starting to run consensus.
-func (s *Service) onCommitDecisionFromShardsReceived(tx *Transaction, txID []byte, event interface{}) (State, error) {
+func (s *Service) onCommitDecisionFromShardsReceived(tx *TxDetails, event interface{}) (State, error) {
 	// if enough responses from shards,
 	// move state
 	// return StateWaitingForCommitDecisionConsensus, nil
@@ -83,7 +83,7 @@ func (s *Service) onCommitDecisionFromShardsReceived(tx *Transaction, txID []byt
 }
 
 // can reached consensus about committing the transaction or rejecting it.
-func (s *Service) onCommitDecisionConsensusReached(tx *Transaction, txID []byte, event interface{}) (State, error) {
+func (s *Service) onCommitDecisionConsensusReached(tx *TxDetails, event interface{}) (State, error) {
 	// if shard decide to commit the transaction, move state to create object
 	// return StateObjectsCreated, nil
 
@@ -110,9 +110,9 @@ func (s *Service) inputObjectsForShard(shardID uint64, tx *Transaction) (objects
 // can abort, if impossible to lock object
 // then check if one shard or more is involved and return StateAcceptBroadcasted
 // or StateObjectSetInactive
-func (s *Service) toObjectLocked(tx *Transaction, txID []byte) (State, error) {
-	log.Infof("moving to state ObjectLocked: %v", b64(txID))
-	objects, allInShard := s.inputObjectsForShard(s.shardID, tx)
+func (s *Service) toObjectLocked(tx *TxDetails) (State, error) {
+	log.Infof("moving to state ObjectLocked: %v", b64(tx.ID))
+	objects, allInShard := s.inputObjectsForShard(s.shardID, tx.Tx)
 	// lock them
 	if err := LockObjects(s.store, objects); err != nil {
 		log.Errorf("unable to lock all objects: %v", err)
@@ -125,17 +125,17 @@ func (s *Service) toObjectLocked(tx *Transaction, txID []byte) (State, error) {
 	return StateAcceptBroadcasted, nil
 }
 
-func (s *Service) toRejectBroadcasted(tx *Transaction, txID []byte) (State, error) {
+func (s *Service) toRejectBroadcasted(tx *TxDetails) (State, error) {
 	return StateInitial, nil
 }
 
-func (s *Service) toAcceptBroadcasted(tx *Transaction, txID []byte) (State, error) {
+func (s *Service) toAcceptBroadcasted(tx *TxDetails) (State, error) {
 	return StateInitial, nil
 }
 
-func (s *Service) toObjectDeactivated(tx *Transaction, txID []byte) (State, error) {
-	log.Infof("moving to state ObjectDeactivated: %v", b64(txID))
-	objects, _ := s.inputObjectsForShard(s.shardID, tx)
+func (s *Service) toObjectDeactivated(tx *TxDetails) (State, error) {
+	log.Infof("moving to state ObjectDeactivated: %v", b64(tx.ID))
+	objects, _ := s.inputObjectsForShard(s.shardID, tx.Tx)
 	// lock them
 	if err := DeactivateObjects(s.store, objects); err != nil {
 		log.Errorf("unable to deactivate all objects: %v", err)
@@ -146,9 +146,9 @@ func (s *Service) toObjectDeactivated(tx *Transaction, txID []byte) (State, erro
 	return StateObjectsCreated, nil
 }
 
-func (s *Service) toObjectsCreated(tx *Transaction, txID []byte) (State, error) {
-	log.Infof("moving to state ObjectCreated: %v", b64(txID))
-	traceIDPairs, err := MakeTraceIDs(tx.Traces)
+func (s *Service) toObjectsCreated(tx *TxDetails) (State, error) {
+	log.Infof("moving to state ObjectCreated: %v", b64(tx.ID))
+	traceIDPairs, err := MakeTraceIDs(tx.Tx.Traces)
 	if err != nil {
 		return StateAborted, err
 	}
@@ -179,25 +179,25 @@ func (s *Service) toObjectsCreated(tx *Transaction, txID []byte) (State, error) 
 	return StateCommitBroadcasted, nil
 }
 
-func (s *Service) toSucceeded(tx *Transaction, txID []byte) (State, error) {
-	log.Infof("moving to state Succeeded: %v", b64(txID))
+func (s *Service) toSucceeded(tx *TxDetails) (State, error) {
+	log.Infof("moving to state Succeeded: %v", b64(tx.ID))
 	return StateSucceeded, nil
 }
 
-func (s *Service) toCommitBroadcasted(tx *Transaction, txID []byte) (State, error) {
+func (s *Service) toCommitBroadcasted(tx *TxDetails) (State, error) {
 	return StateInitial, nil
 }
 
-func (s *Service) toAborted(tx *Transaction, txID []byte) (State, error) {
-	log.Infof("moving to state Aborted: %v", b64(txID))
+func (s *Service) toAborted(tx *TxDetails) (State, error) {
+	log.Infof("moving to state Aborted: %v", b64(tx.ID))
 	return StateAborted, nil
 }
 
-func (s *Service) toCommitRejected(tx *Transaction, txID []byte) (State, error) {
+func (s *Service) toCommitRejected(tx *TxDetails) (State, error) {
 	return StateCommitRejected, nil
 }
 
-func (s *Service) toWaitingForCommitDecisionFromShards(tx *Transaction, txID []byte) (State, error) {
+func (s *Service) toWaitingForCommitDecisionFromShards(tx *TxDetails) (State, error) {
 	return StateAborted, nil
 }
 
