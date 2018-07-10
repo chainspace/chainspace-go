@@ -1,5 +1,9 @@
 package transactor // import "chainspace.io/prototype/service/transactor"
-import "github.com/tav/golly/log"
+import (
+	"encoding/base64"
+
+	"github.com/tav/golly/log"
+)
 
 type State uint8
 
@@ -107,6 +111,7 @@ func (s *Service) inputObjectsForShard(shardID uint64, tx *Transaction) (objects
 // then check if one shard or more is involved and return StateAcceptBroadcasted
 // or StateObjectSetInactive
 func (s *Service) toObjectLocked(tx *Transaction, txID []byte) (State, error) {
+	log.Infof("moving to state ObjectLocked: %v", b64(txID))
 	objects, allInShard := s.inputObjectsForShard(s.shardID, tx)
 	// lock them
 	if err := LockObjects(s.store, objects); err != nil {
@@ -115,7 +120,6 @@ func (s *Service) toObjectLocked(tx *Transaction, txID []byte) (State, error) {
 		return StateAborted, nil
 	}
 	if allInShard {
-
 		return StateObjectsDeactivated, nil
 	}
 	return StateAcceptBroadcasted, nil
@@ -130,6 +134,7 @@ func (s *Service) toAcceptBroadcasted(tx *Transaction, txID []byte) (State, erro
 }
 
 func (s *Service) toObjectDeactivated(tx *Transaction, txID []byte) (State, error) {
+	log.Infof("moving to state ObjectDeactivated: %v", b64(txID))
 	objects, _ := s.inputObjectsForShard(s.shardID, tx)
 	// lock them
 	if err := DeactivateObjects(s.store, objects); err != nil {
@@ -142,6 +147,7 @@ func (s *Service) toObjectDeactivated(tx *Transaction, txID []byte) (State, erro
 }
 
 func (s *Service) toObjectsCreated(tx *Transaction, txID []byte) (State, error) {
+	log.Infof("moving to state ObjectCreated: %v", b64(txID))
 	traceIDPairs, err := MakeTraceIDs(tx.Traces)
 	if err != nil {
 		return StateAborted, err
@@ -174,6 +180,7 @@ func (s *Service) toObjectsCreated(tx *Transaction, txID []byte) (State, error) 
 }
 
 func (s *Service) toSucceeded(tx *Transaction, txID []byte) (State, error) {
+	log.Infof("moving to state Succeeded: %v", b64(txID))
 	return StateSucceeded, nil
 }
 
@@ -182,6 +189,7 @@ func (s *Service) toCommitBroadcasted(tx *Transaction, txID []byte) (State, erro
 }
 
 func (s *Service) toAborted(tx *Transaction, txID []byte) (State, error) {
+	log.Infof("moving to state Aborted: %v", b64(txID))
 	return StateAborted, nil
 }
 
@@ -191,4 +199,8 @@ func (s *Service) toCommitRejected(tx *Transaction, txID []byte) (State, error) 
 
 func (s *Service) toWaitingForCommitDecisionFromShards(tx *Transaction, txID []byte) (State, error) {
 	return StateAborted, nil
+}
+
+func b64(data []byte) string {
+	return base64.StdEncoding.EncodeToString(data)
 }

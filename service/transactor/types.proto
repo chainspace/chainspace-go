@@ -5,10 +5,11 @@ import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 
 enum Opcode {
   UNKNOWN = 0;
-  ADD_TRANSACTION = 1;
-  QUERY_OBJECT = 2;
-  CREATE_OBJECT = 3;
-  DELETE_OBJECT = 4;
+  CHECK_TRANSACTION = 1;
+  ADD_TRANSACTION = 2;
+  QUERY_OBJECT = 3;
+  CREATE_OBJECT = 4;
+  DELETE_OBJECT = 5;
  }
 
 enum ObjectStatus {
@@ -49,12 +50,23 @@ message Object {
   ObjectStatus status = 3;
 }
 
+message CheckTransactionRequest {
+  Transaction tx = 1;
+}
+
+message CheckTransactionResponse {
+  bool ok = 1;
+  bytes signature = 2;
+}
+
+
 message AddTransactionRequest {
   Transaction transaction = 1;
+  map<uint64, bytes> evidences = 2;
 }
 
 message ObjectTraceIDPair {
-  bytes traceID = 1 [(gogoproto.customname) = "TraceID"];;
+  bytes traceID = 1 [(gogoproto.customname) = "TraceID"];
   repeated Object objects = 2;
 }
 
@@ -82,7 +94,7 @@ message SBACMessageRequest {
   SBACStep step = 1;
   StepStatus status = 2;
   Transaction tx = 3;
-  bytes transactionID = 4 [(gogoproto.customname) = "transctionID"];
+  bytes transactionID = 4 [(gogoproto.customname) = "TransactionID"];
 }
 
 message NewObjectRequest {

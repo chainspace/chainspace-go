@@ -3,6 +3,7 @@ package transactorclient // import "chainspace.io/prototype/service/transactor/c
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"sync"
 	"time"
 
@@ -49,6 +50,14 @@ func (ct *ClientTrace) ToTrace() *transactor.Trace {
 		}
 		return out
 	}
+	toBytesB64 := func(s []string) [][]byte {
+		out := make([][]byte, 0, len(s))
+		for _, v := range s {
+			bytes, _ := base64.StdEncoding.DecodeString(v)
+			out = append(out, []byte(bytes))
+		}
+		return out
+	}
 	deps := make([]*transactor.Trace, 0, len(ct.Dependencies))
 	for _, d := range ct.Dependencies {
 		deps = append(deps, d.ToTrace())
@@ -56,11 +65,11 @@ func (ct *ClientTrace) ToTrace() *transactor.Trace {
 	return &transactor.Trace{
 		ContractID:          ct.ContractID,
 		Procedure:           ct.Procedure,
-		InputObjectsKeys:    toBytes(ct.InputObjectsKeys),
-		InputReferencesKeys: toBytes(ct.InputReferencesKeys),
+		InputObjectsKeys:    toBytesB64(ct.InputObjectsKeys),
+		InputReferencesKeys: toBytesB64(ct.InputReferencesKeys),
 		OutputObjects:       toBytes(ct.OutputObjects),
-		Parameters:          toBytes(ct.Parameters),
-		Returns:             toBytes(ct.Returns),
+		Parameters:          toBytesB64(ct.Parameters),
+		Returns:             toBytesB64(ct.Returns),
 		Dependencies:        deps,
 	}
 }
@@ -82,7 +91,8 @@ type Client interface {
 }
 
 type client struct {
-	top *network.Topology
+	maxPaylod config.ByteSize
+	top       *network.Topology
 	// map of shardID, to a list of nodes connections
 	nodesConn map[uint64][]NodeIDConnPair
 }
@@ -101,6 +111,7 @@ func New(cfg *Config) (Client, error) {
 	time.Sleep(100 * time.Millisecond)
 
 	return &client{
+		maxPaylod: cfg.NetworkConfig.MaxPayload,
 		top:       topology,
 		nodesConn: map[uint64][]NodeIDConnPair{},
 	}, nil
@@ -156,7 +167,7 @@ func (c *client) helloNodes() error {
 	for k, v := range c.nodesConn {
 		for _, nc := range v {
 			log.Infof("sending hello to shard shard(%v)->node(%v)", k, nc.NodeID)
-			err := nc.Conn.WritePayload(hellomsg, 5*time.Second)
+			err := nc.Conn.WritePayload(hellomsg, int(c.maxPaylod), 5*time.Second)
 			if err != nil {
 				log.Errorf("transactor client: unable to send hello message to shard(%v)->node(%v): %v", k, nc.NodeID, err)
 				return err
@@ -166,15 +177,44 @@ func (c *client) helloNodes() error {
 	return nil
 }
 
-func (c *client) SendTransaction(t *ClientTransaction) error {
-	if err := c.dialNodesForTransaction(t); err != nil {
-		return err
+func (c *client) checkTransaction(t *transactor.Transaction) (map[uint64][]byte, error) {
+	req := &transactor.CheckTransactionRequest{
+		Tx: t,
 	}
-	if err := c.helloNodes(); err != nil {
-		return err
+	txbytes, err := proto.Marshal(req)
+	if err != nil {
+		log.Errorf("transctor client: unable to marshal transaction: %v", err)
+		return nil, err
 	}
+	msg := &service.Message{
+		Opcode:  uint32(transactor.Opcode_CHECK_TRANSACTION),
+		Payload: txbytes,
+	}
+	evidences := map[uint64][]byte{}
+	f := func(s, n uint64, msg *service.Message) error {
+		res := transactor.CheckTransactionResponse{}
+		err = proto.Unmarshal(msg.Payload, &res)
+		if err != nil {
+			log.Errorf("unable unmarshal message from shard(%v)->node(%v): %v", s, n, err)
+			return err
+		}
+		// check if Ok then add it to the evidences
+		if res.Ok {
+			evidences[n] = res.Signature
+		}
+		log.Infof("shard(%v)->node(%v) answered with {ok(%v)}", s, n, res.Ok)
+		return nil
+	}
+	err = c.sendMessages(msg, f)
+	if err != nil {
+		return nil, err
+	}
+	return evidences, nil
+}
+
+func (c *client) addTransaction(t *transactor.Transaction) error {
 	req := &transactor.AddTransactionRequest{
-		Transaction: t.ToTransaction(),
+		Transaction: t,
 	}
 	txbytes, err := proto.Marshal(req)
 	if err != nil {
@@ -190,6 +230,25 @@ func (c *client) SendTransaction(t *ClientTransaction) error {
 		return nil
 	}
 	return c.sendMessages(msg, f)
+}
+
+func (c *client) SendTransaction(t *ClientTransaction) error {
+	if err := c.dialNodesForTransaction(t); err != nil {
+		return err
+	}
+	if err := c.helloNodes(); err != nil {
+		return err
+	}
+	tx := t.ToTransaction()
+	evidences, err := c.checkTransaction(tx)
+	if err != nil {
+		return err
+	}
+	twotplusone := (2*(len(c.nodesConn)/3) + 1)
+	if len(evidences) < twotplusone {
+		return fmt.Errorf("not enough evidences returned by nodes expected(%v) got(%v)", twotplusone, len(evidences))
+	}
+	return c.addTransaction(tx)
 }
 
 func (c *client) Query(key []byte) error {
@@ -272,12 +331,12 @@ func (c *client) sendMessages(msg *service.Message, f func(uint64, uint64, *serv
 			go func() {
 				defer wg.Done()
 				log.Infof("sending transaction to shard(%v)->node(%v)", s, v.NodeID)
-				err := v.Conn.WriteRequest(msg, 5*time.Second)
+				_, err := v.Conn.WriteRequest(msg, int(c.maxPaylod), 5*time.Second)
 				if err != nil {
 					log.Errorf("unable to write request to shard(%v)->node(%v): %v", s, v.NodeID, err)
 					return
 				}
-				rmsg, err := v.Conn.ReadMessage(5 * time.Second)
+				rmsg, err := v.Conn.ReadMessage(int(c.maxPaylod), 5*time.Second)
 				if err != nil {
 					log.Errorf("unable to read message from shard(%v)->node(%v): %v", s, v.NodeID, err)
 					return

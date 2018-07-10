@@ -2,6 +2,14 @@ package transactor // import "chainspace.io/prototype/service/transactor"
 
 import "fmt"
 
+type SBACDecisions uint8
+
+const (
+	Accept SBACDecisions = iota
+	Reject
+	Abort
+)
+
 type StateTransition struct {
 	From State
 	To   State
@@ -19,8 +27,9 @@ type Transition func(tx *Transaction, txID []byte) (State, error)
 
 type StateMachine struct {
 	actionTable     map[State]Action
-	currentTxID     []byte
-	currentTx       *Transaction
+	tx              *Transaction
+	txID            []byte
+	rawTx           []byte
 	events          chan interface{}
 	state           State
 	transitionTable map[StateTransition]Transition
@@ -39,7 +48,7 @@ func (sm *StateMachine) onNewEvent(event interface{}) error {
 	if !ok {
 		return fmt.Errorf("no action for specified state %v", sm.state)
 	}
-	newstate, err := action(sm.currentTx, sm.currentTxID, event)
+	newstate, err := action(sm.tx, sm.txID, event)
 	if err != nil {
 		return err
 	}
@@ -54,7 +63,7 @@ func (sm *StateMachine) onNewEvent(event interface{}) error {
 }
 
 func (sm *StateMachine) applyTransition(state State, fun Transition) error {
-	newstate, err := fun(sm.currentTx, sm.currentTxID)
+	newstate, err := fun(sm.tx, sm.txID)
 	if err != nil {
 		// unable to do transition to the new state, return an error
 		return err
@@ -77,14 +86,17 @@ func (sm *StateMachine) run() {
 	}
 }
 
-func NewStateMachine(actionTable map[State]Action, transitionTable map[StateTransition]Transition) (*StateMachine, chan interface{}) {
-	events := make(chan interface{}, 100)
+func (sm *StateMachine) OnEvent(e interface{}) {
+	sm.events <- e
+}
+
+func NewStateMachine(actionTable map[State]Action, transitionTable map[StateTransition]Transition) *StateMachine {
 	sm := &StateMachine{
 		actionTable:     actionTable,
-		events:          events,
+		events:          make(chan interface{}, 100),
 		state:           StateInitial,
 		transitionTable: transitionTable,
 	}
 	go sm.run()
-	return sm, events
+	return sm
 }

@@ -251,7 +251,7 @@ func (s *Service) GetUnsent(peerID uint64) ([]*SignedBlock, uint64) {
 				total += len(block.Data) + len(block.Signature) + 100
 				if total > s.blockLimit {
 					if i == last {
-						panic("broadcast: size of individual block exceeds max payload size")
+						panic(fmt.Sprintf("broadcast: size of individual block(%v) exceeds max payload size(%v)", total, s.blockLimit))
 					}
 					s.mu.RUnlock()
 					return blocks, i - 1

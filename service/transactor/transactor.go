@@ -3,21 +3,19 @@ package transactor // import "chainspace.io/prototype/service/transactor"
 import (
 	"context"
 	"encoding/base32"
-	"encoding/binary"
-	"errors"
 	"fmt"
 	"path"
 
 	"chainspace.io/prototype/combihash"
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/crypto/signature"
+	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
+	"chainspace.io/prototype/service/broadcast"
 
-	"chainspace.io/prototype/log"
 	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
-	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -26,40 +24,46 @@ const (
 
 var b32 = base32.StdEncoding.WithPadding(base32.NoPadding)
 
-// CheckersMap map contractID to map check procedure name to checker
-type CheckersMap map[string]map[string]Checker
-
 type Config struct {
-	Directory  string
-	NodeID     uint64
-	Top        *network.Topology
-	SigningKey *config.Key
-	Checkers   []Checker
-	ShardSize  uint64
-	ShardCount uint64
-}
-
-// a pair of a trace and it's associated checker to be store in a slice
-type checkerTracePair struct {
-	Checker Checker
-	Trace   *Trace
+	Broadcaster *broadcast.Service
+	Directory   string
+	NodeID      uint64
+	Top         *network.Topology
+	SigningKey  *config.Key
+	Checkers    []Checker
+	ShardSize   uint64
+	ShardCount  uint64
 }
 
 type Service struct {
-	checkers   CheckersMap
-	events     chan interface{}
-	nodeID     uint64
-	privkey    signature.PrivateKey
-	top        *network.Topology
-	state      *StateMachine
-	store      *badger.DB
-	shardCount uint64
-	shardID    uint64
-	shardSize  uint64
+	broadcaster *broadcast.Service
+	checkers    CheckersMap
+	nodeID      uint64
+	privkey     signature.PrivateKey
+	state       map[string]*StateMachine
+	store       *badger.DB
+	shardCount  uint64
+	shardID     uint64
+	shardSize   uint64
+	top         *network.Topology
+}
+
+func (s *Service) BroadcastStart(round uint64) {
+	log.Infof("broadcast start: %v", round)
+}
+
+func (s *Service) BroadcastTransaction(txdata *broadcast.TransactionData) {
+	log.Infof("broadcast transaction")
+}
+
+func (s *Service) BroadcastEnd(round uint64) {
+	log.Infof("broadcast end: %v", round)
 }
 
 func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message) (*service.Message, error) {
 	switch Opcode(m.Opcode) {
+	case Opcode_CHECK_TRANSACTION:
+		return s.checkTransaction(ctx, m.Payload)
 	case Opcode_ADD_TRANSACTION:
 		req := &AddTransactionRequest{}
 		err := proto.Unmarshal(m.Payload, req)
@@ -139,15 +143,43 @@ func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message)
 	}
 }
 
-func (s *Service) addTransaction(ctx context.Context, tx *Transaction, rawtx []byte) ([]*ObjectTraceIDPair, error) {
-	ok, err := runCheckers(ctx, s.checkers, tx)
+func (s *Service) checkTransaction(ctx context.Context, payload []byte) (*service.Message, error) {
+	req := &CheckTransactionRequest{}
+	err := proto.Unmarshal(payload, req)
+	if err != nil {
+		return nil, fmt.Errorf("transactor: add_transaction unmarshaling error: %v", err)
+	}
+
+	// run the checkers
+	ok, err := runCheckers(ctx, s.checkers, req.Tx)
 	if err != nil {
 		return nil, fmt.Errorf("transactor: errors happend while running the checkers: %v", err)
 	}
-	if !ok {
-		return nil, errors.New("transactor: some checks were not successful")
+
+	// create txID and signature then payload
+	ids, err := MakeIDs(req.Tx)
+	if err != nil {
+		return nil, err
+	}
+	res := &CheckTransactionResponse{
+		Ok:        ok,
+		Signature: s.privkey.Sign(ids.TxID),
 	}
 
+	b, err := proto.Marshal(res)
+	if err != nil {
+		return nil, fmt.Errorf("transactor: unable to marshal add_transaction response")
+	}
+
+	log.Infof("transactor: transaction checked successfully")
+	return &service.Message{
+		Opcode:  uint32(Opcode_ADD_TRANSACTION),
+		Payload: b,
+	}, nil
+
+}
+
+func (s *Service) addTransaction(ctx context.Context, tx *Transaction, rawtx []byte) ([]*ObjectTraceIDPair, error) {
 	tracesidpairs, err := MakeTraceIDs(tx.Traces)
 	if err != nil {
 		return nil, fmt.Errorf("transactor: unable to create traces ids: %v", err)
@@ -178,58 +210,6 @@ func (s *Service) addTransaction(ctx context.Context, tx *Transaction, rawtx []b
 	// then return the output objects to the users.
 
 	return result, nil
-}
-
-func runCheckers(ctx context.Context, checkers CheckersMap, tx *Transaction) (bool, error) {
-	ctpairs, err := aggregateCheckers(checkers, tx.Traces)
-	if err != nil {
-		return false, err
-	}
-
-	g, ctx := errgroup.WithContext(ctx)
-	for _, v := range ctpairs {
-		v := v
-		t := v.Trace
-		c := v.Checker
-		g.Go(func() error {
-			result := c.Check(t.InputObjectsKeys, t.InputReferencesKeys, t.Parameters, t.OutputObjects, t.Returns, t.Dependencies)
-			if !result {
-				return errors.New("check failed")
-			}
-			return nil
-		})
-	}
-	if err := g.Wait(); err != nil {
-		return false, nil
-	}
-	return true, nil
-}
-
-// aggregateCheckers first ensure that all the contracts and procedures used in the transaction
-// exists then map each transaction to the associated contract.
-func aggregateCheckers(checkers CheckersMap, traces []*Trace) ([]checkerTracePair, error) {
-	var ok bool
-	var m map[string]Checker
-	var checker Checker
-	ctpairs := []checkerTracePair{}
-	for _, t := range traces {
-		m, ok = checkers[t.ContractID]
-		if !ok {
-			return nil, fmt.Errorf("transactor: unknown contract with ID: %v", t.ContractID)
-		}
-		checker, ok = m[t.Procedure]
-		if !ok {
-			return nil, fmt.Errorf("transactor: unknown procedure %v for contract with ID: %v", t.Procedure, t.ContractID)
-		}
-		newpairs, err := aggregateCheckers(checkers, t.Dependencies)
-		if err != nil {
-			return nil, err
-		}
-		newpair := checkerTracePair{Checker: checker, Trace: t}
-		ctpairs = append(ctpairs, newpair)
-		ctpairs = append(ctpairs, newpairs...)
-	}
-	return ctpairs, nil
 }
 
 func (s *Service) queryObject(ctx context.Context, objectKey []byte) (*Object, error) {
@@ -290,112 +270,6 @@ func (s *Service) Stop() error {
 	return s.store.Close()
 }
 
-// TraceIdentifierPair is a pair of a trace and it's identifier
-type TraceIdentifierPair struct {
-	ID    []byte
-	Trace *Trace
-}
-
-// TraceOutputObjectIDPair is composed of a trace and the list of output object IDs it create
-// ordered in the same order than the orginal output objects
-type TraceObjectPair struct {
-	OutputObjects []*Object
-	Trace         TraceIdentifierPair
-}
-
-// MakeTraceIDs generate trace IDs for all traces in the given list
-func MakeTraceIDs(traces []*Trace) ([]TraceIdentifierPair, error) {
-	out := make([]TraceIdentifierPair, 0, len(traces))
-	for _, trace := range traces {
-		trace := trace
-		id, err := MakeTraceID(trace)
-		if err != nil {
-			return nil, err
-		}
-		p := TraceIdentifierPair{
-			ID:    id,
-			Trace: trace,
-		}
-		out = append(out, p)
-	}
-
-	return out, nil
-}
-
-// MakeTraceID generate an identifier for the given trace
-// the ID is composed of: the contract ID, the procedure, input objects keys, input
-// reference keys, trace ID of the dependencies
-func MakeTraceID(trace *Trace) ([]byte, error) {
-	ch := combihash.New()
-	data := []byte{}
-	data = append(data, []byte(trace.ContractID)...)
-	data = append(data, []byte(trace.Procedure)...)
-	for _, v := range trace.InputObjectsKeys {
-		data = append(data, v...)
-	}
-	for _, v := range trace.InputReferencesKeys {
-		data = append(data, v...)
-	}
-	for _, v := range trace.Dependencies {
-		v := v
-		id, err := MakeTraceID(v)
-		if err != nil {
-			return nil, err
-		}
-		data = append(data, id...)
-	}
-	_, err := ch.Write(data)
-	if err != nil {
-		return nil, fmt.Errorf("transactor: unable to create hash: %v", err)
-	}
-
-	return ch.Digest(), nil
-}
-
-// MakeTraceObjectIDs create a list of Objects based on the Trace / Trace ID input
-// Objects are ordered the same as the output objects of the trace
-func MakeObjectIDs(pair *TraceIdentifierPair) ([]*Object, error) {
-	ch := combihash.New()
-	out := []*Object{}
-	for i, outobj := range pair.Trace.OutputObjects {
-		ch.Reset()
-		id := make([]byte, len(pair.ID))
-		copy(id, pair.ID)
-		id = append(id, outobj...)
-		index := make([]byte, 4)
-		binary.LittleEndian.PutUint32(index, uint32(i))
-		id = append(id, index...)
-		_, err := ch.Write(id)
-		if err != nil {
-			return nil, fmt.Errorf("transactor: unable to create hash: %v", err)
-		}
-		o := &Object{
-			Value:  outobj,
-			Key:    ch.Digest(),
-			Status: ObjectStatus_ACTIVE,
-		}
-		out = append(out, o)
-	}
-	return out, nil
-}
-
-// MakeObjectID create a list of Object based on the traces / traces identifier
-func MakeTraceObjectPairs(traces []TraceIdentifierPair) ([]TraceObjectPair, error) {
-	out := []TraceObjectPair{}
-	for _, trace := range traces {
-		objs, err := MakeObjectIDs(&trace)
-		if err != nil {
-			return nil, err
-		}
-		pair := TraceObjectPair{
-			OutputObjects: objs,
-			Trace:         trace,
-		}
-		out = append(out, pair)
-	}
-	return out, nil
-}
-
 func New(cfg *Config) (*Service, error) {
 	checkers := map[string]map[string]Checker{}
 	for _, c := range cfg.Checkers {
@@ -429,17 +303,19 @@ func New(cfg *Config) (*Service, error) {
 	}
 
 	s := &Service{
-		checkers:   checkers,
-		nodeID:     cfg.NodeID,
-		privkey:    privkey,
-		top:        cfg.Top,
-		store:      store,
-		shardID:    cfg.Top.ShardForNode(cfg.NodeID),
-		shardCount: cfg.ShardCount,
-		shardSize:  cfg.ShardSize,
+		broadcaster: cfg.Broadcaster,
+		checkers:    checkers,
+		nodeID:      cfg.NodeID,
+		privkey:     privkey,
+		top:         cfg.Top,
+		state:       map[string]*StateMachine{},
+		store:       store,
+		shardID:     cfg.Top.ShardForNode(cfg.NodeID),
+		shardCount:  cfg.ShardCount,
+		shardSize:   cfg.ShardSize,
 	}
-	actionTable, transitionTable := s.makeStatesMappings()
-	s.state, s.events = NewStateMachine(actionTable, transitionTable)
+
+	s.broadcaster.Register(s)
 
 	return s, nil
 }
