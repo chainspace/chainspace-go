@@ -73,11 +73,11 @@ func (s *Service) objectsExists(objs, refs [][]byte) ([]*Object, bool) {
 }
 
 func (s *Service) onEvidenceReceived(tx *TxDetails, _ interface{}) (State, error) {
-	log.Infof("applying action onEvidenceReceived: %v", ID(tx.ID))
+	log.Infof("(%v) applying action onEvidenceReceived", ID(tx.ID))
 	// TODO: need to check evidences here, as this step should happend after the first consensus round.
 	// not sure how we agregate evidence here, if we get new ones from the consensus rounds or the same that where sent with the transaction at the begining.
 	if !s.verifySignatures(tx.ID, tx.CheckersEvidences) {
-		log.Errorf("missing signatures: %v", ID(tx.ID))
+		log.Errorf("(%v) missing signatures", ID(tx.ID))
 		return StateRejectBroadcasted, nil
 	}
 
@@ -85,12 +85,12 @@ func (s *Service) onEvidenceReceived(tx *TxDetails, _ interface{}) (State, error
 	for _, trace := range tx.Tx.Traces {
 		objects, ok := s.objectsExists(trace.InputObjectsKeys, trace.InputReferencesKeys)
 		if !ok {
-			log.Errorf("some objects do not exists: %v", ID(tx.ID))
+			log.Errorf("(%v) some objects do not exists", ID(tx.ID))
 			return StateRejectBroadcasted, nil
 		}
 		for _, v := range objects {
 			if v.Status == ObjectStatus_INACTIVE {
-				log.Errorf("some objects are inactive: %v", ID(tx.ID))
+				log.Errorf("(%v) some objects are inactive", ID(tx.ID))
 				return StateRejectBroadcasted, nil
 			}
 		}
@@ -139,11 +139,11 @@ func (s *Service) inputObjectsForShard(shardID uint64, tx *Transaction) (objects
 // then check if one shard or more is involved and return StateAcceptBroadcasted
 // or StateObjectSetInactive
 func (s *Service) toObjectLocked(tx *TxDetails) (State, error) {
-	log.Infof("moving to state ObjectLocked: %v", ID(tx.ID))
+	log.Infof("(%v) moving to state ObjectLocked", ID(tx.ID))
 	objects, allInShard := s.inputObjectsForShard(s.shardID, tx.Tx)
 	// lock them
 	if err := LockObjects(s.store, objects); err != nil {
-		log.Errorf("unable to lock all objects: %v", err)
+		log.Errorf("(%v) unable to lock all objects: %v", ID(tx.ID), err)
 		// return nil from here as we can abort as a valid transition
 		return StateAborted, nil
 	}
@@ -154,9 +154,9 @@ func (s *Service) toObjectLocked(tx *TxDetails) (State, error) {
 }
 
 func (s *Service) toRejectBroadcasted(tx *TxDetails) (State, error) {
-	log.Infof("moving to state RejectBroadcasted: %v", ID(tx.ID))
+	log.Infof("(%v) moving to state RejectBroadcasted", ID(tx.ID))
 	if _, allInShard := s.inputObjectsForShard(s.shardID, tx.Tx); allInShard {
-		log.Infof("no other shards involved, exiting now")
+		log.Infof("(%v) no other shards involved, exiting now", ID(tx.ID))
 		return StateAborted, nil
 	}
 	return StateAborted, nil
@@ -167,11 +167,11 @@ func (s *Service) toAcceptBroadcasted(tx *TxDetails) (State, error) {
 }
 
 func (s *Service) toObjectDeactivated(tx *TxDetails) (State, error) {
-	log.Infof("moving to state ObjectDeactivated: %v", ID(tx.ID))
+	log.Infof("(%v) moving to state ObjectDeactivated", ID(tx.ID))
 	objects, _ := s.inputObjectsForShard(s.shardID, tx.Tx)
 	// lock them
 	if err := DeactivateObjects(s.store, objects); err != nil {
-		log.Errorf("unable to deactivate all objects: %v", err)
+		log.Errorf("(%v) unable to deactivate all objects: %v", ID(tx.ID), err)
 		// return nil from here as we can abort as a valid transition
 		return StateAborted, nil
 	}
@@ -180,7 +180,7 @@ func (s *Service) toObjectDeactivated(tx *TxDetails) (State, error) {
 }
 
 func (s *Service) toObjectsCreated(tx *TxDetails) (State, error) {
-	log.Infof("moving to state ObjectCreated: %v", ID(tx.ID))
+	log.Infof("(%v) moving to state ObjectCreated", ID(tx.ID))
 	traceIDPairs, err := MakeTraceIDs(tx.Tx.Traces)
 	if err != nil {
 		return StateAborted, err
@@ -204,6 +204,7 @@ func (s *Service) toObjectsCreated(tx *TxDetails) (State, error) {
 	}
 	err = CreateObjects(s.store, objects)
 	if err != nil {
+		log.Errorf("(%v) unable to create objects: %v", ID(tx.ID), err)
 		return StateAborted, err
 	}
 	if allObjectsInCurrentShard {
@@ -213,17 +214,20 @@ func (s *Service) toObjectsCreated(tx *TxDetails) (State, error) {
 }
 
 func (s *Service) toSucceeded(tx *TxDetails) (State, error) {
-	log.Infof("moving to state Succeeded: %v", ID(tx.ID))
+	log.Infof("(%v) moving to state Succeeded", ID(tx.ID))
+	tx.Result <- true
 	return StateSucceeded, nil
 }
 
-func (s *Service) toCommitBroadcasted(tx *TxDetails) (State, error) {
-	return StateInitial, nil
+func (s *Service) toAborted(tx *TxDetails) (State, error) {
+	log.Infof("(%v) moving to state Aborted", ID(tx.ID))
+	tx.Result <- false
+	return StateAborted, nil
 }
 
-func (s *Service) toAborted(tx *TxDetails) (State, error) {
-	log.Infof("moving to state Aborted: %v", ID(tx.ID))
-	return StateAborted, nil
+func (s *Service) toCommitBroadcasted(tx *TxDetails) (State, error) {
+	log.Infof("(%v) moving to state toCommitBroadcasted", ID(tx.ID))
+	return StateInitial, nil
 }
 
 func (s *Service) toCommitRejected(tx *TxDetails) (State, error) {

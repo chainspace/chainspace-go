@@ -104,7 +104,7 @@ func (s *Service) checkTransaction(ctx context.Context, payload []byte) (*servic
 
 	b, err := proto.Marshal(res)
 	if err != nil {
-		return nil, fmt.Errorf("transactor: unable to marshal add_transaction response")
+		return nil, fmt.Errorf("transactor: unable to marshal check_transaction response")
 	}
 
 	log.Infof("transactor: transaction checked successfully")
@@ -148,28 +148,33 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 	for _, v := range ids.TraceObjectPairs {
 		objects[string(v.Trace.ID)] = &ObjectList{v.OutputObjects}
 	}
-
 	rawtx, err := proto.Marshal(req.Tx)
 	if err != nil {
 		return nil, fmt.Errorf("transactor: unable to marshal tx: %v", err)
 	}
-
 	txdetails := TxDetails{
 		CheckersEvidences: req.Evidences,
 		ID:                ids.TxID,
 		Raw:               rawtx,
+		Result:            make(chan bool),
 		Tx:                req.Tx,
 	}
 
+	sm := NewStateMachine(s.table, &txdetails)
 	// start the statemachine
-	s.txstates[string(txdetails.ID)] = NewStateMachine(s.table, &txdetails)
+	s.txstates[string(txdetails.ID)] = sm
 	// send an empty event for now in order to start the transitions
-	sm := s.txstates[string(txdetails.ID)]
 	sm.OnEvent(nil)
+	txres := <-txdetails.Result
 
+	if !txres {
+		return nil, errors.New("unable to execute the transaction")
+	}
 	res := &AddTransactionResponse{
 		Objects: objects,
 	}
+
+	// block here while the statemachine does its job
 
 	b, err := proto.Marshal(res)
 	if err != nil {

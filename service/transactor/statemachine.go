@@ -24,6 +24,7 @@ type TxDetails struct {
 	CheckersEvidences map[uint64][]byte
 	ID                []byte
 	Raw               []byte
+	Result            chan bool
 	Tx                *Transaction
 }
 
