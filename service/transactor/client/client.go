@@ -214,7 +214,7 @@ func (c *client) checkTransaction(t *transactor.Transaction) (map[uint64][]byte,
 
 func (c *client) addTransaction(t *transactor.Transaction) error {
 	req := &transactor.AddTransactionRequest{
-		Transaction: t,
+		Tx: t,
 	}
 	txbytes, err := proto.Marshal(req)
 	if err != nil {
@@ -226,7 +226,17 @@ func (c *client) addTransaction(t *transactor.Transaction) error {
 		Payload: txbytes,
 	}
 	f := func(s, n uint64, msg *service.Message) error {
-		log.Infof("shard(%v)->node(%v) answered with: %v", s, n, msg)
+		res := transactor.AddTransactionResponse{}
+		err = proto.Unmarshal(msg.Payload, &res)
+		if err != nil {
+			log.Errorf("unable unmarshal message from shard(%v)->node(%v): %v", s, n, err)
+			return err
+		}
+		for _, v := range res.Objects {
+			for _, object := range v.List {
+				log.Infof("shard(%v)->node(%v) answered with output object key: %v", s, n, b64(object.Key))
+			}
+		}
 		return nil
 	}
 	return c.sendMessages(msg, f)
@@ -385,4 +395,8 @@ func (c *client) Create(obj string) error {
 		return nil
 	}
 	return c.sendMessages(msg, f)
+}
+
+func b64(data []byte) string {
+	return base64.StdEncoding.EncodeToString(data)
 }

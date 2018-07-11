@@ -1,8 +1,8 @@
 package transactor // import "chainspace.io/prototype/service/transactor"
 import (
-	"encoding/base64"
+	"hash/fnv"
 
-	"github.com/tav/golly/log"
+	"chainspace.io/prototype/log"
 )
 
 type State uint8
@@ -24,7 +24,7 @@ const (
 	StateAborted
 )
 
-func (s *Service) makeStatesMappings() (map[State]Action, map[StateTransition]Transition) {
+func (s *Service) makeStateTable() *StateTable {
 	// change state are triggered on events
 	actionTable := map[State]Action{
 		StateInitial:                            s.onEvidenceReceived,
@@ -36,6 +36,7 @@ func (s *Service) makeStatesMappings() (map[State]Action, map[StateTransition]Tr
 	transitionTable := map[StateTransition]Transition{
 		{StateInitial, StateObjectLocked}:      s.toObjectLocked,
 		{StateInitial, StateRejectBroadcasted}: s.toRejectBroadcasted,
+		{StateRejectBroadcasted, StateAborted}: s.toAborted,
 		{StateObjectLocked, StateAborted}:      s.toAborted,
 		// object locked with success, but multiple shards involved
 		{StateObjectLocked, StateAcceptBroadcasted}: s.toAcceptBroadcasted,
@@ -53,22 +54,49 @@ func (s *Service) makeStatesMappings() (map[State]Action, map[StateTransition]Tr
 		{StateCommitRejected, StateAborted}:                           s.toAborted,
 	}
 
-	return actionTable, transitionTable
+	return &StateTable{actionTable, transitionTable}
 }
 
-func (s *Service) onEvidenceReceived(tx *TxDetails, event interface{}) (State, error) {
-	// new evidences are received, store / do stuff with them
-	// then run the checkers
-	// check objects
-	var evidenceOK bool
-	var notEnoughInfo bool
-	if notEnoughInfo {
-		return StateInitial, nil
+func (s *Service) objectsExists(objs, refs [][]byte) ([]*Object, bool) {
+	keys := [][]byte{}
+	for _, v := range append(objs, refs...) {
+		if s.top.ShardForKey(v) == s.shardID {
+			keys = append(keys, v)
+		}
 	}
-	if evidenceOK {
-		return StateObjectLocked, nil
+
+	objects, err := GetObjects(s.store, keys)
+	if err != nil {
+		return nil, false
 	}
-	return StateRejectBroadcasted, nil
+	return objects, true
+}
+
+func (s *Service) onEvidenceReceived(tx *TxDetails, _ interface{}) (State, error) {
+	log.Infof("applying action onEvidenceReceived: %v", ID(tx.ID))
+	// TODO: need to check evidences here, as this step should happend after the first consensus round.
+	// not sure how we agregate evidence here, if we get new ones from the consensus rounds or the same that where sent with the transaction at the begining.
+	if !s.verifySignatures(tx.ID, tx.CheckersEvidences) {
+		log.Errorf("missing signatures: %v", ID(tx.ID))
+		return StateRejectBroadcasted, nil
+	}
+
+	// check that all inputs objects and references part of the state of this node exists.
+	for _, trace := range tx.Tx.Traces {
+		objects, ok := s.objectsExists(trace.InputObjectsKeys, trace.InputReferencesKeys)
+		if !ok {
+			log.Errorf("some objects do not exists: %v", ID(tx.ID))
+			return StateRejectBroadcasted, nil
+		}
+		for _, v := range objects {
+			if v.Status == ObjectStatus_INACTIVE {
+				log.Errorf("some objects are inactive: %v", ID(tx.ID))
+				return StateRejectBroadcasted, nil
+			}
+		}
+	}
+
+	return StateObjectLocked, nil
 }
 
 // can recevied decision from other nodes/shard
@@ -111,7 +139,7 @@ func (s *Service) inputObjectsForShard(shardID uint64, tx *Transaction) (objects
 // then check if one shard or more is involved and return StateAcceptBroadcasted
 // or StateObjectSetInactive
 func (s *Service) toObjectLocked(tx *TxDetails) (State, error) {
-	log.Infof("moving to state ObjectLocked: %v", b64(tx.ID))
+	log.Infof("moving to state ObjectLocked: %v", ID(tx.ID))
 	objects, allInShard := s.inputObjectsForShard(s.shardID, tx.Tx)
 	// lock them
 	if err := LockObjects(s.store, objects); err != nil {
@@ -126,7 +154,12 @@ func (s *Service) toObjectLocked(tx *TxDetails) (State, error) {
 }
 
 func (s *Service) toRejectBroadcasted(tx *TxDetails) (State, error) {
-	return StateInitial, nil
+	log.Infof("moving to state RejectBroadcasted: %v", ID(tx.ID))
+	if _, allInShard := s.inputObjectsForShard(s.shardID, tx.Tx); allInShard {
+		log.Infof("no other shards involved, exiting now")
+		return StateAborted, nil
+	}
+	return StateAborted, nil
 }
 
 func (s *Service) toAcceptBroadcasted(tx *TxDetails) (State, error) {
@@ -134,7 +167,7 @@ func (s *Service) toAcceptBroadcasted(tx *TxDetails) (State, error) {
 }
 
 func (s *Service) toObjectDeactivated(tx *TxDetails) (State, error) {
-	log.Infof("moving to state ObjectDeactivated: %v", b64(tx.ID))
+	log.Infof("moving to state ObjectDeactivated: %v", ID(tx.ID))
 	objects, _ := s.inputObjectsForShard(s.shardID, tx.Tx)
 	// lock them
 	if err := DeactivateObjects(s.store, objects); err != nil {
@@ -147,7 +180,7 @@ func (s *Service) toObjectDeactivated(tx *TxDetails) (State, error) {
 }
 
 func (s *Service) toObjectsCreated(tx *TxDetails) (State, error) {
-	log.Infof("moving to state ObjectCreated: %v", b64(tx.ID))
+	log.Infof("moving to state ObjectCreated: %v", ID(tx.ID))
 	traceIDPairs, err := MakeTraceIDs(tx.Tx.Traces)
 	if err != nil {
 		return StateAborted, err
@@ -180,7 +213,7 @@ func (s *Service) toObjectsCreated(tx *TxDetails) (State, error) {
 }
 
 func (s *Service) toSucceeded(tx *TxDetails) (State, error) {
-	log.Infof("moving to state Succeeded: %v", b64(tx.ID))
+	log.Infof("moving to state Succeeded: %v", ID(tx.ID))
 	return StateSucceeded, nil
 }
 
@@ -189,7 +222,7 @@ func (s *Service) toCommitBroadcasted(tx *TxDetails) (State, error) {
 }
 
 func (s *Service) toAborted(tx *TxDetails) (State, error) {
-	log.Infof("moving to state Aborted: %v", b64(tx.ID))
+	log.Infof("moving to state Aborted: %v", ID(tx.ID))
 	return StateAborted, nil
 }
 
@@ -201,6 +234,8 @@ func (s *Service) toWaitingForCommitDecisionFromShards(tx *TxDetails) (State, er
 	return StateAborted, nil
 }
 
-func b64(data []byte) string {
-	return base64.StdEncoding.EncodeToString(data)
+func ID(data []byte) uint32 {
+	h := fnv.New32()
+	h.Write(data)
+	return h.Sum32()
 }

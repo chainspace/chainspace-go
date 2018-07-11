@@ -10,16 +10,21 @@ const (
 	Abort
 )
 
+type StateTable struct {
+	actions     map[State]Action
+	transitions map[StateTransition]Transition
+}
+
 type StateTransition struct {
 	From State
 	To   State
 }
 
 type TxDetails struct {
-	CheckersEvidence map[uint64][]byte
-	ID               []byte
-	Raw              []byte
-	Tx               *Transaction
+	CheckersEvidences map[uint64][]byte
+	ID                []byte
+	Raw               []byte
+	Tx                *Transaction
 }
 
 // Action specify an action to execute when a new event is triggered.
@@ -33,11 +38,10 @@ type Action func(tx *TxDetails, event interface{}) (State, error)
 type Transition func(tx *TxDetails) (State, error)
 
 type StateMachine struct {
-	actionTable     map[State]Action
-	txDetails       *TxDetails
-	events          chan interface{}
-	state           State
-	transitionTable map[StateTransition]Transition
+	txDetails *TxDetails
+	events    chan interface{}
+	state     State
+	table     *StateTable
 }
 
 func (sm *StateMachine) Reset() {
@@ -49,7 +53,7 @@ func (sm *StateMachine) State() State {
 }
 
 func (sm *StateMachine) onNewEvent(event interface{}) error {
-	action, ok := sm.actionTable[sm.state]
+	action, ok := sm.table.actions[sm.state]
 	if !ok {
 		return fmt.Errorf("no action for specified state %v", sm.state)
 	}
@@ -59,7 +63,7 @@ func (sm *StateMachine) onNewEvent(event interface{}) error {
 	}
 	txtransition := StateTransition{sm.state, newstate}
 	// if a transition exist for the new state, apply it
-	if t, ok := sm.transitionTable[txtransition]; ok {
+	if t, ok := sm.table.transitions[txtransition]; ok {
 		return sm.applyTransition(newstate, t)
 	}
 	// else save the new state directly
@@ -78,7 +82,7 @@ func (sm *StateMachine) applyTransition(state State, fun Transition) error {
 	// we check if there is transition from the new current state and the next state
 	// available
 	txtransition := StateTransition{sm.state, newstate}
-	if t, ok := sm.transitionTable[txtransition]; ok {
+	if t, ok := sm.table.transitions[txtransition]; ok {
 		return sm.applyTransition(newstate, t)
 	}
 	// no more transitions to apply
@@ -95,12 +99,12 @@ func (sm *StateMachine) OnEvent(e interface{}) {
 	sm.events <- e
 }
 
-func NewStateMachine(actionTable map[State]Action, transitionTable map[StateTransition]Transition) *StateMachine {
+func NewStateMachine(table *StateTable, txDetails *TxDetails) *StateMachine {
 	sm := &StateMachine{
-		actionTable:     actionTable,
-		events:          make(chan interface{}, 100),
-		state:           StateInitial,
-		transitionTable: transitionTable,
+		events:    make(chan interface{}, 100),
+		state:     StateInitial,
+		table:     table,
+		txDetails: txDetails,
 	}
 	go sm.run()
 	return sm

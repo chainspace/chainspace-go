@@ -59,10 +59,10 @@ message CheckTransactionResponse {
   bytes signature = 2;
 }
 
-
 message AddTransactionRequest {
-  Transaction transaction = 1;
+  Transaction tx = 1;
   map<uint64, bytes> evidences = 2;
+
 }
 
 message ObjectTraceIDPair {
@@ -70,8 +70,12 @@ message ObjectTraceIDPair {
   repeated Object objects = 2;
 }
 
+message ObjectList {
+  repeated Object list = 1;
+}
+
 message AddTransactionResponse {
-  repeated ObjectTraceIDPair pairs = 1;
+  map<string, ObjectList> objects = 1;
 }
 
 message QueryObjectRequest {

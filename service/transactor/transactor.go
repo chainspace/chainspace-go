@@ -3,6 +3,7 @@ package transactor // import "chainspace.io/prototype/service/transactor"
 import (
 	"context"
 	"encoding/base32"
+	"errors"
 	"fmt"
 	"path"
 
@@ -40,11 +41,12 @@ type Service struct {
 	checkers    CheckersMap
 	nodeID      uint64
 	privkey     signature.PrivateKey
-	state       map[string]*StateMachine
+	txstates    map[string]*StateMachine
 	store       *badger.DB
 	shardCount  uint64
 	shardID     uint64
 	shardSize   uint64
+	table       *StateTable
 	top         *network.Topology
 }
 
@@ -65,25 +67,7 @@ func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message)
 	case Opcode_CHECK_TRANSACTION:
 		return s.checkTransaction(ctx, m.Payload)
 	case Opcode_ADD_TRANSACTION:
-		req := &AddTransactionRequest{}
-		err := proto.Unmarshal(m.Payload, req)
-		if err != nil {
-			return nil, fmt.Errorf("transactor: add_transaction unmarshaling error: %v", err)
-		}
-		objs, err := s.addTransaction(ctx, req.Transaction, m.Payload)
-		if err != nil {
-			log.Errorf("transactor: failed to add transaction: %v", err)
-		}
-		res := &AddTransactionResponse{
-			Pairs: objs,
-		}
-
-		b, err := proto.Marshal(res)
-		if err != nil {
-			return nil, fmt.Errorf("transactor: unable to marshal add_transaction response")
-		}
-		log.Infof("transactor: transaction added successfully")
-		return &service.Message{Opcode: uint32(Opcode_ADD_TRANSACTION), Payload: b}, nil
+		return s.addTransaction(ctx, m.Payload)
 	case Opcode_QUERY_OBJECT:
 		req := &QueryObjectRequest{}
 		err := proto.Unmarshal(m.Payload, req)
@@ -126,7 +110,7 @@ func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message)
 		if err != nil {
 			return nil, fmt.Errorf("transactor: new_object unmarshaling error: %v", err)
 		}
-		id, err := s.newObject(ctx, req.Object)
+		id, err := s.createObject(ctx, req.Object)
 		if err != nil {
 			return nil, err
 		}
@@ -176,27 +160,75 @@ func (s *Service) checkTransaction(ctx context.Context, payload []byte) (*servic
 		Opcode:  uint32(Opcode_ADD_TRANSACTION),
 		Payload: b,
 	}, nil
-
 }
 
-func (s *Service) addTransaction(ctx context.Context, tx *Transaction, rawtx []byte) ([]*ObjectTraceIDPair, error) {
-	ids, err := MakeIDs(tx)
+func (s *Service) verifySignatures(txID []byte, evidences map[uint64][]byte) bool {
+	ok := true
+	keys := s.top.SeedPublicKeys()
+	for nodeID, sig := range evidences {
+		key := keys[nodeID]
+		if !key.Verify(txID, sig) {
+			log.Infof("invalid signature from node %v", nodeID)
+			ok = false
+		}
+	}
+	return ok
+}
+
+func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.Message, error) {
+	req := &AddTransactionRequest{}
+	err := proto.Unmarshal(payload, req)
+	if err != nil {
+		return nil, fmt.Errorf("transactor: add_transaction unmarshaling error: %v", err)
+	}
+
+	ids, err := MakeIDs(req.Tx)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]*ObjectTraceIDPair, 0, len(ids.TraceObjectPairs))
+
+	if !s.verifySignatures(ids.TxID, req.Evidences) {
+		return nil, errors.New("transactor: invalid evidences from nodes")
+	}
+	log.Infof("transactor: all evidence verified with success")
+
+	objects := map[string]*ObjectList{}
 	for _, v := range ids.TraceObjectPairs {
-		r := &ObjectTraceIDPair{
-			Objects: v.OutputObjects,
-			TraceID: v.Trace.ID,
-		}
-		result = append(result, r)
+		objects[string(v.Trace.ID)] = &ObjectList{v.OutputObjects}
 	}
 
-	// Start sending the tx to other nodes / shards in order to do the consensus thingy
-	// then return the output objects to the users.
+	rawtx, err := proto.Marshal(req.Tx)
+	if err != nil {
+		return nil, fmt.Errorf("transactor: unable to marshal tx: %v", err)
+	}
 
-	return result, nil
+	txdetails := TxDetails{
+		CheckersEvidences: req.Evidences,
+		ID:                ids.TxID,
+		Raw:               rawtx,
+		Tx:                req.Tx,
+	}
+
+	// start the statemachine
+	s.txstates[string(txdetails.ID)] = NewStateMachine(s.table, &txdetails)
+	// send an empty event for now in order to start the transitions
+	sm := s.txstates[string(txdetails.ID)]
+	sm.OnEvent(nil)
+
+	res := &AddTransactionResponse{
+		Objects: objects,
+	}
+
+	b, err := proto.Marshal(res)
+	if err != nil {
+		return nil, fmt.Errorf("transactor: unable to marshal add_transaction response")
+	}
+	log.Infof("transactor: transaction added successfully")
+
+	return &service.Message{
+		Opcode:  uint32(Opcode_ADD_TRANSACTION),
+		Payload: b,
+	}, nil
 }
 
 func (s *Service) queryObject(ctx context.Context, objectKey []byte) (*Object, error) {
@@ -233,7 +265,7 @@ func (s *Service) removeObject(ctx context.Context, objectKey []byte) (*Object, 
 	return objects[0], nil
 }
 
-func (s *Service) newObject(ctx context.Context, object []byte) ([]byte, error) {
+func (s *Service) createObject(ctx context.Context, object []byte) ([]byte, error) {
 	if object == nil || len(object) <= 0 {
 		return nil, fmt.Errorf("transactor: nil object key")
 	}
@@ -295,13 +327,13 @@ func New(cfg *Config) (*Service, error) {
 		nodeID:      cfg.NodeID,
 		privkey:     privkey,
 		top:         cfg.Top,
-		state:       map[string]*StateMachine{},
+		txstates:    map[string]*StateMachine{},
 		store:       store,
 		shardID:     cfg.Top.ShardForNode(cfg.NodeID),
 		shardCount:  cfg.ShardCount,
 		shardSize:   cfg.ShardSize,
 	}
-
+	s.table = s.makeStateTable()
 	s.broadcaster.Register(s)
 
 	return s, nil
