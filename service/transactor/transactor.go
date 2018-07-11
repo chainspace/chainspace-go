@@ -69,59 +69,11 @@ func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message)
 	case Opcode_ADD_TRANSACTION:
 		return s.addTransaction(ctx, m.Payload)
 	case Opcode_QUERY_OBJECT:
-		req := &QueryObjectRequest{}
-		err := proto.Unmarshal(m.Payload, req)
-		if err != nil {
-			return nil, fmt.Errorf("transactor: query_object unmarshaling error: %v", err)
-		}
-		obj, err := s.queryObject(ctx, req.ObjectKey)
-		if err != nil {
-			return nil, err
-		}
-		res := &QueryObjectResponse{
-			Object: obj,
-		}
-		b, err := proto.Marshal(res)
-		if err != nil {
-			return nil, fmt.Errorf("transactor: unable to marshal query_object response")
-		}
-		return &service.Message{Opcode: uint32(Opcode_QUERY_OBJECT), Payload: b}, nil
+		return s.queryObject(ctx, m.Payload)
 	case Opcode_DELETE_OBJECT:
-		req := &DeleteObjectRequest{}
-		err := proto.Unmarshal(m.Payload, req)
-		if err != nil {
-			return nil, fmt.Errorf("transactor: remove_object unmarshaling error: %v", err)
-		}
-		obj, err := s.removeObject(ctx, req.ObjectKey)
-		if err != nil {
-			return nil, err
-		}
-		res := &DeleteObjectResponse{
-			Object: obj,
-		}
-		b, err := proto.Marshal(res)
-		if err != nil {
-			return nil, fmt.Errorf("transactor: unable to marshal remove_object response")
-		}
-		return &service.Message{Opcode: uint32(Opcode_DELETE_OBJECT), Payload: b}, nil
+		return s.deleteObject(ctx, m.Payload)
 	case Opcode_CREATE_OBJECT:
-		req := &NewObjectRequest{}
-		err := proto.Unmarshal(m.Payload, req)
-		if err != nil {
-			return nil, fmt.Errorf("transactor: new_object unmarshaling error: %v", err)
-		}
-		id, err := s.createObject(ctx, req.Object)
-		if err != nil {
-			return nil, err
-		}
-		res := &NewObjectResponse{
-			ID: id,
-		}
-		b, err := proto.Marshal(res)
-		if err != nil {
-			return nil, fmt.Errorf("transactor: unable to marshal new_object response")
-		}
-		return &service.Message{Opcode: uint32(Opcode_CREATE_OBJECT), Payload: b}, nil
+		return s.createObject(ctx, m.Payload)
 	default:
 		return nil, fmt.Errorf("transactor: unknown message opcode: %v", m.Opcode)
 	}
@@ -231,11 +183,17 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 	}, nil
 }
 
-func (s *Service) queryObject(ctx context.Context, objectKey []byte) (*Object, error) {
-	if objectKey == nil {
+func (s *Service) queryObject(ctx context.Context, payload []byte) (*service.Message, error) {
+	req := &QueryObjectRequest{}
+	err := proto.Unmarshal(payload, req)
+	if err != nil {
+		return nil, fmt.Errorf("transactor: query_object unmarshaling error: %v", err)
+	}
+
+	if req.ObjectKey == nil {
 		return nil, fmt.Errorf("transactor: nil object key")
 	}
-	objects, err := GetObjects(s.store, [][]byte{objectKey})
+	objects, err := GetObjects(s.store, [][]byte{req.ObjectKey})
 	if err != nil {
 		return nil, err
 	}
@@ -243,18 +201,37 @@ func (s *Service) queryObject(ctx context.Context, objectKey []byte) (*Object, e
 		return nil, fmt.Errorf("transactor: invalid number of objects found, expected %v found %v", 1, len(objects))
 	}
 
-	return objects[0], nil
-}
-
-func (s *Service) removeObject(ctx context.Context, objectKey []byte) (*Object, error) {
-	if objectKey == nil {
-		return nil, fmt.Errorf("transactor: nil object key")
-	}
-	err := DeleteObjects(s.store, [][]byte{objectKey})
 	if err != nil {
 		return nil, err
 	}
-	objects, err := GetObjects(s.store, [][]byte{objectKey})
+	res := &QueryObjectResponse{
+		Object: objects[0],
+	}
+	b, err := proto.Marshal(res)
+	if err != nil {
+		return nil, fmt.Errorf("transactor: unable to marshal query_object response")
+	}
+	return &service.Message{
+		Opcode:  uint32(Opcode_QUERY_OBJECT),
+		Payload: b,
+	}, nil
+}
+
+func (s *Service) deleteObject(ctx context.Context, payload []byte) (*service.Message, error) {
+	req := &DeleteObjectRequest{}
+	err := proto.Unmarshal(payload, req)
+	if err != nil {
+		return nil, fmt.Errorf("transactor: remove_object unmarshaling error: %v", err)
+	}
+
+	if req.ObjectKey == nil {
+		return nil, fmt.Errorf("transactor: nil object key")
+	}
+	err = DeleteObjects(s.store, [][]byte{req.ObjectKey})
+	if err != nil {
+		return nil, err
+	}
+	objects, err := GetObjects(s.store, [][]byte{req.ObjectKey})
 	if err != nil {
 		return nil, err
 	}
@@ -262,23 +239,53 @@ func (s *Service) removeObject(ctx context.Context, objectKey []byte) (*Object, 
 		return nil, fmt.Errorf("transactor: invalid number of objects removed, expected %v found %v", 1, len(objects))
 	}
 
-	return objects[0], nil
+	if err != nil {
+		return nil, err
+	}
+	res := &DeleteObjectResponse{
+		Object: objects[0],
+	}
+	b, err := proto.Marshal(res)
+	if err != nil {
+		return nil, fmt.Errorf("transactor: unable to marshal remove_object response")
+	}
+	return &service.Message{
+		Opcode:  uint32(Opcode_DELETE_OBJECT),
+		Payload: b,
+	}, nil
 }
 
-func (s *Service) createObject(ctx context.Context, object []byte) ([]byte, error) {
-	if object == nil || len(object) <= 0 {
+func (s *Service) createObject(ctx context.Context, payload []byte) (*service.Message, error) {
+	req := &NewObjectRequest{}
+	err := proto.Unmarshal(payload, req)
+	if err != nil {
+		return nil, fmt.Errorf("transactor: new_object unmarshaling error: %v", err)
+	}
+
+	if req.Object == nil || len(req.Object) <= 0 {
 		return nil, fmt.Errorf("transactor: nil object key")
 	}
 	ch := combihash.New()
-	ch.Write([]byte(object))
+	ch.Write([]byte(req.Object))
 	key := ch.Digest()
-	log.Infof("transactor: creating new object(%v) with id(%v)", string(object), string(key))
-	o, err := CreateObject(s.store, key, object)
+	log.Infof("transactor: creating new object(%v) with id(%v)", string(req.Object), string(key))
+	o, err := CreateObject(s.store, key, req.Object)
 	if err != nil {
-		log.Infof("transactor: unable to create object(%v) with id(%v): %v", object, key, err)
+		log.Infof("transactor: unable to create object(%v) with id(%v): %v", req.Object, key, err)
 		return nil, err
 	}
-	return o.Key, nil
+
+	if err != nil {
+		return nil, err
+	}
+	res := &NewObjectResponse{
+		ID: o.Key,
+	}
+	b, err := proto.Marshal(res)
+	if err != nil {
+		return nil, fmt.Errorf("transactor: unable to marshal new_object response")
+	}
+	return &service.Message{Opcode: uint32(Opcode_CREATE_OBJECT), Payload: b}, nil
 }
 
 func (s *Service) Name() string {
