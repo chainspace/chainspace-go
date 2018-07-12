@@ -428,8 +428,7 @@ func Run(cfg *Config) (*Server, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	bcfg := &broadcast.Config{
-		BlockLimit:    int(cfg.Network.Consensus.BlockLimit),
-		RoundInterval: cfg.Network.Consensus.RoundInterval,
+		BlockLimit:    blockLimit,
 		Directory:     dir,
 		Key:           key,
 		Keys:          keys,
@@ -471,7 +470,7 @@ func Run(cfg *Config) (*Server, error) {
 		maxBackoff:      cfg.Node.Broadcast.MaxBackoff,
 		nonceExpiration: cfg.Network.Consensus.NonceExpiration,
 		nonceMap:        map[uint64][]usedNonce{},
-		payloadLimit:    int(cfg.Network.MaxPayload),
+		payloadLimit:    maxPayload,
 		readTimeout:     cfg.Node.Connections.ReadTimeout,
 		top:             top,
 		transactor:      txtor,
