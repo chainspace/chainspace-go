@@ -1,5 +1,4 @@
 package transactor // import "chainspace.io/prototype/service/transactor"
-
 import "fmt"
 
 type SBACDecisions uint8
@@ -26,21 +25,28 @@ type TxDetails struct {
 	Raw               []byte
 	Result            chan bool
 	Tx                *Transaction
+	AcceptTransaction map[uint64]SBACDecision
+	CommitTransaction map[uint64]SBACDecision
 }
 
 // Action specify an action to execute when a new event is triggered.
 // it returns a State, which will be either the new actual state, the next state
 // which may required a transition from the current state to the new one (see the transition
 // table
-type Action func(tx *TxDetails, event interface{}) (State, error)
+type Action func(tx *TxDetails, event *Event) (State, error)
 
 // Transition are called when the state is change from a current state to a new one.
 // return a State which may involved a new transition as well.
 type Transition func(tx *TxDetails) (State, error)
 
+type Event struct {
+	msg    *SBACMessage
+	peerID uint64
+}
+
 type StateMachine struct {
 	txDetails *TxDetails
-	events    chan interface{}
+	events    chan *Event
 	state     State
 	table     *StateTable
 }
@@ -53,10 +59,18 @@ func (sm *StateMachine) State() State {
 	return sm.state
 }
 
-func (sm *StateMachine) onNewEvent(event interface{}) error {
+func (sm *StateMachine) onNewEvent(event *Event) error {
 	action, ok := sm.table.actions[sm.state]
 	if !ok {
-		return fmt.Errorf("no action for specified state %v", sm.state)
+		// this may be because we received an event not related to the current state.
+		// use the generic handle for this which just store the event for now.
+		// and stay in the same state
+		action, ok := sm.table.actions[StateAnyEvent]
+		if !ok {
+			return fmt.Errorf("missing action for this state")
+		}
+		action(sm.txDetails, event)
+		return nil
 	}
 	newstate, err := action(sm.txDetails, event)
 	if err != nil {
@@ -96,13 +110,13 @@ func (sm *StateMachine) run() {
 	}
 }
 
-func (sm *StateMachine) OnEvent(e interface{}) {
+func (sm *StateMachine) OnEvent(e *Event) {
 	sm.events <- e
 }
 
 func NewStateMachine(table *StateTable, txDetails *TxDetails) *StateMachine {
 	sm := &StateMachine{
-		events:    make(chan interface{}, 100),
+		events:    make(chan *Event, 100),
 		state:     StateInitial,
 		table:     table,
 		txDetails: txDetails,

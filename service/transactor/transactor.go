@@ -34,20 +34,23 @@ type Config struct {
 	Checkers    []Checker
 	ShardSize   uint64
 	ShardCount  uint64
+	MaxPayload  int
 }
 
 type Service struct {
-	broadcaster *broadcast.Service
-	checkers    CheckersMap
-	nodeID      uint64
-	privkey     signature.PrivateKey
-	txstates    map[string]*StateMachine
-	store       *badger.DB
-	shardCount  uint64
-	shardID     uint64
-	shardSize   uint64
-	table       *StateTable
-	top         *network.Topology
+	broadcaster   *broadcast.Service
+	checkers      CheckersMap
+	conns         *ConnsCache
+	nodeID        uint64
+	privkey       signature.PrivateKey
+	txstates      map[string]*StateMachine
+	store         *badger.DB
+	shardCount    uint64
+	shardID       uint64
+	shardSize     uint64
+	table         *StateTable
+	top           *network.Topology
+	pendingEvents chan *Event
 }
 
 func (s *Service) BroadcastStart(round uint64) {
@@ -74,9 +77,42 @@ func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message)
 		return s.deleteObject(ctx, m.Payload)
 	case Opcode_CREATE_OBJECT:
 		return s.createObject(ctx, m.Payload)
+	case Opcode_SBAC:
+		return s.handleSBAC(ctx, m.Payload, peerID)
 	default:
 		return nil, fmt.Errorf("transactor: unknown message opcode: %v", m.Opcode)
 	}
+}
+
+func (s *Service) consumeEvents() {
+	for e := range s.pendingEvents {
+		sm, ok := s.txstates[string(e.msg.TransactionID)]
+		if ok {
+			log.Infof("(%v) sending new event", ID(e.msg.TransactionID))
+			sm.OnEvent(e)
+			continue
+		}
+		log.Infof("(%v) statemachine not ready", ID(e.msg.TransactionID))
+		s.pendingEvents <- e
+	}
+}
+
+func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64) (*service.Message, error) {
+	req := &SBACMessage{}
+	err := proto.Unmarshal(payload, req)
+	if err != nil {
+		return nil, fmt.Errorf("transactor: sbac unmarshaling error: %v", err)
+	}
+	sm, ok := s.txstates[string(req.TransactionID)]
+	e := &Event{msg: req, peerID: peerID}
+	if !ok {
+		log.Infof("(%v) statemachine not ready, message added to queue", ID(req.TransactionID))
+		s.pendingEvents <- e
+		return &service.Message{}, nil
+	}
+	log.Infof("(%v) sending new event", ID(req.TransactionID))
+	sm.OnEvent(e)
+	return &service.Message{}, nil
 }
 
 func (s *Service) checkTransaction(ctx context.Context, payload []byte) (*service.Message, error) {
@@ -273,7 +309,7 @@ func (s *Service) createObject(ctx context.Context, payload []byte) (*service.Me
 	ch := combihash.New()
 	ch.Write([]byte(req.Object))
 	key := ch.Digest()
-	log.Infof("transactor: creating new object(%v) with id(%v)", string(req.Object), string(key))
+	log.Infof("transactor: creating new object(%v) with id(%v)", string(req.Object), ID(key))
 	o, err := CreateObject(s.store, key, req.Object)
 	if err != nil {
 		log.Infof("transactor: unable to create object(%v) with id(%v): %v", req.Object, key, err)
@@ -334,19 +370,22 @@ func New(cfg *Config) (*Service, error) {
 	}
 
 	s := &Service{
-		broadcaster: cfg.Broadcaster,
-		checkers:    checkers,
-		nodeID:      cfg.NodeID,
-		privkey:     privkey,
-		top:         cfg.Top,
-		txstates:    map[string]*StateMachine{},
-		store:       store,
-		shardID:     cfg.Top.ShardForNode(cfg.NodeID),
-		shardCount:  cfg.ShardCount,
-		shardSize:   cfg.ShardSize,
+		broadcaster:   cfg.Broadcaster,
+		conns:         NewConnsCache(context.TODO(), cfg.Top, cfg.MaxPayload),
+		checkers:      checkers,
+		nodeID:        cfg.NodeID,
+		privkey:       privkey,
+		top:           cfg.Top,
+		txstates:      map[string]*StateMachine{},
+		store:         store,
+		shardID:       cfg.Top.ShardForNode(cfg.NodeID),
+		shardCount:    cfg.ShardCount,
+		shardSize:     cfg.ShardSize,
+		pendingEvents: make(chan *Event, 1000),
 	}
 	s.table = s.makeStateTable()
 	s.broadcaster.Register(s)
+	go s.consumeEvents()
 
 	return s, nil
 }

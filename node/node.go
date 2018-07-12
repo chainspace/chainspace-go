@@ -452,6 +452,7 @@ func Run(cfg *Config) (*Server, error) {
 		NodeID:     cfg.NodeID,
 		Top:        top,
 		SigningKey: cfg.Keys.SigningKey,
+		MaxPayload: int(cfg.Network.MaxPayload),
 	}
 	txtor, err := transactor.New(tcfg)
 	if err != nil {

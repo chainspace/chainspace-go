@@ -10,23 +10,13 @@ enum Opcode {
   QUERY_OBJECT = 3;
   CREATE_OBJECT = 4;
   DELETE_OBJECT = 5;
- }
+  SBAC = 6;
+}
 
 enum ObjectStatus {
   ACTIVE = 0;
   INACTIVE = 1;
   LOCKED = 2;
-}
-
-enum SBACStep {
-  LOCAL_PREPARED = 0;
-  SOME_PREPARED = 1;
-  ALL_PREPARED = 2;
-}
-
-enum StepStatus {
-  ABORT = 0;
-  COMMIT = 1;
 }
 
 message Transaction {
@@ -92,13 +82,6 @@ message DeleteObjectRequest {
 
 message DeleteObjectResponse {
   Object object = 1;
-}
-
-message SBACMessageRequest {
-  SBACStep step = 1;
-  StepStatus status = 2;
-  Transaction tx = 3;
-  bytes transactionID = 4 [(gogoproto.customname) = "TransactionID"];
 }
 
 message NewObjectRequest {
