@@ -385,6 +385,11 @@ func (s *Service) toSucceeded(tx *TxDetails) (State, error) {
 
 func (s *Service) toAborted(tx *TxDetails) (State, error) {
 	log.Infof("(%v) moving to state Aborted", ID(tx.ID))
+	// unlock any objects maybe related to this transaction.
+	objects, _ := s.inputObjectsForShard(s.shardID, tx.Tx)
+	if err := UnlockObjects(s.store, objects); err != nil {
+		log.Errorf("(%v) unable to unlock objects: %v", ID(tx.ID), err)
+	}
 	tx.Result <- false
 	return StateAborted, nil
 }
