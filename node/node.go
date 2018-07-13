@@ -181,7 +181,7 @@ func (s *Server) maintainBroadcast(peerID uint64) {
 			retry = true
 			continue
 		}
-		hello, err := service.BroadcastHello(s.id, peerID, s.key)
+		hello, err := service.SignHello(s.id, peerID, s.key, service.CONNECTION_BROADCAST)
 		if err != nil {
 			log.Errorf("Couldn't create Hello payload for broadcast: %s", err)
 			retry = true

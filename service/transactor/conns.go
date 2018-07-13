@@ -1,7 +1,6 @@
 package transactor
 
 import (
-	"crypto/rand"
 	"sync"
 	"time"
 
@@ -9,17 +8,16 @@ import (
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
 
-	"github.com/gogo/protobuf/proto"
 	"golang.org/x/net/context"
 )
 
 type ConnsCache struct {
 	conns      map[uint64]*network.Conn
 	ctx        context.Context
-	maxPayload int
-	mtx        *sync.Mutex
-	selfID     uint64
 	key        signature.KeyPair
+	maxPayload int
+	mu         sync.Mutex
+	selfID     uint64
 	top        *network.Topology
 }
 
@@ -32,30 +30,8 @@ func (c *ConnsCache) Close() error {
 	return nil
 }
 
-func (c *ConnsCache) helloMsg(clientID uint64, serverID uint64, key signature.KeyPair) (*service.Hello, error) {
-	nonce := make([]byte, 36)
-	if _, err := rand.Read(nonce); err != nil {
-		return nil, err
-	}
-	payload, err := proto.Marshal(&service.HelloInfo{
-		Client:    clientID,
-		Nonce:     nonce,
-		Server:    serverID,
-		Timestamp: time.Now(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &service.Hello{
-		Agent:     "go/0.0.1",
-		Payload:   payload,
-		Signature: key.Sign(payload),
-		Type:      service.CONNECTION_TRANSACTOR,
-	}, nil
-}
-
 func (c *ConnsCache) sendHello(nodeID uint64, conn *network.Conn) error {
-	hellomsg, err := c.helloMsg(c.selfID, nodeID, c.key)
+	hellomsg, err := service.SignHello(c.selfID, nodeID, c.key, service.CONNECTION_TRANSACTOR)
 	if err != nil {
 		return err
 	}
@@ -63,11 +39,12 @@ func (c *ConnsCache) sendHello(nodeID uint64, conn *network.Conn) error {
 }
 
 func (c *ConnsCache) dial(nodeID uint64) (*network.Conn, error) {
-	c.mtx.Lock()
-	if c, ok := c.conns[nodeID]; ok {
-		return c, nil
+	c.mu.Lock()
+	conn, ok := c.conns[nodeID]
+	c.mu.Unlock()
+	if ok {
+		return conn, nil
 	}
-	c.mtx.Unlock()
 	conn, err := c.top.Dial(c.ctx, nodeID)
 	if err != nil {
 		return nil, err
@@ -77,10 +54,16 @@ func (c *ConnsCache) dial(nodeID uint64) (*network.Conn, error) {
 		conn.Close()
 		return nil, err
 	}
-	c.mtx.Lock()
+	c.mu.Lock()
 	c.conns[nodeID] = conn
-	c.mtx.Unlock()
+	c.mu.Unlock()
 	return conn, nil
+}
+
+func (c *ConnsCache) release(nodeID uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.conns, nodeID)
 }
 
 func (c *ConnsCache) WriteRequest(nodeID uint64, msg *service.Message, timeout time.Duration) (uint64, error) {
@@ -88,7 +71,12 @@ func (c *ConnsCache) WriteRequest(nodeID uint64, msg *service.Message, timeout t
 	if err != nil {
 		return 0, err
 	}
-	return conn.WriteRequest(msg, c.maxPayload, timeout)
+	id, err := conn.WriteRequest(msg, c.maxPayload, timeout)
+	if err != nil {
+		c.release(nodeID)
+		return c.WriteRequest(nodeID, msg, timeout)
+	}
+	return id, err
 }
 
 func NewConnsCache(ctx context.Context, nodeID uint64, top *network.Topology, maxPayload int, key signature.KeyPair) *ConnsCache {
@@ -96,7 +84,6 @@ func NewConnsCache(ctx context.Context, nodeID uint64, top *network.Topology, ma
 		conns:      map[uint64]*network.Conn{},
 		ctx:        ctx,
 		maxPayload: maxPayload,
-		mtx:        &sync.Mutex{},
 		selfID:     nodeID,
 		top:        top,
 		key:        key,

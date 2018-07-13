@@ -17,7 +17,7 @@ type Handler interface {
 }
 
 // BroadcastHello returns a signed payload for use as a Hello in a broadcast connection.
-func BroadcastHello(clientID uint64, serverID uint64, key signature.KeyPair) (*Hello, error) {
+func SignHello(clientID uint64, serverID uint64, key signature.KeyPair, c CONNECTION) (*Hello, error) {
 	nonce := make([]byte, 36)
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, err
@@ -35,7 +35,7 @@ func BroadcastHello(clientID uint64, serverID uint64, key signature.KeyPair) (*H
 		Agent:     "go/0.0.1",
 		Payload:   payload,
 		Signature: key.Sign(payload),
-		Type:      CONNECTION_BROADCAST,
+		Type:      c,
 	}, nil
 }
 
