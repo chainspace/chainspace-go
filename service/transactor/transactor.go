@@ -35,6 +35,7 @@ type Config struct {
 	ShardSize   uint64
 	ShardCount  uint64
 	MaxPayload  int
+	Key         signature.KeyPair
 }
 
 type Service struct {
@@ -188,15 +189,9 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 	if err != nil {
 		return nil, fmt.Errorf("transactor: unable to marshal tx: %v", err)
 	}
-	txdetails := TxDetails{
-		CheckersEvidences: req.Evidences,
-		ID:                ids.TxID,
-		Raw:               rawtx,
-		Result:            make(chan bool),
-		Tx:                req.Tx,
-	}
+	txdetails := NewTxDetails(ids.TxID, rawtx, req.Tx, req.Evidences)
 
-	sm := NewStateMachine(s.table, &txdetails)
+	sm := NewStateMachine(s.table, txdetails)
 	// start the statemachine
 	s.txstates[string(txdetails.ID)] = sm
 	// send an empty event for now in order to start the transitions
@@ -312,7 +307,7 @@ func (s *Service) createObject(ctx context.Context, payload []byte) (*service.Me
 	log.Infof("transactor: creating new object(%v) with id(%v)", string(req.Object), ID(key))
 	o, err := CreateObject(s.store, key, req.Object)
 	if err != nil {
-		log.Infof("transactor: unable to create object(%v) with id(%v): %v", req.Object, key, err)
+		log.Infof("transactor: unable to create object(%v) with id(%v): %v", req.Object, ID(key), err)
 		return nil, err
 	}
 
@@ -371,7 +366,7 @@ func New(cfg *Config) (*Service, error) {
 
 	s := &Service{
 		broadcaster:   cfg.Broadcaster,
-		conns:         NewConnsCache(context.TODO(), cfg.Top, cfg.MaxPayload),
+		conns:         NewConnsCache(context.TODO(), cfg.NodeID, cfg.Top, cfg.MaxPayload, cfg.Key),
 		checkers:      checkers,
 		nodeID:        cfg.NodeID,
 		privkey:       privkey,

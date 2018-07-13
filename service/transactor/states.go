@@ -136,11 +136,11 @@ func (s *Service) onAcceptTransactionReceived(tx *TxDetails, event *Event) (Stat
 			}
 		}
 		if rejected >= tplusone(s.shardSize) {
-			log.Infof("(%v) rejected by shard(%v)", v)
+			log.Infof("(%v) rejected by shard(%v)", ID(tx.ID), v)
 			return StateAborted, nil
 		}
 		if accepted >= twotplusone(s.shardSize) {
-			log.Infof("(%v) accepted by shard(%v)", v)
+			log.Infof("(%v) accepted by shard(%v)", ID(tx.ID), v)
 			continue
 		}
 		somePending = true
@@ -229,6 +229,13 @@ func (s *Service) inputObjectsForShard(shardID uint64, tx *Transaction) (objects
 			}
 			allInShard = false
 		}
+		for _, ref := range t.InputReferencesKeys {
+			ref := ref
+			if shardID := s.top.ShardForKey(ref); shardID == s.shardID {
+				continue
+			}
+			allInShard = false
+		}
 	}
 	return
 }
@@ -292,7 +299,7 @@ func (s *Service) toRejectAcceptTransactionBroadcasted(tx *TxDetails) (State, er
 
 	err = s.sendToAllShardInvolved(tx.Tx, msg)
 	if err != nil {
-		log.Errorf("(%v) unable to sent reject transaction to all shards: %v", err)
+		log.Errorf("(%v) unable to sent reject transaction to all shards: %v", ID(tx.ID), err)
 	}
 	return StateAborted, err
 }
@@ -312,7 +319,7 @@ func (s *Service) toAcceptAcceptTransactionBroadcasted(tx *TxDetails) (State, er
 
 	err = s.sendToAllShardInvolved(tx.Tx, msg)
 	if err != nil {
-		log.Errorf("(%v) unable to sent accept transaction to all shards: %v", err)
+		log.Errorf("(%v) unable to sent accept transaction to all shards: %v", ID(tx.ID), err)
 		return StateAborted, err
 	}
 	return StateWaitingForAcceptTransaction, nil

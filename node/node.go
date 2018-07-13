@@ -107,6 +107,11 @@ func (s *Server) handleStream(stream quic.Stream) {
 		}
 	case service.CONNECTION_TRANSACTOR:
 		svc = s.transactor
+		peerID, err = s.verifyPeerID(hello)
+		if err != nil {
+			log.Errorf("Unable to verify peer ID from the hello message: %s", err)
+			return
+		}
 		log.Infof("new transactor hello nesssage")
 	default:
 		log.Errorf("Unknown connection type: %#v", hello.Type)
@@ -452,6 +457,7 @@ func Run(cfg *Config) (*Server, error) {
 		Top:        top,
 		SigningKey: cfg.Keys.SigningKey,
 		MaxPayload: int(cfg.Network.MaxPayload),
+		Key:        key,
 	}
 	txtor, err := transactor.New(tcfg)
 	if err != nil {

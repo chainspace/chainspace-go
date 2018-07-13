@@ -124,3 +124,15 @@ func NewStateMachine(table *StateTable, txDetails *TxDetails) *StateMachine {
 	go sm.run()
 	return sm
 }
+
+func NewTxDetails(txID, raw []byte, tx *Transaction, evidences map[uint64][]byte) *TxDetails {
+	return &TxDetails{
+		AcceptTransaction: map[uint64]SBACDecision{},
+		CheckersEvidences: evidences,
+		ID:                txID,
+		Raw:               raw,
+		Result:            make(chan bool),
+		Tx:                tx,
+		CommitTransaction: map[uint64]SBACDecision{},
+	}
+}

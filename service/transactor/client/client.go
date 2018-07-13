@@ -108,7 +108,7 @@ func New(cfg *Config) (Client, error) {
 		return nil, err
 	}
 	topology.BootstrapMDNS()
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(1 * time.Second)
 
 	return &client{
 		maxPaylod: cfg.NetworkConfig.MaxPayload,
@@ -143,19 +143,30 @@ func (c *client) dialNodesForTransaction(t *ClientTransaction) error {
 	return c.dialNodes(shardIDs)
 }
 
-func (c *client) dialNodes(shardIDs map[uint64]struct{}) error {
+func (c *client) dialUntil(shardID uint64, nodes []uint64) error {
 	ctx := context.TODO()
+	retry := []uint64{}
+	for _, n := range nodes {
+		conn, err := c.top.Dial(ctx, n)
+		if err != nil {
+			log.Errorf("transactor client: unable to connect to shard(%v)->node(%v): %v", shardID, n, err)
+			retry = append(retry, n)
+		} else {
+			c.nodesConn[shardID] = append(c.nodesConn[shardID], NodeIDConnPair{n, conn})
+		}
+
+	}
+	if len(retry) == 0 {
+		return nil
+	}
+	time.Sleep(100 * time.Millisecond)
+	return c.dialUntil(shardID, retry)
+}
+
+func (c *client) dialNodes(shardIDs map[uint64]struct{}) error {
 	for k, _ := range shardIDs {
 		c.nodesConn[k] = []NodeIDConnPair{}
-		for _, n := range c.top.NodesInShard(k) {
-			conn, err := c.top.Dial(ctx, n)
-			if err != nil {
-				log.Errorf("transactor client: unable to connect to shard(%v)->node(%v): %v", n, k, err)
-
-			} else {
-				c.nodesConn[k] = append(c.nodesConn[k], NodeIDConnPair{n, conn})
-			}
-		}
+		c.dialUntil(k, c.top.NodesInShard(k))
 	}
 	return nil
 }
@@ -190,8 +201,11 @@ func (c *client) checkTransaction(t *transactor.Transaction) (map[uint64][]byte,
 		Opcode:  uint32(transactor.Opcode_CHECK_TRANSACTION),
 		Payload: txbytes,
 	}
+	mtx := &sync.Mutex{}
 	evidences := map[uint64][]byte{}
 	f := func(s, n uint64, msg *service.Message) error {
+		mtx.Lock()
+		defer mtx.Unlock()
 		res := transactor.CheckTransactionResponse{}
 		err = proto.Unmarshal(msg.Payload, &res)
 		if err != nil {
@@ -335,6 +349,7 @@ func (c *client) Delete(key []byte) error {
 func (c *client) sendMessages(msg *service.Message, f func(uint64, uint64, *service.Message) error) error {
 	wg := &sync.WaitGroup{}
 	for s, nc := range c.nodesConn {
+		s := s
 		for _, v := range nc {
 			v := v
 			wg.Add(1)
