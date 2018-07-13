@@ -1,7 +1,6 @@
 FILES=	service/types.proto\
 	service/broadcast/types.proto\
-	service/transactor/types.proto\
-	service/transactor/sbac.proto
+	service/transactor/types.proto
 
 install: ## install the chainspace binary
 	go install chainspace.io/prototype/cmd/chainspace

@@ -100,6 +100,9 @@ func (s *Service) genBlocks() {
 	// exact semantics we want.
 	tick := time.NewTicker(s.interval)
 	total := 0
+	if s.cb != nil {
+		s.cb.BroadcastStart(round)
+	}
 	for {
 		select {
 		case ref := <-s.refs:
@@ -121,12 +124,19 @@ func (s *Service) genBlocks() {
 				total += tx.Size()
 				if total < s.blockLimit {
 					txs = append(txs, tx)
+					if tx := entry.GetTransaction(); tx != nil {
+						s.cb.BroadcastTransaction(tx)
+					}
+					entries = append(entries, entry)
 				} else {
 					atLimit = true
 					pendingTxs = append(pendingTxs, tx)
 				}
 			}
 		case <-tick.C:
+			if s.cb != nil {
+				s.cb.BroadcastEnd(round)
+			}
 			round++
 			block.Previous = s.previous
 			block.References = refs
@@ -198,6 +208,9 @@ func (s *Service) genBlocks() {
 					}
 				}
 				pendingTxs = npendingTxs
+			}
+			if s.cb != nil {
+				s.cb.BroadcastStart(round)
 			}
 		case <-s.ctx.Done():
 			tick.Stop()

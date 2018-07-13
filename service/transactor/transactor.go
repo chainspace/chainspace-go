@@ -55,15 +55,30 @@ type Service struct {
 }
 
 func (s *Service) BroadcastStart(round uint64) {
-	log.Infof("broadcast start: %v", round)
+	log.Infof("BROADCAST START: %v", round)
 }
 
 func (s *Service) BroadcastTransaction(txdata *broadcast.TransactionData) {
-	log.Infof("broadcast transaction")
+	// TODO(): do stuff with the fee?
+	ctx := &ConsensusTransaction{}
+	err := proto.Unmarshal(txdata.Data, ctx)
+	if err != nil {
+		log.Errorf("unable to unmarshal transaction data")
+	}
+	e := &Event{
+		msg: &SBACMessage{
+			Op:                   SBACOpcode_NEW_TRANSACTION,
+			Decision:             SBACDecision_ACCEPT,
+			TransactionID:        ctx.ID,
+			ConsensusTransaction: ctx,
+		},
+		peerID: ctx.PeerID,
+	}
+	s.pendingEvents <- e
 }
 
 func (s *Service) BroadcastEnd(round uint64) {
-	log.Infof("broadcast end: %v", round)
+	log.Infof("BROADCAST END: %v", round)
 }
 
 func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message) (*service.Message, error) {
@@ -104,15 +119,8 @@ func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64)
 	if err != nil {
 		return nil, fmt.Errorf("transactor: sbac unmarshaling error: %v", err)
 	}
-	sm, ok := s.txstates[string(req.TransactionID)]
 	e := &Event{msg: req, peerID: peerID}
-	if !ok {
-		log.Infof("(%v) statemachine not ready, message added to queue", ID(req.TransactionID))
-		s.pendingEvents <- e
-		return &service.Message{}, nil
-	}
-	log.Infof("(%v) sending new event", ID(req.TransactionID))
-	sm.OnEvent(e)
+	s.pendingEvents <- e
 	return &service.Message{}, nil
 }
 
@@ -194,10 +202,25 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 	sm := NewStateMachine(s.table, txdetails)
 	// start the statemachine
 	s.txstates[string(txdetails.ID)] = sm
-	// send an empty event for now in order to start the transitions
-	sm.OnEvent(nil)
-	txres := <-txdetails.Result
 
+	// send an empty event for now in order to start the transitions
+	// sm.OnEvent(nil)
+
+	// broadcast transaction
+	consensusTx := &ConsensusTransaction{
+		Tx:        req.Tx,
+		ID:        ids.TxID,
+		Evidences: req.Evidences,
+		PeerID:    s.nodeID,
+	}
+	b, err := proto.Marshal(consensusTx)
+	if err != nil {
+		return nil, fmt.Errorf("transactor: unable to marshal consensus tx: %v", err)
+	}
+	s.broadcaster.AddTransaction(&broadcast.TransactionData{Data: b})
+
+	// block here while the statemachine does its job
+	txres := <-txdetails.Result
 	if !txres {
 		return nil, errors.New("unable to execute the transaction")
 	}
@@ -205,9 +228,7 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 		Objects: objects,
 	}
 
-	// block here while the statemachine does its job
-
-	b, err := proto.Marshal(res)
+	b, err = proto.Marshal(res)
 	if err != nil {
 		return nil, fmt.Errorf("transactor: unable to marshal add_transaction response")
 	}

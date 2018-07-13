@@ -91,3 +91,30 @@ message NewObjectRequest {
 message NewObjectResponse {
   bytes id = 1 [(gogoproto.customname) = "ID"];
 }
+
+// SBAC
+
+enum SBACOpcode {
+  ACCEPT_TRANSACTION = 0;
+  COMMIT_TRANSACTION = 1;
+  NEW_TRANSACTION = 2;
+}
+
+enum SBACDecision {
+  ACCEPT = 0;
+  REJECT = 1;
+}
+
+message SBACMessage {
+  SBACOpcode op = 1;
+  SBACDecision decision = 2;
+  bytes transactionID = 3 [(gogoproto.customname) = "TransactionID"];  bytes payload = 4;
+  ConsensusTransaction consensusTransaction = 5;
+}
+
+message ConsensusTransaction {
+  Transaction tx = 1;
+  bytes id = 2 [(gogoproto.customname) = "ID"];
+  map<uint64, bytes> evidences = 3;
+  uint64 peerID = 4;
+}

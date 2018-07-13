@@ -1,14 +1,15 @@
 package transactor // import "chainspace.io/prototype/service/transactor"
+
 import (
 	"errors"
 	"fmt"
 	"hash/fnv"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
-
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/service"
+
+	"github.com/gogo/protobuf/proto"
 )
 
 type State uint8
@@ -79,11 +80,13 @@ func (s *Service) onAnyEvent(tx *TxDetails, event *Event) (State, error) {
 	}
 	switch event.msg.Op {
 	case SBACOpcode_ACCEPT_TRANSACTION:
-		log.Infof("(%v) received %v for ACCEPT_TRANSITION from node %v", ID(tx.ID), SBACDecision_name[int32(event.msg.Decision)], event.peerID)
+		log.Infof("(%v) received %v for ACCEPT_TRANSACTION from node %v", ID(tx.ID), SBACDecision_name[int32(event.msg.Decision)], event.peerID)
 		tx.AcceptTransaction[event.peerID] = event.msg.Decision
 	case SBACOpcode_COMMIT_TRANSACTION:
-		log.Infof("(%v) received %v for COMMIT_TRANSITION from node %v", ID(tx.ID), SBACDecision_name[int32(event.msg.Decision)], event.peerID)
+		log.Infof("(%v) received %v for COMMIT_TRANSACTION from node %v", ID(tx.ID), SBACDecision_name[int32(event.msg.Decision)], event.peerID)
 		tx.AcceptTransaction[event.peerID] = event.msg.Decision
+	case SBACOpcode_NEW_TRANSACTION:
+		log.Infof("(%v) received %v for NEW_TRANSACTION from node %v", ID(tx.ID), SBACDecision_name[int32(event.msg.Decision)], event.peerID)
 	default:
 	}
 	return StateAnyEvent, nil

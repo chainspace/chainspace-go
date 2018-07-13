@@ -20,13 +20,14 @@ type StateTransition struct {
 }
 
 type TxDetails struct {
-	CheckersEvidences map[uint64][]byte
-	ID                []byte
-	Raw               []byte
-	Result            chan bool
-	Tx                *Transaction
-	AcceptTransaction map[uint64]SBACDecision
-	CommitTransaction map[uint64]SBACDecision
+	CheckersEvidences         map[uint64][]byte
+	ID                        []byte
+	Raw                       []byte
+	Result                    chan bool
+	Tx                        *Transaction
+	AcceptTransaction         map[uint64]SBACDecision
+	CommitTransaction         map[uint64]SBACDecision
+	NewTransactionAlreadySeen bool
 }
 
 // Action specify an action to execute when a new event is triggered.
