@@ -127,7 +127,7 @@ func (c *client) Close() {
 	}
 }
 
-func (c *client) dialNodesForTransaction(t *ClientTransaction) error {
+func (c *client) dialNodesForTransaction(t *transactor.Transaction) error {
 	shardIDs := map[uint64]struct{}{}
 	// for each input object / reference, send the transaction.
 	for _, trace := range t.Traces {
@@ -257,13 +257,13 @@ func (c *client) addTransaction(t *transactor.Transaction) error {
 }
 
 func (c *client) SendTransaction(t *ClientTransaction) error {
-	if err := c.dialNodesForTransaction(t); err != nil {
+	tx := t.ToTransaction()
+	if err := c.dialNodesForTransaction(tx); err != nil {
 		return err
 	}
 	if err := c.helloNodes(); err != nil {
 		return err
 	}
-	tx := t.ToTransaction()
 	evidences, err := c.checkTransaction(tx)
 	if err != nil {
 		return err
