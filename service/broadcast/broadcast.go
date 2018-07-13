@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"chainspace.io/prototype/combihash"
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/network"
@@ -37,101 +38,165 @@ type Callback interface {
 
 // Config for the broadcast service.
 type Config struct {
-	BlockLimit    int
-	Directory     string
-	Key           signature.KeyPair
-	Keys          map[uint64]signature.PublicKey
-	NodeID        uint64
-	Peers         []uint64
-	RoundInterval time.Duration
+	BlockLimit     int
+	Directory      string
+	Key            signature.KeyPair
+	Keys           map[uint64]signature.PublicKey
+	InitialBackoff time.Duration
+	MaxBackoff     time.Duration
+	MaxPayload     int
+	NodeID         uint64
+	Peers          []uint64
+	ReadTimeout    time.Duration
+	RoundInterval  time.Duration
+	WriteTimeout   time.Duration
 }
 
 // Service implements the broadcast and consensus system.
 type Service struct {
-	blocks     map[uint64]*SignedBlock
-	blockLimit int
-	cb         Callback
-	ctx        context.Context
-	db         *badger.DB
-	entries    chan *Entry
-	interval   time.Duration
-	key        signature.KeyPair
-	keys       map[uint64]signature.PublicKey
-	mu         sync.RWMutex // protects blocks, previous, round, sent, signal
-	nodeID     uint64
-	peers      []uint64
-	previous   []byte
-	round      uint64
-	sent       map[uint64]uint64
-	signal     chan struct{}
-	top        *network.Topology
+	blockLimit     int
+	cb             Callback
+	ctx            context.Context
+	db             *badger.DB
+	initialBackoff time.Duration
+	interval       time.Duration
+	key            signature.KeyPair
+	keys           map[uint64]signature.PublicKey
+	lru            *lru
+	maxBackoff     time.Duration
+	maxPayload     int
+	mu             sync.RWMutex // protects previous, round, sent, signal
+	nodeID         uint64
+	peers          []uint64
+	previous       []byte
+	readTimeout    time.Duration
+	refs           chan *BlockReference
+	round          uint64
+	sent           map[uint64]uint64
+	signal         chan struct{}
+	top            *network.Topology
+	txs            chan *TransactionData
+	writeTimeout   time.Duration
 }
 
 func (s *Service) genBlocks() {
 	var (
-		entries []*Entry
-		pending []*Entry
+		atLimit     bool
+		pendingRefs []*BlockReference
+		pendingTxs  []*TransactionData
+		refs        []*BlockReference
+		txs         []*TransactionData
 	)
+	block := &Block{
+		Node: s.nodeID,
+	}
+	hasher := combihash.New()
+	rootRef := &BlockReference{
+		Node: s.nodeID,
+	}
+	round := s.round
 	// TODO(tav): time.Ticker's behaviour around slow receivers may not be the
 	// exact semantics we want.
 	tick := time.NewTicker(s.interval)
-	round := s.round
 	total := 0
 	for {
 		select {
-		case entry := <-s.entries:
-			if len(pending) > 0 {
-				pending = append(pending, entry)
+		case ref := <-s.refs:
+			if atLimit {
+				pendingRefs = append(pendingRefs, ref)
 			} else {
-				total += entry.Size()
+				total += ref.Size()
 				if total < s.blockLimit {
-					entries = append(entries, entry)
+					refs = append(refs, ref)
 				} else {
-					pending = append(pending, entry)
+					atLimit = true
+					pendingRefs = append(pendingRefs, ref)
+				}
+			}
+		case tx := <-s.txs:
+			if atLimit {
+				pendingTxs = append(pendingTxs, tx)
+			} else {
+				total += tx.Size()
+				if total < s.blockLimit {
+					txs = append(txs, tx)
+				} else {
+					atLimit = true
+					pendingTxs = append(pendingTxs, tx)
 				}
 			}
 		case <-tick.C:
 			round++
-			block := &Block{
-				Entries:  entries,
-				Node:     s.nodeID,
-				Number:   round,
-				Previous: s.previous,
-			}
+			block.Previous = s.previous
+			block.References = refs
+			block.Round = round
+			block.Transactions = txs
 			data, err := proto.Marshal(block)
 			if err != nil {
-				log.Fatalf("Got unexpected error encoding block: %s", err)
+				log.Fatalf("Got unexpected error encoding latest block: %s", err)
 			}
-			signed := &SignedBlock{
+			if _, err := hasher.Write(data); err != nil {
+				log.Fatalf("Could not hash encoded block: %s", err)
+			}
+			hash := hasher.Digest()
+			rootRef.Hash = hash
+			rootRef.Round = round
+			refData, err := proto.Marshal(rootRef)
+			if err != nil {
+				log.Fatalf("Got unexpected error encoding latest block reference: %s", err)
+			}
+			signed := &SignedData{
 				Data:      data,
-				Signature: s.key.Sign(data),
+				Signature: s.key.Sign(refData),
 			}
-			s.previous = signed.Digest()
+			s.previous = hash
+			hasher.Reset()
 			signal := s.signal
+			s.setBlock(s.nodeID, round, &blockInfo{
+				block: signed,
+				hash:  hash,
+			})
 			s.mu.Lock()
-			s.blocks[block.Number] = signed
 			s.round = round
 			s.signal = make(chan struct{})
 			s.mu.Unlock()
 			close(signal)
-			log.Infof("Created block %d", block.Number)
-			entries = nil
+			log.Infof("Created block %d", block.Round)
+			if round%100 == 0 {
+				s.lru.evict(len(s.peers) * 100)
+			}
+			txs = nil
 			total = 0
-			if len(pending) > 0 {
-				var npending []*Entry
-				for _, entry := range pending {
-					if len(npending) > 0 {
-						npending = append(npending, entry)
+			if len(pendingTxs) > 0 {
+				var (
+					npendingRefs []*BlockReference
+					npendingTxs  []*TransactionData
+				)
+				for _, ref := range pendingRefs {
+					if len(npendingTxs) > 0 {
+						npendingRefs = append(npendingRefs, ref)
 					} else {
-						total += entry.Size()
+						total += ref.Size()
 						if total < s.blockLimit {
-							entries = append(entries, entry)
+							refs = append(refs, ref)
 						} else {
-							npending = append(npending, entry)
+							npendingRefs = append(npendingRefs, ref)
 						}
 					}
 				}
-				pending = npending
+				for _, tx := range pendingTxs {
+					if len(npendingTxs) > 0 {
+						npendingTxs = append(npendingTxs, tx)
+					} else {
+						total += tx.Size()
+						if total < s.blockLimit {
+							txs = append(txs, tx)
+						} else {
+							npendingTxs = append(npendingTxs, tx)
+						}
+					}
+				}
+				pendingTxs = npendingTxs
 			}
 		case <-s.ctx.Done():
 			tick.Stop()
@@ -143,31 +208,67 @@ func (s *Service) genBlocks() {
 	}
 }
 
+func (s *Service) getBlockInfo(nodeID uint64, round uint64) *blockInfo {
+	return s.lru.get(blockPointer{nodeID, round})
+}
+
+// getUnsent returns a slice of unsent blocks for the given peer. If it looks
+// like the peer is up-to-date, then the call blocks until a new block is
+// available.
+func (s *Service) getUnsent(peerID uint64) ([]*SignedData, uint64) {
+	for {
+		s.mu.RLock()
+		cur := s.round
+		last := s.sent[peerID] + 1
+		if cur >= last {
+			blocks := []*SignedData{}
+			total := 0
+			for i := last; i <= cur; i++ {
+				info := s.getBlockInfo(s.nodeID, i)
+				total += len(info.block.Data) + len(info.block.Signature) + 100
+				if total > s.blockLimit {
+					if i == last {
+						panic(fmt.Sprintf("broadcast: size of individual block(%v) exceeds max payload size(%v)", total, s.blockLimit))
+					}
+					s.mu.RUnlock()
+					return blocks, i - 1
+				}
+				blocks = append(blocks, info.block)
+			}
+			s.mu.RUnlock()
+			return blocks, cur
+		}
+		signal := s.signal
+		s.mu.RUnlock()
+		select {
+		case <-signal:
+		case <-s.ctx.Done():
+			return nil, 0
+		}
+	}
+}
+
 func (s *Service) handleBlocksRequest(peerID uint64, msg *service.Message) (*service.Message, error) {
 	req := &BlocksRequest{}
 	if err := proto.Unmarshal(msg.Payload, req); err != nil {
 		return nil, err
 	}
-	blocks := make([]*SignedBlock, len(req.Blocks))
+	blocks := make([]*SignedData, len(req.Blocks))
 	for idx, ref := range req.Blocks {
-		// TODO(tav): For now, only deal with blocks created by ourselves.
-		if ref.Node != s.nodeID {
-			return nil, fmt.Errorf("broadcast: received blocks request for block created by node %d", ref.Node)
-		}
-		s.mu.RLock()
-		block, exists := s.blocks[ref.Number]
-		s.mu.RUnlock()
-		if !exists {
+		info := s.getBlockInfo(ref.Node, ref.Round)
+		if info == nil {
 			blocks[idx] = nil
-			log.Errorf("Got request from node %d for unknown block %d", peerID, ref.Number)
+			log.Errorf("Got request from node %d for unknown block %d", peerID, ref.Round)
 			continue
 		}
-		if !bytes.Equal(block.Digest(), ref.Hash) {
-			blocks[idx] = nil
-			log.Errorf("Got request from node %d for block %d with a bad hash", peerID, ref.Number)
-			continue
+		if len(ref.Hash) > 0 {
+			if !bytes.Equal(info.hash, ref.Hash) {
+				blocks[idx] = nil
+				log.Errorf("Got request from node %d for block %d with a bad hash", peerID, ref.Round)
+				continue
+			}
 		}
-		blocks[idx] = block
+		blocks[idx] = info.block
 	}
 	data, err := proto.Marshal(&Listing{
 		Blocks: blocks,
@@ -196,7 +297,6 @@ func (s *Service) handleListing(peerID uint64, msg *service.Message) error {
 
 func (s *Service) loadState() {
 	// TODO(tav): Load these from a filestore-backed DB.
-	s.blocks = map[uint64]*SignedBlock{}
 	s.previous = genesis
 	s.round = 0
 	s.sent = map[uint64]uint64{}
@@ -206,7 +306,79 @@ func (s *Service) loadState() {
 	s.signal = make(chan struct{})
 }
 
-func (s *Service) processBlock(signed *SignedBlock) error {
+func (s *Service) maintainBroadcast(peerID uint64) {
+	var (
+		blocks []*SignedData
+		round  uint64
+	)
+	backoff := s.initialBackoff
+	msg := &service.Message{Opcode: uint32(OP_LISTING)}
+	listing := &Listing{}
+	retry := false
+	for {
+		if retry {
+			backoff *= 2
+			if backoff > s.maxBackoff {
+				backoff = s.maxBackoff
+			}
+			time.Sleep(backoff)
+			retry = false
+		}
+		select {
+		case <-s.ctx.Done():
+			return
+		default:
+		}
+		conn, err := s.top.Dial(s.ctx, peerID)
+		if err == nil {
+			backoff = s.initialBackoff
+		} else {
+			log.Errorf("Couldn't dial node %d: %s", peerID, err)
+			retry = true
+			continue
+		}
+		hello, err := service.SignHello(s.nodeID, peerID, s.key, service.CONNECTION_BROADCAST)
+		if err != nil {
+			log.Errorf("Couldn't create Hello payload for broadcast: %s", err)
+			retry = true
+			continue
+		}
+		if err = conn.WritePayload(hello, s.maxPayload, s.writeTimeout); err != nil {
+			log.Errorf("Couldn't send Hello to node %d: %s", peerID, err)
+			retry = true
+			continue
+		}
+		for {
+			if len(blocks) == 0 {
+				blocks, round = s.getUnsent(peerID)
+				if blocks == nil {
+					return
+				}
+			}
+			listing.Blocks = blocks
+			msg.Payload, err = proto.Marshal(listing)
+			if err != nil {
+				log.Fatalf("Could not encode listing for broadcast: %s", err)
+			}
+			if err = conn.WritePayload(msg, s.maxPayload, s.writeTimeout); err != nil {
+				log.Errorf("Could not write listing to node %d for broadcast: %s", peerID, err)
+				retry = true
+				break
+			}
+			s.markSent(peerID, round)
+			blocks = nil
+		}
+	}
+}
+
+// markSent marks the given round as being sent to the peer in the shard.
+func (s *Service) markSent(peerID uint64, round uint64) {
+	s.mu.Lock()
+	s.sent[peerID] = round
+	s.mu.Unlock()
+}
+
+func (s *Service) processBlock(signed *SignedData) error {
 	block := &Block{}
 	if err := proto.Unmarshal(signed.Data, block); err != nil {
 		return err
@@ -215,11 +387,29 @@ func (s *Service) processBlock(signed *SignedBlock) error {
 	if !exists {
 		return fmt.Errorf("broadcast: unable to find signing.key for node %d", block.Node)
 	}
-	if !key.Verify(signed.Data, signed.Signature) {
-		return fmt.Errorf("broadcast: unable to verify signature for block %d from node %d", block.Number, block.Node)
+	hasher := combihash.New()
+	if _, err := hasher.Write(signed.Data); err != nil {
+		return fmt.Errorf("broadcast: unable to hash received signed block data: %s", err)
 	}
-	log.Infof("Received block %d from node %d", block.Number, block.Node)
+	hash := hasher.Digest()
+	ref := &BlockReference{
+		Hash:  hash,
+		Node:  block.Node,
+		Round: block.Round,
+	}
+	enc, err := proto.Marshal(ref)
+	if err != nil {
+		return fmt.Errorf("broadcast: unable to encode block reference: %s", err)
+	}
+	if !key.Verify(enc, signed.Signature) {
+		return fmt.Errorf("broadcast: unable to verify signature for block %d from node %d", block.Round, block.Node)
+	}
+	log.Infof("Received block %d from node %d", block.Round, block.Node)
 	return nil
+}
+
+func (s *Service) setBlock(nodeID uint64, round uint64, info *blockInfo) {
+	s.lru.set(blockPointer{nodeID, round}, info)
 }
 
 // Acknowledge should be called by BroadcastEnd in the registered Callback to
@@ -232,43 +422,7 @@ func (s *Service) Acknowledge(round uint64) {
 // the current block. Register should be used to register a Callback before any
 // AddTransaction calls are made.
 func (s *Service) AddTransaction(txdata *TransactionData) {
-	s.entries <- &Entry{Value: &Entry_Transaction{txdata}}
-}
-
-// GetUnsent returns a slice of unsent blocks for the given peer. If it looks
-// like the peer is up-to-date, then the call blocks until a new block is
-// available.
-func (s *Service) GetUnsent(peerID uint64) ([]*SignedBlock, uint64) {
-	for {
-		s.mu.RLock()
-		cur := s.round
-		last := s.sent[peerID] + 1
-		if cur >= last {
-			blocks := []*SignedBlock{}
-			total := 0
-			for i := last; i <= cur; i++ {
-				block := s.blocks[i]
-				total += len(block.Data) + len(block.Signature) + 100
-				if total > s.blockLimit {
-					if i == last {
-						panic(fmt.Sprintf("broadcast: size of individual block(%v) exceeds max payload size(%v)", total, s.blockLimit))
-					}
-					s.mu.RUnlock()
-					return blocks, i - 1
-				}
-				blocks = append(blocks, block)
-			}
-			s.mu.RUnlock()
-			return blocks, cur
-		}
-		signal := s.signal
-		s.mu.RUnlock()
-		select {
-		case <-signal:
-		case <-s.ctx.Done():
-			return nil, 0
-		}
-	}
+	s.txs <- txdata
 }
 
 // Handle implements the service Handler interface for handling messages
@@ -282,13 +436,6 @@ func (s *Service) Handle(ctx context.Context, peerID uint64, msg *service.Messag
 	default:
 		return nil, fmt.Errorf("broadcast: unknown message opcode: %d", msg.Opcode)
 	}
-}
-
-// MarkSent marks the given round as being sent to the peer in the shard.
-func (s *Service) MarkSent(peerID uint64, round uint64) {
-	s.mu.Lock()
-	s.sent[peerID] = round
-	s.mu.Unlock()
 }
 
 // Name specifies the name of the service for use in debugging service handlers.
@@ -313,19 +460,32 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 	if err != nil {
 		return nil, err
 	}
+	lru := &lru{
+		data: map[blockPointer]*blockInfoContainer{},
+	}
 	s := &Service{
-		blockLimit: cfg.BlockLimit,
-		db:         db,
-		ctx:        ctx,
-		entries:    make(chan *Entry, 10000),
-		interval:   cfg.RoundInterval,
-		key:        cfg.Key,
-		keys:       cfg.Keys,
-		nodeID:     cfg.NodeID,
-		peers:      cfg.Peers,
-		top:        top,
+		blockLimit:     cfg.BlockLimit,
+		db:             db,
+		ctx:            ctx,
+		interval:       cfg.RoundInterval,
+		key:            cfg.Key,
+		keys:           cfg.Keys,
+		initialBackoff: cfg.InitialBackoff,
+		lru:            lru,
+		maxBackoff:     cfg.MaxBackoff,
+		maxPayload:     cfg.MaxPayload,
+		nodeID:         cfg.NodeID,
+		peers:          cfg.Peers,
+		readTimeout:    cfg.ReadTimeout,
+		refs:           make(chan *BlockReference, 10000),
+		top:            top,
+		txs:            make(chan *TransactionData, 10000),
+		writeTimeout:   cfg.WriteTimeout,
 	}
 	s.loadState()
 	go s.genBlocks()
+	for _, peer := range cfg.Peers {
+		go s.maintainBroadcast(peer)
+	}
 	return s, nil
 }

@@ -1,27 +1,11 @@
 package broadcast
 
-import (
-	"chainspace.io/prototype/combihash"
-)
-
-// Size returns the rough size of the entry in bytes.
-func (e *Entry) Size() int {
-	switch e := e.Value.(type) {
-	case *Entry_Block:
-		return len(e.Block.Hash) + 100
-	case *Entry_Transaction:
-		return len(e.Transaction.Data) + 100
-	default:
-		panic("broadcast: unknown Entry type")
-	}
+// Size returns the rough size of a BlockReference in bytes.
+func (b *BlockReference) Size() int {
+	return len(b.Hash) + 100
 }
 
-// Digest returns the combihash of the signed block.
-func (s *SignedBlock) Digest() []byte {
-	h := combihash.New()
-	_, err := h.Write(s.Data)
-	if err != nil {
-		panic(err)
-	}
-	return h.Digest()
+// Size returns the rough size of the TransactionData in bytes.
+func (t *TransactionData) Size() int {
+	return len(t.Data) + 100
 }

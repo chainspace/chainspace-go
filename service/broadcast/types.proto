@@ -11,30 +11,23 @@ enum OP {
 
 message Block {
   uint64 node = 1;
-  uint64 number = 2;
-  uint64 round = 3;
-  repeated Entry entries = 4;
-  bytes previous = 5;
+  bytes previous = 2;
+  repeated BlockReference references = 3;
+  uint64 round = 4;
+  repeated TransactionData transactions = 5;
 }
 
 message BlockReference {
-  uint64 node = 1;
-  uint64 number = 2;
-  bytes hash = 3;
+  bytes hash = 1;
+  uint64 node = 2;
+  uint64 round = 3;
 }
 
 message BlocksRequest { repeated BlockReference blocks = 1; }
 
-message Entry {
-  oneof value {
-    BlockReference block = 1;
-    TransactionData transaction = 2;
-  }
-}
+message Listing { repeated SignedData blocks = 1; }
 
-message Listing { repeated SignedBlock blocks = 1; }
-
-message SignedBlock {
+message SignedData {
   bytes data = 1;
   bytes signature = 2;
 }

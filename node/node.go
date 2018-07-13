@@ -59,15 +59,13 @@ type Server struct {
 	cancel          context.CancelFunc
 	ctx             context.Context
 	id              uint64
-	initialBackoff  time.Duration
 	key             signature.KeyPair
 	keys            map[uint64]signature.PublicKey
 	readTimeout     time.Duration
-	maxBackoff      time.Duration
+	maxPayload      int
 	mu              sync.RWMutex // protects nonceMap
 	nonceExpiration time.Duration
 	nonceMap        map[uint64][]usedNonce
-	payloadLimit    int
 	sharder         service.Handler
 	top             *network.Topology
 	transactor      service.Handler
@@ -88,7 +86,7 @@ func (s *Server) handleConnection(conn quic.Session) {
 func (s *Server) handleStream(stream quic.Stream) {
 	defer stream.Close()
 	c := network.NewConn(stream)
-	hello, err := c.ReadHello(s.payloadLimit, s.readTimeout)
+	hello, err := c.ReadHello(s.maxPayload, s.readTimeout)
 	if err != nil {
 		log.Errorf("Unable to read hello message from stream: %s", err)
 		return
@@ -119,7 +117,7 @@ func (s *Server) handleStream(stream quic.Stream) {
 	}
 	ctx := stream.Context()
 	for {
-		msg, err := c.ReadMessage(s.payloadLimit, s.readTimeout)
+		msg, err := c.ReadMessage(s.maxPayload, s.readTimeout)
 		if err != nil {
 			log.Errorf("Could not decode message from an incoming stream: %s", err)
 			return
@@ -130,7 +128,7 @@ func (s *Server) handleStream(stream quic.Stream) {
 			return
 		}
 		if resp != nil {
-			if err = c.WritePayload(resp, s.payloadLimit, s.writeTimeout); err != nil {
+			if err = c.WritePayload(resp, s.maxPayload, s.writeTimeout); err != nil {
 				log.Errorf("Unable to write response to peer %d: %s", peerID, err)
 				return
 			}
@@ -147,71 +145,6 @@ func (s *Server) listen(l quic.Listener) {
 			log.Fatalf("node: could not accept new connections: %s", err)
 		}
 		go s.handleConnection(conn)
-	}
-}
-
-func (s *Server) maintainBroadcast(peerID uint64) {
-	var (
-		blocks []*broadcast.SignedBlock
-		round  uint64
-	)
-	backoff := s.initialBackoff
-	msg := &service.Message{Opcode: uint32(broadcast.OP_LISTING)}
-	listing := &broadcast.Listing{}
-	retry := false
-	for {
-		if retry {
-			backoff *= 2
-			if backoff > s.maxBackoff {
-				backoff = s.maxBackoff
-			}
-			time.Sleep(backoff)
-			retry = false
-		}
-		select {
-		case <-s.ctx.Done():
-			return
-		default:
-		}
-		conn, err := s.top.Dial(s.ctx, peerID)
-		if err == nil {
-			backoff = s.initialBackoff
-		} else {
-			log.Errorf("Couldn't dial node %d: %s", peerID, err)
-			retry = true
-			continue
-		}
-		hello, err := service.SignHello(s.id, peerID, s.key, service.CONNECTION_BROADCAST)
-		if err != nil {
-			log.Errorf("Couldn't create Hello payload for broadcast: %s", err)
-			retry = true
-			continue
-		}
-		if err = conn.WritePayload(hello, s.payloadLimit, s.writeTimeout); err != nil {
-			log.Errorf("Couldn't send Hello to node %d: %s", peerID, err)
-			retry = true
-			continue
-		}
-		for {
-			if len(blocks) == 0 {
-				blocks, round = s.broadcaster.GetUnsent(peerID)
-				if blocks == nil {
-					return
-				}
-			}
-			listing.Blocks = blocks
-			msg.Payload, err = proto.Marshal(listing)
-			if err != nil {
-				log.Fatalf("Could not encode listing for broadcast: %s", err)
-			}
-			if err = conn.WritePayload(msg, s.payloadLimit, s.writeTimeout); err != nil {
-				log.Errorf("Could not write listing to node %d for broadcast: %s", peerID, err)
-				retry = true
-				break
-			}
-			s.broadcaster.MarkSent(peerID, round)
-			blocks = nil
-		}
 	}
 }
 
@@ -433,13 +366,18 @@ func Run(cfg *Config) (*Server, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	bcfg := &broadcast.Config{
-		BlockLimit:    blockLimit,
-		Directory:     dir,
-		Key:           key,
-		Keys:          keys,
-		NodeID:        cfg.NodeID,
-		Peers:         peers,
-		RoundInterval: cfg.Network.Consensus.RoundInterval,
+		BlockLimit:     blockLimit,
+		Directory:      dir,
+		Key:            key,
+		Keys:           keys,
+		InitialBackoff: cfg.Node.Broadcast.InitialBackoff,
+		MaxBackoff:     cfg.Node.Broadcast.MaxBackoff,
+		MaxPayload:     maxPayload,
+		NodeID:         cfg.NodeID,
+		Peers:          peers,
+		ReadTimeout:    cfg.Node.Connections.ReadTimeout,
+		RoundInterval:  cfg.Network.Consensus.RoundInterval,
+		WriteTimeout:   cfg.Node.Connections.WriteTimeout,
 	}
 
 	broadcaster, err := broadcast.New(ctx, bcfg, top)
@@ -453,16 +391,17 @@ func Run(cfg *Config) (*Server, error) {
 		Checkers: []transactor.Checker{
 			&transactor.DummyCheckerOK{}, &transactor.DummyCheckerKO{}},
 		Directory:  dir,
-		NodeID:     cfg.NodeID,
-		Top:        top,
-		SigningKey: cfg.Keys.SigningKey,
-		MaxPayload: int(cfg.Network.MaxPayload),
 		Key:        key,
+		MaxPayload: maxPayload,
+		NodeID:     cfg.NodeID,
+		SigningKey: cfg.Keys.SigningKey,
+		Top:        top,
 	}
+
 	txtor, err := transactor.New(tcfg)
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("node: unable to instanciate the transactor service: %v", err)
+		return nil, fmt.Errorf("node: unable to instantiate the transactor service: %s", err)
 	}
 
 	node := &Server{
@@ -470,22 +409,15 @@ func Run(cfg *Config) (*Server, error) {
 		cancel:          cancel,
 		ctx:             ctx,
 		id:              cfg.NodeID,
-		initialBackoff:  cfg.Node.Broadcast.InitialBackoff,
 		key:             key,
 		keys:            keys,
-		maxBackoff:      cfg.Node.Broadcast.MaxBackoff,
+		maxPayload:      maxPayload,
 		nonceExpiration: cfg.Network.Consensus.NonceExpiration,
 		nonceMap:        map[uint64][]usedNonce{},
-		payloadLimit:    maxPayload,
 		readTimeout:     cfg.Node.Connections.ReadTimeout,
 		top:             top,
 		transactor:      txtor,
 		writeTimeout:    cfg.Node.Connections.WriteTimeout,
-	}
-
-	// Maintain persistent connections to all other nodes in our shard.
-	for _, peer := range peers {
-		go node.maintainBroadcast(peer)
 	}
 
 	// Start listening on the given port.
