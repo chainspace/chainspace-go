@@ -74,7 +74,7 @@ func (c *Conn) ReadPayload(limit int, timeout time.Duration) ([]byte, error) {
 	// TODO(tav): Fix for 32-bit systems.
 	size := int(binary.LittleEndian.Uint32(buf))
 	if size > limit {
-		log.Errorf("Payload size of %d exceeds the max payload size", size)
+		log.Errorf("Payload size of %d exceeds the max payload size of %d", size, limit)
 		return nil, fmt.Errorf("network: payload size %d exceeds max payload size", size)
 	}
 	buf = make([]byte, size)
@@ -106,7 +106,7 @@ func (c *Conn) WritePayload(pb proto.Message, limit int, timeout time.Duration) 
 	}
 	size := len(payload)
 	if size > limit {
-		log.Errorf("Payload size of %d exceeds the max payload size", size)
+		log.Errorf("Payload size of %d exceeds the max payload size of %d", size, limit)
 		return fmt.Errorf("network: payload size %d exceeds max payload size", size)
 	}
 	buf := make([]byte, 4)

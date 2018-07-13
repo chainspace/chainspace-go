@@ -3,7 +3,6 @@ package network // import "chainspace.io/prototype/network"
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base32"
@@ -104,9 +103,6 @@ func (t *Topology) bootstrapMDNS(ctx context.Context) error {
 				if !ok {
 					return
 				}
-				if entry == nil {
-					log.Error("mDNS entries channel got closed!")
-				}
 				instance := entry.ServiceRecord.Instance
 				if !strings.HasPrefix(instance, "_") {
 					continue
@@ -167,11 +163,6 @@ func (t *Topology) Dial(ctx context.Context, nodeID uint64) (*Conn, error) {
 			return NewConn(stream), nil
 		}
 	}
-	buf := make([]byte, 8)
-	if _, err := rand.Read(buf); err != nil {
-		return nil, fmt.Errorf("network: could not generate randomness for node connection: %s", err)
-	}
-
 	addr := t.Lookup(nodeID)
 	if addr == "" {
 		return nil, fmt.Errorf("network: could not find address for node %d", nodeID)
