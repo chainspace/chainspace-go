@@ -383,7 +383,6 @@ func (c *client) periodicQuery(ctx context.Context, params *LookupParams) error 
 	for {
 		// Do periodic query.
 		if err := c.query(params); err != nil {
-			log.Print(err)
 			return err
 		}
 		// Backoff and cancel logic.
