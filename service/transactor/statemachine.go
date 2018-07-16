@@ -1,7 +1,5 @@
 package transactor // import "chainspace.io/prototype/service/transactor"
 import (
-	"fmt"
-
 	"chainspace.io/prototype/log"
 
 	"go.uber.org/zap"
@@ -19,6 +17,7 @@ const (
 type StateTable struct {
 	actions     map[State]Action
 	transitions map[StateTransition]Transition
+	onEvent     func(tx *TxDetails, event *Event) error
 }
 
 type StateTransition struct {
@@ -42,7 +41,7 @@ type TxDetails struct {
 // it returns a State, which will be either the new actual state, the next state
 // which may required a transition from the current state to the new one (see the transition
 // table
-type Action func(tx *TxDetails, event *Event) (State, error)
+type Action func(tx *TxDetails) (State, error)
 
 // Transition are called when the state is change from a current state to a new one.
 // return a State which may involved a new transition as well.
@@ -68,74 +67,90 @@ func (sm *StateMachine) State() State {
 	return sm.state
 }
 
-func (sm *StateMachine) onNewEvent(event *Event) error {
-	action, ok := sm.table.actions[sm.state]
-	if !ok {
-		// this may be because we received an event not related to the current state.
-		// use the generic handle for this which just store the event for now.
-		// and stay in the same state
-		action, ok := sm.table.actions[StateAnyEvent]
+func (sm *StateMachine) applyTransition(transitionTo State) error {
+	for {
+		txtransition := StateTransition{sm.state, transitionTo}
+		f, ok := sm.table.transitions[txtransition]
 		if !ok {
-			return fmt.Errorf("missing action for this state")
+			// no more transitions available, this is not an error
+			return nil
 		}
-		log.Info("apply action for any event",
+
+		log.Info("applying transition",
+			zap.Uint32("id", ID(sm.txDetails.ID)),
+			zap.String("old_state", sm.state.String()),
+			zap.String("new_state", transitionTo.String()),
+		)
+		nextstate, err := f(sm.txDetails)
+		if err != nil {
+			log.Error("unable to apply transition",
+				zap.Uint32("id", ID(sm.txDetails.ID)),
+				zap.String("old_state", sm.state.String()),
+				zap.String("new_state", transitionTo.String()),
+				zap.Error(err),
+			)
+			return err
+		}
+		sm.state = transitionTo
+		transitionTo = nextstate
+	}
+}
+
+func (sm *StateMachine) moveState() error {
+	for {
+		// first try to execute an action if possible with the current state
+		action, ok := sm.table.actions[sm.state]
+		if !ok {
+			log.Error("unable to find an action to map with the current state",
+				zap.String("state", sm.state.String()))
+			return nil
+		}
+		log.Info("applying action",
 			zap.Uint32("id", ID(sm.txDetails.ID)),
 			zap.String("state", sm.state.String()),
 		)
-		action(sm.txDetails, event)
-		return nil
+		newstate, err := action(sm.txDetails)
+		if err != nil {
+			log.Error("unable to execute action", zap.Error(err))
+			return err
+		}
+		if newstate == sm.state {
+			// action returned the same state, we can return now as this action is not ready to be completed
+			// although this is not an error
+			return nil
+		}
+		// action succeed, we try to find a transition, if any we apply it, if none available, just set the new state.
+		txtransition := StateTransition{sm.state, newstate}
+		// if a transition exist for the new state, apply it
+		if _, ok := sm.table.transitions[txtransition]; ok {
+			err = sm.applyTransition(newstate)
+			if err != nil {
+				log.Error("unable to apply transition", zap.Error(err))
+			}
+		} else {
+			// else save the new state directly
+			sm.state = newstate
+		}
 	}
-	log.Info("apply action for event",
-		zap.Uint32("id", ID(sm.txDetails.ID)),
-		zap.String("state", sm.state.String()),
-	)
-	newstate, err := action(sm.txDetails, event)
-	if err != nil {
-		return err
-	}
-	txtransition := StateTransition{sm.state, newstate}
-	// if a transition exist for the new state, apply it
-	if t, ok := sm.table.transitions[txtransition]; ok {
-		return sm.applyTransition(newstate, t)
-	}
-	// else save the new state directly
-	sm.state = newstate
-	return nil
-}
-
-func (sm *StateMachine) applyTransition(state State, fun Transition) error {
-	log.Info("applying transition",
-		zap.Uint32("id", ID(sm.txDetails.ID)),
-		zap.String("old_state", sm.state.String()),
-		zap.String("new_state", state.String()),
-	)
-	newstate, err := fun(sm.txDetails)
-	if err != nil {
-		log.Error("unable to apply transition",
-			zap.Uint32("id", ID(sm.txDetails.ID)),
-			zap.String("old_state", sm.state.String()),
-			zap.String("new_state", state.String()),
-			zap.Error(err),
-		)
-		// unable to do transition to the new state, return an error
-		return err
-	}
-	// transition succeed, we can apply the new state
-	sm.state = state
-	// we check if there is transition from the new current state and the next state
-	// available
-	txtransition := StateTransition{sm.state, newstate}
-	t, ok := sm.table.transitions[txtransition]
-	if !ok {
-		return nil
-	}
-	// no more transitions to apply
-	return sm.applyTransition(newstate, t)
 }
 
 func (sm *StateMachine) run() {
 	for e := range sm.events {
-		sm.onNewEvent(e)
+		log.Info("processing new event",
+			zap.Uint32("id", ID(sm.txDetails.ID)),
+			zap.String("state", sm.state.String()),
+			zap.Uint64("peer.id", e.peerID),
+		)
+		sm.table.onEvent(sm.txDetails, e)
+		if sm.state == StateSucceeded || sm.state == StateAborted {
+			log.Info("statemachine reach end", zap.String("final_state", sm.state.String()))
+			return
+		}
+		err := sm.moveState()
+		if err != nil {
+			log.Error("something happend while moving states", zap.Error(err))
+		}
+
 	}
 }
 

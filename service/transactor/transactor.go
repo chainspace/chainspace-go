@@ -107,7 +107,7 @@ func (s *Service) consumeEvents() {
 	for e := range s.pendingEvents {
 		sm, ok := s.txstates[string(e.msg.TransactionID)]
 		if ok {
-			log.Info("sending new event", zap.Uint32("id", ID(e.msg.TransactionID)))
+			log.Info("sending new event to statemachine", zap.Uint32("id", ID(e.msg.TransactionID)), zap.Uint64("peer.id", e.peerID), zap.Uint64("peer.shard", s.top.ShardForNode(e.peerID)))
 			sm.OnEvent(e)
 			continue
 		}

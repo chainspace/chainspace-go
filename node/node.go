@@ -397,6 +397,8 @@ func Run(cfg *Config) (*Server, error) {
 		Key:        key,
 		MaxPayload: maxPayload,
 		NodeID:     cfg.NodeID,
+		ShardCount: uint64(cfg.Network.Shard.Count),
+		ShardSize:  uint64(cfg.Network.Shard.Size),
 		SigningKey: cfg.Keys.SigningKey,
 		Top:        top,
 	}

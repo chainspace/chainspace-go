@@ -39,14 +39,12 @@ const (
 
 	StateAborted
 	StateSucceeded
-
-	StateAnyEvent // TODO(): remove this later, action should not be triggered anymore on event reception.
 )
 
 func (s State) String() string {
 	switch s {
 	case StateWaitingForConsensus1:
-		return "SateWaitingOnConsensus1"
+		return "StateWaitingOnConsensus1"
 	case StateObjectLocked:
 		return "StateObjectLocked"
 	case StateRejectPhase1Broadcasted:
@@ -71,8 +69,6 @@ func (s State) String() string {
 		return "StateRejectCommitBroadcasted"
 	case StateAborted:
 		return "StateAborted"
-	case StateAnyEvent:
-		return "StateAnyEvent"
 	default:
 		return "error"
 	}
@@ -82,11 +78,11 @@ func (s *Service) makeStateTable() *StateTable {
 	// change state are triggered on events
 	actionTable := map[State]Action{
 		StateWaitingForConsensus1: s.onEvidenceReceived,
-		StateWaitingForPhase1:     s.onPhase1EventReceived,
-		StateWaitingForPhase2:     s.onPhase2EventReceived,
+		StateWaitingForPhase1:     s.onWaitingForPhase1,
+		StateWaitingForPhase2:     s.onWaitingForPhase2,
 		StateWaitingForConsensus2: s.onSecondConsensusEventReceived,
 
-		StateAnyEvent: s.onAnyEvent,
+		// StateAnyEvent: s.onAnyEvent,
 	}
 
 	// change state are triggererd from the previous state change
@@ -111,28 +107,30 @@ func (s *Service) makeStateTable() *StateTable {
 		{StateConsensus2Triggered, StateWaitingForConsensus2}: s.toWaitingForConsensus2,
 	}
 
-	return &StateTable{actionTable, transitionTable}
+	return &StateTable{actionTable, transitionTable, s.onEvent}
 }
 
-func (s *Service) onAnyEvent(tx *TxDetails, event *Event) (State, error) {
+func (s *Service) onEvent(tx *TxDetails, event *Event) error {
 	if string(tx.ID) != string(event.msg.TransactionID) {
 		log.Error("invalid transaction sent to state machine", zap.Uint32("expected", ID(tx.ID)), zap.Uint32("got", ID(event.msg.TransactionID)))
-		return StateAnyEvent, errors.New("invalid transaction ID")
+		return errors.New("invalid transaction ID")
 	}
 	switch event.msg.Op {
 	case SBACOpcode_PHASE1:
 		log.Info("PHASE1 decision received", zap.Uint32("id", ID(tx.ID)), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
-		tx.Phase2Decisions[event.peerID] = event.msg.Decision
+		tx.Phase1Decisions[event.peerID] = event.msg.Decision
 	case SBACOpcode_PHASE2:
 		log.Info("PHASE2 decision received", zap.Uint32("id", ID(tx.ID)), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
 		tx.Phase2Decisions[event.peerID] = event.msg.Decision
 	case SBACOpcode_CONSENSUS1:
 		log.Info("CONSENSUS1 decision received", zap.Uint32("id", ID(tx.ID)), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
+		tx.Consensus1 = event.msg.ConsensusTransaction
 	case SBACOpcode_CONSENSUS2:
 		log.Info("CONSENSUS2 decision received", zap.Uint32("id", ID(tx.ID)), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
+		tx.Consensus2 = event.msg.ConsensusTransaction
 	default:
 	}
-	return StateAnyEvent, nil
+	return nil
 }
 
 // shardsInvolvedInTx return a list of IDs of all shards involved in the transaction either by
@@ -162,17 +160,18 @@ func tplusone(shardSize uint64) uint64 {
 	return shardSize/3 + 1
 }
 
-func (s *Service) onPhase1EventReceived(tx *TxDetails, event *Event) (State, error) {
-	s.onAnyEvent(tx, event)
+func (s *Service) onWaitingForPhase1(tx *TxDetails) (State, error) {
 	shards := s.shardsInvolvedInTx(tx.Tx)
 	var somePending bool
 	// for each shards, get the nodes id, and checks if they answered
+	vtwotplusone := twotplusone(s.shardSize)
+	vtplusone := tplusone(s.shardSize)
 	for _, v := range shards {
 		nodes := s.top.NodesInShard(v)
 		var accepted uint64
 		var rejected uint64
 		for _, nodeID := range nodes {
-			if d, ok := tx.Phase2Decisions[nodeID]; ok {
+			if d, ok := tx.Phase1Decisions[nodeID]; ok {
 				if d == SBACDecision_ACCEPT {
 					accepted += 1
 					continue
@@ -180,12 +179,23 @@ func (s *Service) onPhase1EventReceived(tx *TxDetails, event *Event) (State, err
 				rejected += 1
 			}
 		}
-		if rejected >= tplusone(s.shardSize) {
-			log.Info("transaction rejected", zap.Uint32("id", ID(tx.ID)))
+		if rejected >= vtplusone {
+			log.Info("transaction rejected",
+				zap.Uint32("id", ID(tx.ID)),
+				zap.Uint64("peer.shard", v),
+				zap.Uint64("t+1", vtplusone),
+				zap.Uint64("rejected", rejected),
+			)
 			return StateAborted, nil
 		}
-		if accepted >= twotplusone(s.shardSize) {
-			log.Info("transaction accepted", zap.Uint32("id", ID(tx.ID)))
+		if accepted >= vtwotplusone {
+			log.Info("transaction accepted",
+				zap.Uint32("id", ID(tx.ID)),
+				zap.Uint64("peer.shard", v),
+				zap.Uint64s("shards_involved", shards),
+				zap.Uint64("2t+1", vtwotplusone),
+				zap.Uint64("accepted", accepted),
+			)
 			continue
 		}
 		somePending = true
@@ -200,11 +210,11 @@ func (s *Service) onPhase1EventReceived(tx *TxDetails, event *Event) (State, err
 	return StateSucceeded, nil
 }
 
-func (s *Service) onPhase2EventReceived(tx *TxDetails, event *Event) (State, error) {
+func (s *Service) onWaitingForPhase2(tx *TxDetails) (State, error) {
 	return StateWaitingForPhase2, nil
 }
 
-func (s *Service) onSecondConsensusEventReceived(tx *TxDetails, event *Event) (State, error) {
+func (s *Service) onSecondConsensusEventReceived(tx *TxDetails) (State, error) {
 	return StateWaitingForPhase2, nil
 }
 
@@ -223,10 +233,13 @@ func (s *Service) objectsExists(objs, refs [][]byte) ([]*Object, bool) {
 	return objects, true
 }
 
-func (s *Service) onEvidenceReceived(tx *TxDetails, _ *Event) (State, error) {
+func (s *Service) onEvidenceReceived(tx *TxDetails) (State, error) {
 	// TODO: need to check evidences here, as this step should happend after the first consensus round.
 	// not sure how we agregate evidence here, if we get new ones from the consensus rounds or the same that where sent with the transaction at the begining.
-	if !s.verifySignatures(tx.ID, tx.CheckersEvidences) {
+	if tx.Consensus1 == nil {
+		return StateWaitingForConsensus1, nil
+	}
+	if !s.verifySignatures(tx.ID, tx.Consensus1.GetEvidences()) {
 		log.Error("missing/invalid signatures", zap.Uint32("id", ID(tx.ID)))
 		return StateRejectPhase1Broadcasted, nil
 	}
