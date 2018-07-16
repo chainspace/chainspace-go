@@ -18,6 +18,7 @@ type blockInfoContainer struct {
 type blockPointer struct {
 	node  uint64
 	round uint64
+	hash  string
 }
 
 type lru struct {
@@ -47,14 +48,14 @@ func (l *lru) set(key blockPointer, value *blockInfo) {
 	l.mu.Unlock()
 }
 
-func (l *lru) prune(limit int) {
+func (l *lru) prune(size int) {
 	type kv struct {
 		key   blockPointer
 		value *blockInfoContainer
 	}
 	var xs []kv
 	l.mu.Lock()
-	if len(l.data) <= limit {
+	if len(l.data) <= size {
 		l.mu.Unlock()
 		return
 	}
@@ -64,7 +65,7 @@ func (l *lru) prune(limit int) {
 	sort.Slice(xs, func(i, j int) bool {
 		return xs[i].value.lastSeen > xs[j].value.lastSeen
 	})
-	xs = xs[:limit]
+	xs = xs[:size]
 	data := map[blockPointer]*blockInfoContainer{}
 	for _, kv := range xs {
 		data[kv.key] = kv.value

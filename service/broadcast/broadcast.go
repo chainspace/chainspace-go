@@ -3,7 +3,6 @@
 package broadcast
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -56,9 +55,9 @@ type Config struct {
 // Service implements the broadcast and consensus system.
 type Service struct {
 	blockLimit     int
+	cache          *cache
 	cb             Callback
 	ctx            context.Context
-	db             *badger.DB
 	initialBackoff time.Duration
 	interval       time.Duration
 	key            signature.KeyPair
@@ -75,6 +74,7 @@ type Service struct {
 	round          uint64
 	sent           map[uint64]uint64
 	signal         chan struct{}
+	store          *store
 	top            *network.Topology
 	txs            chan *TransactionData
 	writeTimeout   time.Duration
@@ -100,9 +100,6 @@ func (s *Service) genBlocks() {
 	// exact semantics we want.
 	tick := time.NewTicker(s.interval)
 	total := 0
-	if s.cb != nil {
-		s.cb.BroadcastStart(round)
-	}
 	for {
 		select {
 		case ref := <-s.refs:
@@ -124,16 +121,12 @@ func (s *Service) genBlocks() {
 				total += tx.Size()
 				if total < s.blockLimit {
 					txs = append(txs, tx)
-					s.cb.BroadcastTransaction(tx)
 				} else {
 					atLimit = true
 					pendingTxs = append(pendingTxs, tx)
 				}
 			}
 		case <-tick.C:
-			if s.cb != nil {
-				s.cb.BroadcastEnd(round)
-			}
 			round++
 			block.Previous = s.previous
 			block.References = refs
@@ -160,17 +153,22 @@ func (s *Service) genBlocks() {
 			s.previous = hash
 			hasher.Reset()
 			signal := s.signal
-			s.setBlock(s.nodeID, round, &blockInfo{
-				block: signed,
-				hash:  hash,
-			})
+			s.setOwnBlock(round, hash, signed)
 			s.mu.Lock()
 			s.round = round
 			s.signal = make(chan struct{})
 			s.mu.Unlock()
 			close(signal)
 			log.Info("Created block", zap.Uint64("round", block.Round))
+			if s.cb != nil {
+				s.cb.BroadcastStart(round)
+				for _, tx := range txs {
+					s.cb.BroadcastTransaction(tx)
+				}
+				s.cb.BroadcastEnd(round)
+			}
 			if round%100 == 0 {
+				s.cache.prune(100)
 				s.lru.prune(len(s.peers) * 100)
 			}
 			txs = nil
@@ -211,7 +209,7 @@ func (s *Service) genBlocks() {
 			}
 		case <-s.ctx.Done():
 			tick.Stop()
-			if err := s.db.Close(); err != nil {
+			if err := s.store.db.Close(); err != nil {
 				log.Error("Could not close the broadcast DB successfully", zap.Error(err))
 			}
 			return
@@ -219,8 +217,44 @@ func (s *Service) genBlocks() {
 	}
 }
 
-func (s *Service) getBlockInfo(nodeID uint64, round uint64) *blockInfo {
-	return s.lru.get(blockPointer{nodeID, round})
+func (s *Service) getBlockInfo(nodeID uint64, round uint64, hash []byte) *blockInfo {
+	info := s.lru.get(blockPointer{nodeID, round, string(hash)})
+	if info != nil {
+		return info
+	}
+	block, err := s.store.getBlock(nodeID, round, hash)
+	if err != nil {
+		log.Error("Could not retrieve block", zap.Uint64("node.id", nodeID), zap.Uint64("round", round), zap.Error(err))
+		return nil
+	}
+	info = &blockInfo{
+		block: block,
+		hash:  hash,
+	}
+	s.lru.set(blockPointer{nodeID, round, string(hash)}, info)
+	return info
+}
+
+func (s *Service) getOwnBlock(round uint64) *SignedData {
+	block := s.cache.get(round)
+	if block != nil {
+		return block
+	}
+	block, err := s.store.getOwnBlock(round)
+	if err != nil {
+		log.Error("Could not retrieve own block", zap.Uint64("round", round), zap.Error(err))
+		return nil
+	}
+	s.cache.set(round, block)
+	return block
+}
+
+func (s *Service) getOwnHash(round uint64) []byte {
+	hash, err := s.store.getOwnHash(round)
+	if err != nil {
+		log.Fatal("Got error retrieving own hash", zap.Uint64("round", round), zap.Error(err))
+	}
+	return hash
 }
 
 // getUnsent returns a slice of unsent blocks for the given peer. If it looks
@@ -235,8 +269,11 @@ func (s *Service) getUnsent(peerID uint64) ([]*SignedData, uint64) {
 			blocks := []*SignedData{}
 			total := 0
 			for i := last; i <= cur; i++ {
-				info := s.getBlockInfo(s.nodeID, i)
-				total += len(info.block.Data) + len(info.block.Signature) + 100
+				block := s.getOwnBlock(i)
+				if block == nil {
+					panic(fmt.Sprintf("broadcast: unable to retrieve own block for round %d", i))
+				}
+				total += len(block.Data) + len(block.Signature) + 100
 				if total > s.blockLimit {
 					if i == last {
 						panic(fmt.Sprintf("broadcast: size of individual block(%v) exceeds max payload size(%v)", total, s.blockLimit))
@@ -244,7 +281,7 @@ func (s *Service) getUnsent(peerID uint64) ([]*SignedData, uint64) {
 					s.mu.RUnlock()
 					return blocks, i - 1
 				}
-				blocks = append(blocks, info.block)
+				blocks = append(blocks, block)
 			}
 			s.mu.RUnlock()
 			return blocks, cur
@@ -259,42 +296,8 @@ func (s *Service) getUnsent(peerID uint64) ([]*SignedData, uint64) {
 	}
 }
 
-func (s *Service) handleBlocksRequest(peerID uint64, msg *service.Message) (*service.Message, error) {
-	req := &BlocksRequest{}
-	if err := proto.Unmarshal(msg.Payload, req); err != nil {
-		return nil, err
-	}
-	blocks := make([]*SignedData, len(req.Blocks))
-	for idx, ref := range req.Blocks {
-		info := s.getBlockInfo(ref.Node, ref.Round)
-		if info == nil {
-			blocks[idx] = nil
-			log.Error("Got request for unknown block", zap.Uint64("peer.id", peerID), zap.Uint64("round", ref.Round))
-			continue
-		}
-		if len(ref.Hash) > 0 {
-			if !bytes.Equal(info.hash, ref.Hash) {
-				blocks[idx] = nil
-				log.Error("Got request for block with a bad hash", zap.Uint64("peer.id", peerID), zap.Uint64("round", ref.Round))
-				continue
-			}
-		}
-		blocks[idx] = info.block
-	}
-	data, err := proto.Marshal(&Listing{
-		Blocks: blocks,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &service.Message{
-		Opcode:  uint32(OP_LISTING),
-		Payload: data,
-	}, nil
-}
-
-func (s *Service) handleListing(peerID uint64, msg *service.Message) error {
-	listing := &Listing{}
+func (s *Service) handleBlockList(peerID uint64, msg *service.Message) error {
+	listing := &BlockList{}
 	if err := proto.Unmarshal(msg.Payload, listing); err != nil {
 		return err
 	}
@@ -306,10 +309,82 @@ func (s *Service) handleListing(peerID uint64, msg *service.Message) error {
 	return nil
 }
 
+func (s *Service) handleGetBlocks(peerID uint64, msg *service.Message) (*service.Message, error) {
+	req := &GetBlocks{}
+	if err := proto.Unmarshal(msg.Payload, req); err != nil {
+		return nil, err
+	}
+	blocks := make([]*SignedData, len(req.Blocks))
+	for idx, ref := range req.Blocks {
+		info := s.getBlockInfo(ref.Node, ref.Round, ref.Hash)
+		if info == nil {
+			blocks[idx] = nil
+			log.Error("Got request for unknown block", zap.Uint64("peer.id", peerID), zap.Uint64("round", ref.Round))
+			continue
+		}
+		blocks[idx] = info.block
+	}
+	data, err := proto.Marshal(&BlockList{
+		Blocks: blocks,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &service.Message{
+		Opcode:  uint32(OP_BLOCK_LIST),
+		Payload: data,
+	}, nil
+}
+
+func (s *Service) handleGetHashes(peerID uint64, msg *service.Message) (*service.Message, error) {
+	req := &GetHashes{}
+	if err := proto.Unmarshal(msg.Payload, req); err != nil {
+		return nil, err
+	}
+	var hashes [][]byte
+	s.mu.RLock()
+	latest := s.round
+	total := 0
+	if req.Since < latest {
+		for i := req.Since + 1; i <= latest; i++ {
+			hash := s.getOwnHash(i)
+			total += len(hash) + 100
+			if total > s.maxPayload {
+				break
+			}
+			hashes = append(hashes, hash)
+		}
+	}
+	s.mu.RUnlock()
+	data, err := proto.Marshal(&HashList{
+		Hashes: hashes,
+		Latest: latest,
+		Since:  req.Since,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &service.Message{
+		Opcode:  uint32(OP_HASH_LIST),
+		Payload: data,
+	}, nil
+}
+
+func (s *Service) handleHashList(peerID uint64, msg *service.Message) error {
+	return nil
+}
+
 func (s *Service) loadState() {
-	// TODO(tav): Load these from a filestore-backed DB.
-	s.previous = genesis
-	s.round = 0
+	round, hash, err := s.store.getCurrentRoundAndHash()
+	if err != nil {
+		if err != badger.ErrKeyNotFound {
+			log.Fatal("Could not load latest round and hash from DB", zap.Error(err))
+		}
+		hash = genesis
+		round = 0
+	}
+	s.previous = hash
+	s.round = round
 	s.sent = map[uint64]uint64{}
 	for _, peer := range s.peers {
 		s.sent[peer] = 0
@@ -323,8 +398,8 @@ func (s *Service) maintainBroadcast(peerID uint64) {
 		round  uint64
 	)
 	backoff := s.initialBackoff
-	msg := &service.Message{Opcode: uint32(OP_LISTING)}
-	listing := &Listing{}
+	msg := &service.Message{Opcode: uint32(OP_BLOCK_LIST)}
+	listing := &BlockList{}
 	retry := false
 	for {
 		if retry {
@@ -419,8 +494,10 @@ func (s *Service) processBlock(signed *SignedData) error {
 	return nil
 }
 
-func (s *Service) setBlock(nodeID uint64, round uint64, info *blockInfo) {
-	s.lru.set(blockPointer{nodeID, round}, info)
+func (s *Service) setOwnBlock(round uint64, hash []byte, block *SignedData) {
+	s.lru.set(blockPointer{s.nodeID, round, string(hash)}, &blockInfo{block, hash})
+	s.cache.set(round, block)
+	s.store.setOwnBlock(s.nodeID, round, hash, block)
 }
 
 // Acknowledge should be called by BroadcastEnd in the registered Callback to
@@ -440,10 +517,14 @@ func (s *Service) AddTransaction(txdata *TransactionData) {
 // received over a connection.
 func (s *Service) Handle(ctx context.Context, peerID uint64, msg *service.Message) (*service.Message, error) {
 	switch OP(msg.Opcode) {
-	case OP_BLOCKS_REQUEST:
-		return s.handleBlocksRequest(peerID, msg)
-	case OP_LISTING:
-		return nil, s.handleListing(peerID, msg)
+	case OP_BLOCK_LIST:
+		return nil, s.handleBlockList(peerID, msg)
+	case OP_GET_BLOCKS:
+		return s.handleGetBlocks(peerID, msg)
+	case OP_GET_HASHES:
+		return s.handleGetHashes(peerID, msg)
+	case OP_HASH_LIST:
+		return nil, s.handleHashList(peerID, msg)
 	default:
 		return nil, fmt.Errorf("broadcast: unknown message opcode: %d", msg.Opcode)
 	}
@@ -471,12 +552,18 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 	if err != nil {
 		return nil, err
 	}
+	cache := &cache{
+		data: map[uint64]*SignedData{},
+	}
 	lru := &lru{
 		data: map[blockPointer]*blockInfoContainer{},
 	}
+	store := &store{
+		db: db,
+	}
 	s := &Service{
 		blockLimit:     cfg.BlockLimit,
-		db:             db,
+		cache:          cache,
 		ctx:            ctx,
 		interval:       cfg.RoundInterval,
 		key:            cfg.Key,
@@ -489,6 +576,7 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		peers:          cfg.Peers,
 		readTimeout:    cfg.ReadTimeout,
 		refs:           make(chan *BlockReference, 10000),
+		store:          store,
 		top:            top,
 		txs:            make(chan *TransactionData, 10000),
 		writeTimeout:   cfg.WriteTimeout,

@@ -5,8 +5,10 @@ import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 
 enum OP {
   UNKNOWN = 0;
-  BLOCKS_REQUEST = 1;
-  LISTING = 2;
+  BLOCK_LIST = 1;
+  GET_BLOCKS = 2;
+  GET_HASHES = 3;
+  HASH_LIST = 4;
 }
 
 message Block {
@@ -17,15 +19,23 @@ message Block {
   repeated TransactionData transactions = 5;
 }
 
+message BlockList { repeated SignedData blocks = 1; }
+
 message BlockReference {
   bytes hash = 1;
   uint64 node = 2;
   uint64 round = 3;
 }
 
-message BlocksRequest { repeated BlockReference blocks = 1; }
+message GetBlocks { repeated BlockReference blocks = 1; }
 
-message Listing { repeated SignedData blocks = 1; }
+message GetHashes { uint64 since = 1; }
+
+message HashList {
+  repeated bytes hashes = 1;
+  uint64 latest = 2;
+  uint64 since = 3;
+}
 
 message SignedData {
   bytes data = 1;
