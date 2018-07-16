@@ -1,5 +1,11 @@
 package transactor // import "chainspace.io/prototype/service/transactor"
-import "fmt"
+import (
+	"fmt"
+
+	"chainspace.io/prototype/log"
+
+	"go.uber.org/zap"
+)
 
 type SBACDecisions uint8
 
@@ -88,6 +94,11 @@ func (sm *StateMachine) onNewEvent(event *Event) error {
 }
 
 func (sm *StateMachine) applyTransition(state State, fun Transition) error {
+	log.Infofi("applying transition",
+		zap.Uint32("id", ID(sm.txDetails.ID)),
+		zap.String("old_state", sm.state.String()),
+		zap.String("new_state", state.String()),
+	)
 	newstate, err := fun(sm.txDetails)
 	if err != nil {
 		// unable to do transition to the new state, return an error

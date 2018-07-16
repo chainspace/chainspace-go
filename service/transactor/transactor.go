@@ -17,6 +17,7 @@ import (
 
 	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
+	"go.uber.org/zap"
 )
 
 const (
@@ -55,7 +56,7 @@ type Service struct {
 }
 
 func (s *Service) BroadcastStart(round uint64) {
-	log.Infof("BROADCAST START: %v", round)
+	log.Infofi("BROADCAST START", zap.Uint64("round", round))
 }
 
 func (s *Service) BroadcastTransaction(txdata *broadcast.TransactionData) {
@@ -63,7 +64,7 @@ func (s *Service) BroadcastTransaction(txdata *broadcast.TransactionData) {
 	ctx := &ConsensusTransaction{}
 	err := proto.Unmarshal(txdata.Data, ctx)
 	if err != nil {
-		log.Errorf("unable to unmarshal transaction data")
+		log.Errorf("unable to unmarshal transaction data", zap.Error(err))
 	}
 	e := &Event{
 		msg: &SBACMessage{
@@ -78,7 +79,7 @@ func (s *Service) BroadcastTransaction(txdata *broadcast.TransactionData) {
 }
 
 func (s *Service) BroadcastEnd(round uint64) {
-	log.Infof("BROADCAST END: %v", round)
+	log.Infof("BROADCAST END", zap.Uint64("round", round))
 }
 
 func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message) (*service.Message, error) {
@@ -96,6 +97,7 @@ func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message)
 	case Opcode_SBAC:
 		return s.handleSBAC(ctx, m.Payload, peerID)
 	default:
+		log.Errorfi("transactor: unknown message opcode", zap.Uint32("opcode", m.Opcode), zap.Uint64("peer.id", peerID))
 		return nil, fmt.Errorf("transactor: unknown message opcode: %v", m.Opcode)
 	}
 }
@@ -104,11 +106,11 @@ func (s *Service) consumeEvents() {
 	for e := range s.pendingEvents {
 		sm, ok := s.txstates[string(e.msg.TransactionID)]
 		if ok {
-			log.Infof("(%v) sending new event", ID(e.msg.TransactionID))
+			log.Infofi("sending new event", zap.Uint32("id", ID(e.msg.TransactionID)))
 			sm.OnEvent(e)
 			continue
 		}
-		log.Infof("(%v) statemachine not ready", ID(e.msg.TransactionID))
+		log.Infofi("statemachine not ready", zap.Uint32("id", ID(e.msg.TransactionID)))
 		s.pendingEvents <- e
 	}
 }
@@ -117,6 +119,7 @@ func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64)
 	req := &SBACMessage{}
 	err := proto.Unmarshal(payload, req)
 	if err != nil {
+		log.Errorfi("transactor: sbac unmarshaling error", zap.Error(err))
 		return nil, fmt.Errorf("transactor: sbac unmarshaling error: %v", err)
 	}
 	e := &Event{msg: req, peerID: peerID}
@@ -128,12 +131,14 @@ func (s *Service) checkTransaction(ctx context.Context, payload []byte) (*servic
 	req := &CheckTransactionRequest{}
 	err := proto.Unmarshal(payload, req)
 	if err != nil {
+		log.Errorfi("transactor: checkTransaction unmarshaling error", zap.Error(err))
 		return nil, fmt.Errorf("transactor: add_transaction unmarshaling error: %v", err)
 	}
 
 	// run the checkers
 	ok, err := runCheckers(ctx, s.checkers, req.Tx)
 	if err != nil {
+		log.Errorf()
 		return nil, fmt.Errorf("transactor: errors happend while running the checkers: %v", err)
 	}
 
