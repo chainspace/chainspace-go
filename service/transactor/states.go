@@ -16,37 +16,55 @@ import (
 type State uint8
 
 const (
-	StateInitial State = iota // Aggregate evidence
-	StateObjectLocked
-	StateRejectAcceptTransactionBroadcasted
-	StateAcceptAcceptTransactionBroadcasted
-	StateWaitingForAcceptTransaction
+	StateWaitingForConsensus1 State = iota // waiting for the first consensus to be reached, in order to process the transaction inside the shard.
+
+	StateObjectLocked // check if objects exists and are actives
+
+	StateAcceptPhase1Broadcasted // 2-phase commit phase 1
+	StateRejectPhase1Broadcasted
+	StateWaitingForPhase1
+
+	StateConsensus2Triggered
+	StateWaitingForConsensus2 // second consensus inside the shard, in order to confirm accept of the transaction after the first phase of 2-phase commit. also should kick bad nodes in the future
+
+	StateAcceptPhase2Broadcasted // 2-phase commit phase 2
+	StateRejectPhase2Broadcasted
+	StateWaitingForPhase2
+
 	StateObjectsDeactivated
 	StateObjectsCreated
-	StateSucceeded
+
 	StateAcceptCommitBroadcasted
 	StateRejectCommitBroadcasted
+
 	// on hold waiting for commit decisions message from inter-shards
 	StateWaitingForCommitDecisionFromShards
 	// on hold waiting for commit decision consensus inside the shard
 	StateWaitingForCommitDecisionConsensus
 	StateCommitRejected
+
 	StateAborted
-	StateAnyEvent
+	StateSucceeded
+
+	StateAnyEvent // TODO(): remove this later, action should not be triggered anymore on event reception.
 )
 
 func (s State) String() string {
 	switch s {
-	case StateInitial:
-		return "SateInitial"
+	case StateWaitingForConsensus1:
+		return "SateWaitingOnConsensus1"
 	case StateObjectLocked:
 		return "StateObjectLocked"
-	case StateRejectAcceptTransactionBroadcasted:
-		return "StateRejectAcceptTransactionBroadcasted"
-	case StateAcceptAcceptTransactionBroadcasted:
-		return "StateAcceptAcceptTransactionBroadcasted"
-	case StateWaitingForAcceptTransaction:
-		return "StateWaitingForAcceptTransaction"
+	case StateRejectPhase1Broadcasted:
+		return "StateRejectPhase1Broadcasted"
+	case StateAcceptPhase1Broadcasted:
+		return "StateAcceptPhase1Broadcasted"
+	case StateWaitingForPhase1:
+		return "StateWaitingForPhase1"
+	case StateConsensus2Triggered:
+		return "StateConsensus2Triggered"
+	case StateWaitingForConsensus2:
+		return "StateWaitingForConsensus2"
 	case StateObjectsDeactivated:
 		return "StateObjectsDeactivated"
 	case StateObjectsCreated:
@@ -75,8 +93,11 @@ func (s State) String() string {
 func (s *Service) makeStateTable() *StateTable {
 	// change state are triggered on events
 	actionTable := map[State]Action{
-		StateInitial:                            s.onEvidenceReceived,
-		StateWaitingForAcceptTransaction:        s.onAcceptTransactionReceived,
+		StateWaitingForConsensus1: s.onEvidenceReceived,
+		StateWaitingForPhase1:     s.onPhase1EventReceived,
+		StateWaitingForPhase2:     s.onPhase2EventReceived,
+		StateWaitingForConsensus2: s.onSecondConsensusEventReceived,
+
 		StateWaitingForCommitDecisionFromShards: s.onCommitDecisionFromShardsReceived,
 		StateWaitingForCommitDecisionConsensus:  s.onCommitDecisionConsensusReached,
 		StateAnyEvent:                           s.onAnyEvent,
@@ -84,25 +105,28 @@ func (s *Service) makeStateTable() *StateTable {
 
 	// change state are triggererd from the previous state change
 	transitionTable := map[StateTransition]Transition{
-		{StateInitial, StateObjectLocked}:                       s.toObjectLocked,
-		{StateInitial, StateRejectAcceptTransactionBroadcasted}: s.toRejectAcceptTransactionBroadcasted,
-		{StateRejectAcceptTransactionBroadcasted, StateAborted}: s.toAborted,
+		// first bad path, no initial censensu reach / missing evidence, whatever
+		{StateWaitingForConsensus1, StateRejectPhase1Broadcasted}: s.toRejectPhase1Broadcasted,
+		{StateRejectPhase1Broadcasted, StateAborted}:              s.toAborted,
+		{StateObjectLocked, StateAborted}:                         s.toAborted,
 
-		{StateObjectLocked, StateAborted}: s.toAborted,
-		// object locked with success, but multiple shards involved
-		{StateObjectLocked, StateAcceptAcceptTransactionBroadcasted}:                s.toAcceptAcceptTransactionBroadcasted,
-		{StateAcceptAcceptTransactionBroadcasted, StateWaitingForAcceptTransaction}: s.toWaitingForAcceptTransaction,
-		{StateWaitingForAcceptTransaction, StateAborted}:                            s.toAborted,
-		{StateWaitingForAcceptTransaction, StateSucceeded}:                          s.toSucceeded,
 		// objects locked with success, and only 1 shard involved
 		{StateObjectLocked, StateObjectsDeactivated}:   s.toObjectDeactivated,
 		{StateObjectsDeactivated, StateObjectsCreated}: s.toObjectsCreated,
-		// only one shard involved, object are created in the same shard
-		{StateObjectsCreated, StateSucceeded}: s.toSucceeded,
-		// multiple shards, broadcast commit intention
+		{StateObjectsCreated, StateSucceeded}:          s.toSucceeded,
+
+		// object locked with success, but multiple shards involved
+		{StateWaitingForConsensus1, StateObjectLocked}:                          s.toObjectLocked,
+		{StateObjectLocked, StateAcceptPhase1Broadcasted}:                       s.toAcceptPhase1Broadcasted,
+		{StateAcceptPhase1Broadcasted, StateWaitingForPhase1}:                   s.toWaitingForPhase1,
+		{StateWaitingForPhase1, StateAborted}:                                   s.toAborted,
+		{StateWaitingForPhase1, StateConsensus2Triggered}:                       s.toConsensus2Triggered,
+		{StateWaitingForPhase1, StateSucceeded}:                                 s.toSucceeded,
+		{StateConsensus2Triggered, StateWaitingForConsensus2}:                   s.toWaitingForSecondConsensus,
 		{StateObjectsCreated, StateAcceptCommitBroadcasted}:                     s.toCommitBroadcasted,
 		{StateAcceptCommitBroadcasted, StateWaitingForCommitDecisionFromShards}: s.toWaitingForCommitDecisionFromShards,
 		{StateWaitingForCommitDecisionConsensus, StateObjectsCreated}:           s.toObjectsCreated,
+
 		// unlock objects
 		{StateWaitingForCommitDecisionConsensus, StateCommitRejected}: s.toCommitRejected,
 		{StateCommitRejected, StateAborted}:                           s.toAborted,
@@ -117,14 +141,16 @@ func (s *Service) onAnyEvent(tx *TxDetails, event *Event) (State, error) {
 		return StateAnyEvent, errors.New("invalid transaction ID")
 	}
 	switch event.msg.Op {
-	case SBACOpcode_ACCEPT_TRANSACTION:
-		log.Info("ACCEPT_TRANSACTION received", zap.Uint32("id", ID(tx.ID)), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
-		tx.AcceptTransaction[event.peerID] = event.msg.Decision
-	case SBACOpcode_COMMIT_TRANSACTION:
-		log.Info("COMMIT_TRANSACTION received", zap.Uint32("id", ID(tx.ID)), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
-		tx.AcceptTransaction[event.peerID] = event.msg.Decision
-	case SBACOpcode_NEW_TRANSACTION:
-		log.Info("NEW_TRANSACTION received", zap.Uint32("id", ID(tx.ID)), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
+	case SBACOpcode_PHASE1:
+		log.Info("PHASE1 decision received", zap.Uint32("id", ID(tx.ID)), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
+		tx.Phase2Decisions[event.peerID] = event.msg.Decision
+	case SBACOpcode_PHASE2:
+		log.Info("PHASE2 decision received", zap.Uint32("id", ID(tx.ID)), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
+		tx.Phase2Decisions[event.peerID] = event.msg.Decision
+	case SBACOpcode_CONSENSUS1:
+		log.Info("CONSENSUS1 decision received", zap.Uint32("id", ID(tx.ID)), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
+	case SBACOpcode_CONSENSUS2:
+		log.Info("CONSENSUS2 decision received", zap.Uint32("id", ID(tx.ID)), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
 	default:
 	}
 	return StateAnyEvent, nil
@@ -157,7 +183,7 @@ func tplusone(shardSize uint64) uint64 {
 	return shardSize/3 + 1
 }
 
-func (s *Service) onAcceptTransactionReceived(tx *TxDetails, event *Event) (State, error) {
+func (s *Service) onPhase1EventReceived(tx *TxDetails, event *Event) (State, error) {
 	s.onAnyEvent(tx, event)
 	shards := s.shardsInvolvedInTx(tx.Tx)
 	var somePending bool
@@ -167,7 +193,7 @@ func (s *Service) onAcceptTransactionReceived(tx *TxDetails, event *Event) (Stat
 		var accepted uint64
 		var rejected uint64
 		for _, nodeID := range nodes {
-			if d, ok := tx.AcceptTransaction[nodeID]; ok {
+			if d, ok := tx.Phase2Decisions[nodeID]; ok {
 				if d == SBACDecision_ACCEPT {
 					accepted += 1
 					continue
@@ -188,11 +214,19 @@ func (s *Service) onAcceptTransactionReceived(tx *TxDetails, event *Event) (Stat
 
 	if somePending {
 		log.Info("transaction pending, not enough answers from shards", zap.Uint32("id", ID(tx.ID)))
-		return StateWaitingForAcceptTransaction, nil
+		return StateWaitingForPhase1, nil
 	}
 
 	log.Info("transaction accepted by all shards", zap.Uint32("id", ID(tx.ID)))
 	return StateSucceeded, nil
+}
+
+func (s *Service) onPhase2EventReceived(tx *TxDetails, event *Event) (State, error) {
+	return StateWaitingForPhase2, nil
+}
+
+func (s *Service) onSecondConsensusEventReceived(tx *TxDetails, event *Event) (State, error) {
+	return StateWaitingForPhase2, nil
 }
 
 func (s *Service) objectsExists(objs, refs [][]byte) ([]*Object, bool) {
@@ -215,7 +249,7 @@ func (s *Service) onEvidenceReceived(tx *TxDetails, _ *Event) (State, error) {
 	// not sure how we agregate evidence here, if we get new ones from the consensus rounds or the same that where sent with the transaction at the begining.
 	if !s.verifySignatures(tx.ID, tx.CheckersEvidences) {
 		log.Error("missing/invalid signatures", zap.Uint32("id", ID(tx.ID)))
-		return StateRejectAcceptTransactionBroadcasted, nil
+		return StateRejectPhase1Broadcasted, nil
 	}
 
 	// check that all inputs objects and references part of the state of this node exists.
@@ -223,12 +257,12 @@ func (s *Service) onEvidenceReceived(tx *TxDetails, _ *Event) (State, error) {
 		objects, ok := s.objectsExists(trace.InputObjectsKeys, trace.InputReferencesKeys)
 		if !ok {
 			log.Error("some objects do not exists", zap.Uint32("id", ID(tx.ID)))
-			return StateRejectAcceptTransactionBroadcasted, nil
+			return StateRejectPhase1Broadcasted, nil
 		}
 		for _, v := range objects {
 			if v.Status == ObjectStatus_INACTIVE {
 				log.Error("some objects are inactive", zap.Uint32("id", ID(tx.ID)))
-				return StateRejectAcceptTransactionBroadcasted, nil
+				return StateRejectPhase1Broadcasted, nil
 			}
 		}
 	}
@@ -293,7 +327,7 @@ func (s *Service) toObjectLocked(tx *TxDetails) (State, error) {
 	if allInShard {
 		return StateObjectsDeactivated, nil
 	}
-	return StateAcceptAcceptTransactionBroadcasted, nil
+	return StateAcceptPhase1Broadcasted, nil
 }
 
 func makeMessage(m *SBACMessage) (*service.Message, error) {
@@ -323,9 +357,9 @@ func (s *Service) sendToAllShardInvolved(tx *TxDetails, msg *service.Message) er
 	return nil
 }
 
-func (s *Service) toRejectAcceptTransactionBroadcasted(tx *TxDetails) (State, error) {
+func (s *Service) toRejectPhase1Broadcasted(tx *TxDetails) (State, error) {
 	sbacmsg := &SBACMessage{
-		Op:            SBACOpcode_ACCEPT_TRANSACTION,
+		Op:            SBACOpcode_PHASE1,
 		Decision:      SBACDecision_REJECT,
 		TransactionID: tx.ID,
 	}
@@ -344,9 +378,9 @@ func (s *Service) toRejectAcceptTransactionBroadcasted(tx *TxDetails) (State, er
 	return StateAborted, err
 }
 
-func (s *Service) toAcceptAcceptTransactionBroadcasted(tx *TxDetails) (State, error) {
+func (s *Service) toAcceptPhase1Broadcasted(tx *TxDetails) (State, error) {
 	sbacmsg := &SBACMessage{
-		Op:            SBACOpcode_ACCEPT_TRANSACTION,
+		Op:            SBACOpcode_PHASE1,
 		Decision:      SBACDecision_ACCEPT,
 		TransactionID: tx.ID,
 	}
@@ -363,11 +397,11 @@ func (s *Service) toAcceptAcceptTransactionBroadcasted(tx *TxDetails) (State, er
 	}
 
 	log.Info("accept transaction sent to all shards", zap.Uint32("id", ID(tx.ID)))
-	return StateWaitingForAcceptTransaction, nil
+	return StateWaitingForPhase1, nil
 }
 
-func (s *Service) toWaitingForAcceptTransaction(tx *TxDetails) (State, error) {
-	return StateWaitingForAcceptTransaction, nil
+func (s *Service) toWaitingForPhase1(tx *TxDetails) (State, error) {
+	return StateWaitingForPhase1, nil
 }
 
 func (s *Service) toObjectDeactivated(tx *TxDetails) (State, error) {
@@ -432,8 +466,16 @@ func (s *Service) toAborted(tx *TxDetails) (State, error) {
 	return StateAborted, nil
 }
 
+func (s *Service) toConsensus2Triggered(tx *TxDetails) (State, error) {
+	return StateConsensus2Triggered, nil
+}
+
+func (s *Service) toWaitingForSecondConsensus(tx *TxDetails) (State, error) {
+	return StateWaitingForConsensus2, nil
+}
+
 func (s *Service) toCommitBroadcasted(tx *TxDetails) (State, error) {
-	return StateInitial, nil
+	return StateWaitingForConsensus1, nil
 }
 
 func (s *Service) toCommitRejected(tx *TxDetails) (State, error) {

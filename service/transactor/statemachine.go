@@ -11,6 +11,7 @@ type SBACDecisions uint8
 
 const (
 	Accept SBACDecisions = iota
+
 	Reject
 	Abort
 )
@@ -26,14 +27,15 @@ type StateTransition struct {
 }
 
 type TxDetails struct {
-	CheckersEvidences         map[uint64][]byte
-	ID                        []byte
-	Raw                       []byte
-	Result                    chan bool
-	Tx                        *Transaction
-	AcceptTransaction         map[uint64]SBACDecision
-	CommitTransaction         map[uint64]SBACDecision
-	NewTransactionAlreadySeen bool
+	CheckersEvidences map[uint64][]byte
+	Consensus1        *ConsensusTransaction
+	Consensus2        *ConsensusTransaction
+	ID                []byte
+	Phase1Decisions   map[uint64]SBACDecision
+	Phase2Decisions   map[uint64]SBACDecision
+	Raw               []byte
+	Result            chan bool
+	Tx                *Transaction
 }
 
 // Action specify an action to execute when a new event is triggered.
@@ -59,7 +61,7 @@ type StateMachine struct {
 }
 
 func (sm *StateMachine) Reset() {
-	sm.state = StateInitial
+	sm.state = StateWaitingForConsensus1
 }
 
 func (sm *StateMachine) State() State {
@@ -76,9 +78,17 @@ func (sm *StateMachine) onNewEvent(event *Event) error {
 		if !ok {
 			return fmt.Errorf("missing action for this state")
 		}
+		log.Info("apply action for any event",
+			zap.Uint32("id", ID(sm.txDetails.ID)),
+			zap.String("state", sm.state.String()),
+		)
 		action(sm.txDetails, event)
 		return nil
 	}
+	log.Info("apply action for event",
+		zap.Uint32("id", ID(sm.txDetails.ID)),
+		zap.String("state", sm.state.String()),
+	)
 	newstate, err := action(sm.txDetails, event)
 	if err != nil {
 		return err
@@ -101,6 +111,12 @@ func (sm *StateMachine) applyTransition(state State, fun Transition) error {
 	)
 	newstate, err := fun(sm.txDetails)
 	if err != nil {
+		log.Error("unable to apply transition",
+			zap.Uint32("id", ID(sm.txDetails.ID)),
+			zap.String("old_state", sm.state.String()),
+			zap.String("new_state", state.String()),
+			zap.Error(err),
+		)
 		// unable to do transition to the new state, return an error
 		return err
 	}
@@ -109,11 +125,12 @@ func (sm *StateMachine) applyTransition(state State, fun Transition) error {
 	// we check if there is transition from the new current state and the next state
 	// available
 	txtransition := StateTransition{sm.state, newstate}
-	if t, ok := sm.table.transitions[txtransition]; ok {
-		return sm.applyTransition(newstate, t)
+	t, ok := sm.table.transitions[txtransition]
+	if !ok {
+		return nil
 	}
 	// no more transitions to apply
-	return nil
+	return sm.applyTransition(newstate, t)
 }
 
 func (sm *StateMachine) run() {
@@ -129,7 +146,7 @@ func (sm *StateMachine) OnEvent(e *Event) {
 func NewStateMachine(table *StateTable, txDetails *TxDetails) *StateMachine {
 	sm := &StateMachine{
 		events:    make(chan *Event, 100),
-		state:     StateInitial,
+		state:     StateWaitingForConsensus1,
 		table:     table,
 		txDetails: txDetails,
 	}
@@ -139,12 +156,12 @@ func NewStateMachine(table *StateTable, txDetails *TxDetails) *StateMachine {
 
 func NewTxDetails(txID, raw []byte, tx *Transaction, evidences map[uint64][]byte) *TxDetails {
 	return &TxDetails{
-		AcceptTransaction: map[uint64]SBACDecision{},
 		CheckersEvidences: evidences,
 		ID:                txID,
+		Phase1Decisions:   map[uint64]SBACDecision{},
+		Phase2Decisions:   map[uint64]SBACDecision{},
 		Raw:               raw,
 		Result:            make(chan bool),
 		Tx:                tx,
-		CommitTransaction: map[uint64]SBACDecision{},
 	}
 }

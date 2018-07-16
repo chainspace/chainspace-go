@@ -95,9 +95,10 @@ message NewObjectResponse {
 // SBAC
 
 enum SBACOpcode {
-  ACCEPT_TRANSACTION = 0;
-  COMMIT_TRANSACTION = 1;
-  NEW_TRANSACTION = 2;
+  CONSENSUS1 = 0; // consensus 1 - new transaction
+  CONSENSUS2 = 1; // consensus 2
+  PHASE1 = 2; // 2-phase commit phase 1 - accept transaction
+  PHASE2 = 3; // 2-phase commit phase 2 - commit transaction
 }
 
 enum SBACDecision {

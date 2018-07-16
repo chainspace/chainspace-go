@@ -68,13 +68,14 @@ func (s *Service) BroadcastTransaction(txdata *broadcast.TransactionData) {
 	}
 	e := &Event{
 		msg: &SBACMessage{
-			Op:                   SBACOpcode_NEW_TRANSACTION,
+			Op:                   SBACOpcode_CONSENSUS1,
 			Decision:             SBACDecision_ACCEPT,
 			TransactionID:        ctx.ID,
 			ConsensusTransaction: ctx,
 		},
 		peerID: ctx.PeerID,
 	}
+	log.Info("new transaction broadcasted from consensus", zap.Uint32("tx.id", ID(ctx.ID)))
 	s.pendingEvents <- e
 }
 
@@ -215,7 +216,6 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 	s.txstates[string(txdetails.ID)] = sm
 
 	// send an empty event for now in order to start the transitions
-	// sm.OnEvent(nil)
 
 	// broadcast transaction
 	consensusTx := &ConsensusTransaction{
