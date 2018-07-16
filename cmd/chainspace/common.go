@@ -7,6 +7,7 @@ import (
 	"chainspace.io/prototype/log"
 	"github.com/tav/golly/fsutil"
 	"github.com/tav/golly/optparse"
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
 )
 
@@ -16,10 +17,10 @@ const (
 
 func createUnlessExists(path string) {
 	if exists, _ := fsutil.Exists(path); exists {
-		log.Fatalf("A directory already exists at: %s", path)
+		log.Fatal("Directory already exists", zap.String("path", path))
 	}
 	if err := os.Mkdir(path, dirPerms); err != nil {
-		log.Fatal(err)
+		log.Fatal("Could not create directory", zap.String("path", path), zap.Error(err))
 	}
 }
 
@@ -50,7 +51,7 @@ func getNetworkNameAndNodeID(opts *optparse.Parser, args []string) (string, uint
 	}
 	nodeID, err := strconv.ParseUint(params[1], 10, 64)
 	if err != nil {
-		log.Fatalf("Could not parse the Node ID: %s", err)
+		log.Fatal("Could not parse Node ID", zap.Error(err))
 	}
 	return networkName, nodeID
 }

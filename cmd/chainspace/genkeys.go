@@ -9,6 +9,7 @@ import (
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/crypto/transport"
 	"chainspace.io/prototype/log"
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
 )
 
@@ -53,7 +54,7 @@ func cmdGenKeys(args []string, usage string) {
 	path := opts.Flags("-o", "--output").Label("PATH").String("Path to write the generated keys [keys.yaml]")
 	networkName, nodeID := getNetworkNameAndNodeID(opts, args)
 	if _, _, err := genKeys(*path, networkName, nodeID); err != nil {
-		log.Fatalf("%s", err)
+		log.Fatal("Could not generate keys", zap.Error(err))
 	}
-	log.Infof("Generated keys successfully written to %s", *path)
+	log.Info("Generated keys successfully", zap.String("file.path", *path))
 }

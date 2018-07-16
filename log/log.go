@@ -7,7 +7,6 @@ package log // import "chainspace.io/prototype/log"
 import (
 	"github.com/tav/golly/process"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 var root *zap.Logger
@@ -37,54 +36,24 @@ const (
 	FatalLevel
 )
 
-func Check(lvl Level, msg string) *zapcore.CheckedEntry {
-	return root.Check(zapcore.Level(lvl), msg)
+func Error(msg string, fields ...zap.Field) {
+	root.Error(msg, fields...)
 }
 
-func Error(args ...interface{}) {
-	root.Sugar().Error(args...)
+func Fatal(msg string, fields ...zap.Field) {
+	root.Fatal(msg, fields...)
 }
 
-func Errorf(format string, args ...interface{}) {
-	root.Sugar().Errorf(format, args...)
+func Info(msg string, fields ...zap.Field) {
+	root.Info(msg, fields...)
 }
 
-func Fatal(args ...interface{}) {
-	root.Sugar().Fatal(args...)
+func SetGlobalFields(fields ...zap.Field) {
+	root = root.With(fields...)
 }
 
-func Fatalf(format string, args ...interface{}) {
-	root.Sugar().Fatalf(format, args...)
-}
-
-func Info(args ...interface{}) {
-	root.Sugar().Info(args...)
-}
-
-func Infof(format string, args ...interface{}) {
-	root.Sugar().Infof(format, args...)
-}
-
-// func Info(log string, fields ...zapcore.Fields) {
-// 	// root.Info(args...)
-// }
-
-// func Info(ctx context.Context, log string, fields ...zapcore.Fields) {
-// 	// root.Info(args...)
-// }
-
-// func Infof(format string, args ...interface{}) {
-// 	root.Infof(format, args...)
-// }
-
-// GlobalLogger returns the currently set global logger.
-func GlobalLogger() *zap.Logger {
-	return root
-}
-
-// SetLogger sets the given logger as the global logger for the system.
-func SetLogger(l *zap.Logger) {
-	root = l
+func With(fields ...zap.Field) *zap.Logger {
+	return root.With(fields...)
 }
 
 func init() {

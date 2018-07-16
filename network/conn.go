@@ -11,6 +11,7 @@ import (
 	"chainspace.io/prototype/service"
 	"github.com/gogo/protobuf/proto"
 	"github.com/lucas-clemente/quic-go"
+	"go.uber.org/zap"
 )
 
 // Conn represents a connection to a Chainspace node.
@@ -66,7 +67,7 @@ func (c *Conn) ReadPayload(limit int, timeout time.Duration) ([]byte, error) {
 		c.stream.SetReadDeadline(time.Now().Add(timeout))
 		n, err := c.stream.Read(buf[4-need:])
 		if err != nil {
-			log.Errorf("Got error reading from stream: %s", err)
+			log.Error("Got error reading from stream", zap.Error(err))
 			return nil, err
 		}
 		need -= n
@@ -74,7 +75,7 @@ func (c *Conn) ReadPayload(limit int, timeout time.Duration) ([]byte, error) {
 	// TODO(tav): Fix for 32-bit systems.
 	size := int(binary.LittleEndian.Uint32(buf))
 	if size > limit {
-		log.Errorf("Payload size of %d exceeds the max payload size of %d", size, limit)
+		log.Error("Max payload size exceeded", zap.Int("limit", limit), zap.Int("got", size))
 		return nil, fmt.Errorf("network: payload size %d exceeds max payload size", size)
 	}
 	buf = make([]byte, size)
@@ -83,7 +84,7 @@ func (c *Conn) ReadPayload(limit int, timeout time.Duration) ([]byte, error) {
 		c.stream.SetReadDeadline(time.Now().Add(timeout))
 		n, err := c.stream.Read(buf[size-need:])
 		if err != nil {
-			log.Errorf("Got error reading from stream: %s", err)
+			log.Error("Got error reading from stream", zap.Error(err))
 			return nil, err
 		}
 		need -= n
@@ -106,7 +107,7 @@ func (c *Conn) WritePayload(pb proto.Message, limit int, timeout time.Duration) 
 	}
 	size := len(payload)
 	if size > limit {
-		log.Errorf("Payload size of %d exceeds the max payload size of %d", size, limit)
+		log.Error("Max payload size exceeded", zap.Int("limit", limit), zap.Int("got", size))
 		return fmt.Errorf("network: payload size %d exceeds max payload size", size)
 	}
 	buf := make([]byte, 4)

@@ -24,6 +24,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/tav/golly/process"
+	"go.uber.org/zap"
 )
 
 const (
@@ -76,7 +77,7 @@ func (s *Server) handleConnection(conn quic.Session) {
 	for {
 		stream, err := conn.AcceptStream()
 		if err != nil {
-			log.Errorf("Unable to open new stream from session: %s", err)
+			log.Error("Unable to open new stream from session", zap.Error(err))
 			return
 		}
 		go s.handleStream(stream)
@@ -88,7 +89,7 @@ func (s *Server) handleStream(stream quic.Stream) {
 	c := network.NewConn(stream)
 	hello, err := c.ReadHello(s.maxPayload, s.readTimeout)
 	if err != nil {
-		log.Errorf("Unable to read hello message from stream: %s", err)
+		log.Error("Unable to read hello message from stream", zap.Error(err))
 		return
 	}
 	var (
@@ -100,36 +101,36 @@ func (s *Server) handleStream(stream quic.Stream) {
 		svc = s.broadcaster
 		peerID, err = s.verifyPeerID(hello)
 		if err != nil {
-			log.Errorf("Unable to verify peer ID from the hello message: %s", err)
+			log.Error("Unable to verify peer ID from the hello message", zap.Error(err))
 			return
 		}
 	case service.CONNECTION_TRANSACTOR:
 		svc = s.transactor
 		peerID, err = s.verifyPeerID(hello)
 		if err != nil {
-			log.Errorf("Unable to verify peer ID from the hello message: %s", err)
+			log.Error("Unable to verify peer ID from the hello message", zap.Error(err))
 			return
 		}
-		log.Infof("new transactor hello nesssage")
+		log.Info("New transactor hello nesssage")
 	default:
-		log.Errorf("Unknown connection type: %#v", hello.Type)
+		log.Error("Unknown connection type", zap.Int32("type", int32(hello.Type)))
 		return
 	}
 	ctx := stream.Context()
 	for {
 		msg, err := c.ReadMessage(s.maxPayload, s.readTimeout)
 		if err != nil {
-			log.Errorf("Could not decode message from an incoming stream: %s", err)
+			log.Error("Could not decode message from an incoming stream", zap.Error(err))
 			return
 		}
 		resp, err := svc.Handle(ctx, peerID, msg)
 		if err != nil {
-			log.Errorf("Received error response from the %s service: %s", svc.Name(), err)
+			log.Error("Received error response", zap.String("service", svc.Name()), zap.Error(err))
 			return
 		}
 		if resp != nil {
 			if err = c.WritePayload(resp, s.maxPayload, s.writeTimeout); err != nil {
-				log.Errorf("Unable to write response to peer %d: %s", peerID, err)
+				log.Error("Unable to write response to peer", zap.Uint64("peer.id", peerID), zap.Error(err))
 				return
 			}
 		}
@@ -142,7 +143,7 @@ func (s *Server) listen(l quic.Listener) {
 		conn, err := l.Accept()
 		if err != nil {
 			s.cancel()
-			log.Fatalf("node: could not accept new connections: %s", err)
+			log.Fatal("Could not accept new connections", zap.Error(err))
 		}
 		go s.handleConnection(conn)
 	}
@@ -257,7 +258,7 @@ func Run(cfg *Config) (*Server, error) {
 		if !os.IsNotExist(err) {
 			return nil, err
 		}
-		log.Infof("Creating %s", dir)
+		log.Info("Creating directory", zap.String("path", dir))
 		if err = os.MkdirAll(dir, dirPerms); err != nil {
 			return nil, err
 		}
@@ -268,7 +269,7 @@ func Run(cfg *Config) (*Server, error) {
 	}
 
 	if err := log.InitFileLogger(filepath.Join(dir, "server.log"), log.DebugLevel); err != nil {
-		log.Fatal(err)
+		log.Fatal("Could not initialise the file logger", zap.Error(err))
 	}
 
 	// Initialise the topology.
@@ -344,6 +345,8 @@ func Run(cfg *Config) (*Server, error) {
 	if len(nodes) == 0 {
 		return nil, fmt.Errorf("node: got no peers for the node %d", cfg.NodeID)
 	}
+
+	log.SetGlobalFields(zap.Uint64("self.node.id", cfg.NodeID), zap.Uint64("self.shard.id", shardID))
 
 	idx := 0
 	peers := make([]uint64, len(nodes)-1)
@@ -443,8 +446,8 @@ func Run(cfg *Config) (*Server, error) {
 		}
 	}
 
-	log.Infof("Node %d of the %s network is now running on port %d", cfg.NodeID, cfg.NetworkName, port)
-	log.Infof("Runtime directory: %s", dir)
+	log.Info("Node is running", zap.String("network.name", cfg.NetworkName), zap.Int("port", port))
+	log.Info("Runtime directory", zap.String("path", dir))
 	return node, nil
 
 }

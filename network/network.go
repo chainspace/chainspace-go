@@ -16,6 +16,7 @@ import (
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/log"
+	"go.uber.org/zap"
 
 	"github.com/grandcat/zeroconf"
 	"github.com/lucas-clemente/quic-go"
@@ -68,19 +69,19 @@ type Topology struct {
 // BootstrapFile will use the JSON file at the given path for the initial set of
 // addresses for nodes in the network.
 func (t *Topology) BootstrapFile(path string) error {
-	log.Infof("Bootstrapping the %s network via the file at %s", t.name, path)
+	log.Info("Bootstrapping network via file", zap.String("network.name", t.name), zap.String("file.path", path))
 	return errors.New("network: bootstrapping from a static map is not supported yet")
 }
 
 // BootstrapMDNS will try to auto-discover the addresses of initial nodes using
 // multicast DNS.
 func (t *Topology) BootstrapMDNS() {
-	log.Infof("Bootstrapping the %s network via mDNS", t.name)
+	log.Info("Bootstrapping network via mDNS", zap.String("network.name", t.name))
 	go func() {
 		for {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			if err := t.bootstrapMDNS(ctx); err != nil {
-				log.Errorf("Unable to start bootstrapping mDNS: %v", err)
+				log.Error("Unable to start bootstrapping mDNS", zap.Error(err))
 			}
 			select {
 			case <-ctx.Done():
@@ -115,7 +116,7 @@ func (t *Topology) bootstrapMDNS(ctx context.Context) error {
 					addr := fmt.Sprintf("%s:%d", entry.AddrIPv4[0].String(), entry.Port)
 					oldAddr := t.contacts.get(nodeID)
 					if oldAddr != addr {
-						log.Infof("FOUND NODE %d with address: %s", nodeID, addr)
+						log.Info("Found node address", zap.Uint64("node.id", nodeID), zap.String("address", addr))
 						t.contacts.set(nodeID, addr)
 					}
 				}
@@ -131,7 +132,7 @@ func (t *Topology) bootstrapMDNS(ctx context.Context) error {
 // BootstrapStatic will use the given static map of addresses for the initial
 // addresses of nodes in the network.
 func (t *Topology) BootstrapStatic(addresses map[uint64]string) error {
-	log.Infof("Bootstrapping the %s network via a static map", t.name)
+	log.Info("Bootstrapping network via a static map", zap.String("network.name", t.name))
 	t.contacts.Lock()
 	for id, addr := range addresses {
 		t.contacts.data[id] = addr
@@ -143,7 +144,7 @@ func (t *Topology) BootstrapStatic(addresses map[uint64]string) error {
 // BootstrapURL will use the given URL endpoint to discover the initial
 // addresses of nodes in the network.
 func (t *Topology) BootstrapURL(endpoint string) error {
-	log.Infof("Bootstrapping the %s network via URL", t.name)
+	log.Info("Bootstrapping network via URL", zap.String("network.name", t.name))
 	return errors.New("network: bootstrapping from a URL is not supported yet")
 }
 
@@ -189,7 +190,7 @@ func (t *Topology) Lookup(nodeID uint64) string {
 // NodesInShard returns a slice of node IDs for the given shard ID.
 func (t *Topology) NodesInShard(shardID uint64) []uint64 {
 	if shardID == 0 || shardID > t.shardCount {
-		log.Fatalf("network: invalid shardID %d in a network with a shard count of %d", shardID, t.shardCount)
+		log.Fatal("Invalid shard ID", zap.Uint64("shard.id", shardID), zap.Uint64("shard.count", t.shardCount))
 	}
 	nodes := []uint64{}
 	total := t.shardCount * t.shardSize

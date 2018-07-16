@@ -17,6 +17,7 @@ import (
 	"chainspace.io/prototype/service"
 	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
+	"go.uber.org/zap"
 )
 
 var (
@@ -133,17 +134,17 @@ func (s *Service) genBlocks() {
 			block.Transactions = txs
 			data, err := proto.Marshal(block)
 			if err != nil {
-				log.Fatalf("Got unexpected error encoding latest block: %s", err)
+				log.Fatal("Got unexpected error encoding latest block", zap.Error(err))
 			}
 			if _, err := hasher.Write(data); err != nil {
-				log.Fatalf("Could not hash encoded block: %s", err)
+				log.Fatal("Could not hash encoded block", zap.Error(err))
 			}
 			hash := hasher.Digest()
 			rootRef.Hash = hash
 			rootRef.Round = round
 			refData, err := proto.Marshal(rootRef)
 			if err != nil {
-				log.Fatalf("Got unexpected error encoding latest block reference: %s", err)
+				log.Fatal("Got unexpected error encoding latest block reference", zap.Error(err))
 			}
 			signed := &SignedData{
 				Data:      data,
@@ -161,7 +162,7 @@ func (s *Service) genBlocks() {
 			s.signal = make(chan struct{})
 			s.mu.Unlock()
 			close(signal)
-			log.Infof("Created block %d", block.Round)
+			log.Info("Created block", zap.Uint64("round", block.Round))
 			if round%100 == 0 {
 				s.lru.prune(len(s.peers) * 100)
 			}
@@ -201,7 +202,7 @@ func (s *Service) genBlocks() {
 		case <-s.ctx.Done():
 			tick.Stop()
 			if err := s.db.Close(); err != nil {
-				log.Errorf("Could not close the broadcast DB successfully: %s", err)
+				log.Error("Could not close the broadcast DB successfully", zap.Error(err))
 			}
 			return
 		}
@@ -258,13 +259,13 @@ func (s *Service) handleBlocksRequest(peerID uint64, msg *service.Message) (*ser
 		info := s.getBlockInfo(ref.Node, ref.Round)
 		if info == nil {
 			blocks[idx] = nil
-			log.Errorf("Got request from node %d for unknown block %d", peerID, ref.Round)
+			log.Error("Got request for unknown block", zap.Uint64("peer.id", peerID), zap.Uint64("round", ref.Round))
 			continue
 		}
 		if len(ref.Hash) > 0 {
 			if !bytes.Equal(info.hash, ref.Hash) {
 				blocks[idx] = nil
-				log.Errorf("Got request from node %d for block %d with a bad hash", peerID, ref.Round)
+				log.Error("Got request for block with a bad hash", zap.Uint64("peer.id", peerID), zap.Uint64("round", ref.Round))
 				continue
 			}
 		}
@@ -333,18 +334,18 @@ func (s *Service) maintainBroadcast(peerID uint64) {
 		if err == nil {
 			backoff = s.initialBackoff
 		} else {
-			log.Errorf("Couldn't dial node %d: %s", peerID, err)
+			log.Error("Couldn't dial node", zap.Uint64("peer.id", peerID), zap.Error(err))
 			retry = true
 			continue
 		}
 		hello, err := service.SignHello(s.nodeID, peerID, s.key, service.CONNECTION_BROADCAST)
 		if err != nil {
-			log.Errorf("Couldn't create Hello payload for broadcast: %s", err)
+			log.Error("Couldn't create Hello payload for broadcast", zap.Error(err))
 			retry = true
 			continue
 		}
 		if err = conn.WritePayload(hello, s.maxPayload, s.writeTimeout); err != nil {
-			log.Errorf("Couldn't send Hello to node %d: %s", peerID, err)
+			log.Error("Couldn't send Hello", zap.Uint64("peer.id", peerID), zap.Error(err))
 			retry = true
 			continue
 		}
@@ -358,10 +359,10 @@ func (s *Service) maintainBroadcast(peerID uint64) {
 			listing.Blocks = blocks
 			msg.Payload, err = proto.Marshal(listing)
 			if err != nil {
-				log.Fatalf("Could not encode listing for broadcast: %s", err)
+				log.Fatal("Could not encode listing for broadcast", zap.Error(err))
 			}
 			if err = conn.WritePayload(msg, s.maxPayload, s.writeTimeout); err != nil {
-				log.Errorf("Could not write listing to node %d for broadcast: %s", peerID, err)
+				log.Error("Could not write listing", zap.Uint64("peer.id", peerID), zap.Error(err))
 				retry = true
 				break
 			}
@@ -404,7 +405,7 @@ func (s *Service) processBlock(signed *SignedData) error {
 	if !key.Verify(enc, signed.Signature) {
 		return fmt.Errorf("broadcast: unable to verify signature for block %d from node %d", block.Round, block.Node)
 	}
-	log.Infof("Received block %d from node %d", block.Round, block.Node)
+	log.Info("Received block", zap.Uint64("node.id", block.Node), zap.Uint64("round", block.Round))
 	return nil
 }
 

@@ -8,6 +8,7 @@ import (
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/node"
+	"go.uber.org/zap"
 )
 
 func cmdRun(args []string, usage string) {
@@ -20,27 +21,27 @@ func cmdRun(args []string, usage string) {
 	_, err := os.Stat(*configRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Fatalf("Could not find the Chainspace root directory at %s", *configRoot)
+			log.Fatal("Could not find the Chainspace root directory", zap.String("path", *configRoot))
 		}
-		log.Fatalf("Unable to access the Chainspace root directory at %s: %s", *configRoot, err)
+		log.Fatal("Unable to access the Chainspace root directory", zap.String("path", *configRoot), zap.Error(err))
 	}
 
 	netPath := filepath.Join(*configRoot, networkName)
 	netCfg, err := config.LoadNetwork(filepath.Join(netPath, "network.yaml"))
 	if err != nil {
-		log.Fatalf("Could not load network.yaml: %s", err)
+		log.Fatal("Could not load network.yaml", zap.Error(err))
 	}
 
 	nodeDir := "node-" + strconv.FormatUint(nodeID, 10)
 	nodePath := filepath.Join(netPath, nodeDir)
 	nodeCfg, err := config.LoadNode(filepath.Join(nodePath, "node.yaml"))
 	if err != nil {
-		log.Fatalf("Could not load node.yaml: %s", err)
+		log.Fatal("Could not load node.yaml", zap.Error(err))
 	}
 
 	keys, err := config.LoadKeys(filepath.Join(nodePath, "keys.yaml"))
 	if err != nil {
-		log.Fatalf("Could not load keys.yaml: %s", err)
+		log.Fatal("Could not load keys.yaml", zap.Error(err))
 	}
 
 	root := *configRoot
@@ -58,7 +59,7 @@ func cmdRun(args []string, usage string) {
 	}
 
 	if _, err = node.Run(cfg); err != nil {
-		log.Fatalf("Could not start node %d: %s", nodeID, err)
+		log.Fatal("Could not start node", zap.Uint64("node.id", nodeID), zap.Error(err))
 	}
 
 	wait := make(chan struct{})
