@@ -163,7 +163,7 @@ func (s *Service) genBlocks() {
 			close(signal)
 			log.Infof("Created block %d", block.Round)
 			if round%100 == 0 {
-				s.lru.evict(len(s.peers) * 100)
+				s.lru.prune(len(s.peers) * 100)
 			}
 			txs = nil
 			total = 0

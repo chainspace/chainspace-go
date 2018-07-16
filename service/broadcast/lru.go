@@ -47,18 +47,22 @@ func (l *lru) set(key blockPointer, value *blockInfo) {
 	l.mu.Unlock()
 }
 
-func (l *lru) evict(limit int) {
+func (l *lru) prune(limit int) {
 	type kv struct {
 		key   blockPointer
 		value *blockInfoContainer
 	}
 	var xs []kv
 	l.mu.Lock()
+	if len(l.data) <= limit {
+		l.mu.Unlock()
+		return
+	}
 	for k, v := range l.data {
 		xs = append(xs, kv{k, v})
 	}
 	sort.Slice(xs, func(i, j int) bool {
-		return xs[i].value.lastSeen < xs[j].value.lastSeen
+		return xs[i].value.lastSeen > xs[j].value.lastSeen
 	})
 	xs = xs[:limit]
 	data := map[blockPointer]*blockInfoContainer{}
