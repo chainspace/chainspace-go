@@ -37,12 +37,6 @@ const (
 	StateAcceptCommitBroadcasted
 	StateRejectCommitBroadcasted
 
-	// on hold waiting for commit decisions message from inter-shards
-	StateWaitingForCommitDecisionFromShards
-	// on hold waiting for commit decision consensus inside the shard
-	StateWaitingForCommitDecisionConsensus
-	StateCommitRejected
-
 	StateAborted
 	StateSucceeded
 
@@ -75,12 +69,6 @@ func (s State) String() string {
 		return "StateAcceptCommitBroadcasted"
 	case StateRejectCommitBroadcasted:
 		return "StateRejectCommitBroadcasted"
-	case StateWaitingForCommitDecisionFromShards:
-		return "StateWaitingForCommitDecisionFromShards"
-	case StateWaitingForCommitDecisionConsensus:
-		return "StateWaitingForCommitDecisionConsensus"
-	case StateCommitRejected:
-		return "StateCommitRejected"
 	case StateAborted:
 		return "StateAborted"
 	case StateAnyEvent:
@@ -98,9 +86,7 @@ func (s *Service) makeStateTable() *StateTable {
 		StateWaitingForPhase2:     s.onPhase2EventReceived,
 		StateWaitingForConsensus2: s.onSecondConsensusEventReceived,
 
-		StateWaitingForCommitDecisionFromShards: s.onCommitDecisionFromShardsReceived,
-		StateWaitingForCommitDecisionConsensus:  s.onCommitDecisionConsensusReached,
-		StateAnyEvent:                           s.onAnyEvent,
+		StateAnyEvent: s.onAnyEvent,
 	}
 
 	// change state are triggererd from the previous state change
@@ -116,20 +102,13 @@ func (s *Service) makeStateTable() *StateTable {
 		{StateObjectsCreated, StateSucceeded}:          s.toSucceeded,
 
 		// object locked with success, but multiple shards involved
-		{StateWaitingForConsensus1, StateObjectLocked}:                          s.toObjectLocked,
-		{StateObjectLocked, StateAcceptPhase1Broadcasted}:                       s.toAcceptPhase1Broadcasted,
-		{StateAcceptPhase1Broadcasted, StateWaitingForPhase1}:                   s.toWaitingForPhase1,
-		{StateWaitingForPhase1, StateAborted}:                                   s.toAborted,
-		{StateWaitingForPhase1, StateConsensus2Triggered}:                       s.toConsensus2Triggered,
-		{StateWaitingForPhase1, StateSucceeded}:                                 s.toSucceeded,
-		{StateConsensus2Triggered, StateWaitingForConsensus2}:                   s.toWaitingForSecondConsensus,
-		{StateObjectsCreated, StateAcceptCommitBroadcasted}:                     s.toCommitBroadcasted,
-		{StateAcceptCommitBroadcasted, StateWaitingForCommitDecisionFromShards}: s.toWaitingForCommitDecisionFromShards,
-		{StateWaitingForCommitDecisionConsensus, StateObjectsCreated}:           s.toObjectsCreated,
-
-		// unlock objects
-		{StateWaitingForCommitDecisionConsensus, StateCommitRejected}: s.toCommitRejected,
-		{StateCommitRejected, StateAborted}:                           s.toAborted,
+		{StateWaitingForConsensus1, StateObjectLocked}:        s.toObjectLocked,
+		{StateObjectLocked, StateAcceptPhase1Broadcasted}:     s.toAcceptPhase1Broadcasted,
+		{StateAcceptPhase1Broadcasted, StateWaitingForPhase1}: s.toWaitingForPhase1,
+		{StateWaitingForPhase1, StateAborted}:                 s.toAborted,
+		{StateWaitingForPhase1, StateConsensus2Triggered}:     s.toConsensus2Triggered,
+		{StateWaitingForPhase1, StateSucceeded}:               s.toSucceeded,
+		{StateConsensus2Triggered, StateWaitingForConsensus2}: s.toWaitingForConsensus2,
 	}
 
 	return &StateTable{actionTable, transitionTable}
@@ -269,25 +248,6 @@ func (s *Service) onEvidenceReceived(tx *TxDetails, _ *Event) (State, error) {
 
 	log.Info("evidences and input objects/references checked successfully", zap.Uint32("id", ID(tx.ID)))
 	return StateObjectLocked, nil
-}
-
-// can recevied decision from other nodes/shard
-// but should also be able to change state in the case a node is starting to run consensus.
-func (s *Service) onCommitDecisionFromShardsReceived(tx *TxDetails, event *Event) (State, error) {
-	// if enough responses from shards,
-	// move state
-	// return StateWaitingForCommitDecisionConsensus, nil
-
-	// else stay in this state
-	return StateWaitingForCommitDecisionFromShards, nil
-}
-
-// can reached consensus about committing the transaction or rejecting it.
-func (s *Service) onCommitDecisionConsensusReached(tx *TxDetails, event *Event) (State, error) {
-	// if shard decide to commit the transaction, move state to create object
-	// return StateObjectsCreated, nil
-	// else stay in this state
-	return StateCommitRejected, nil
 }
 
 func (s *Service) inputObjectsForShard(shardID uint64, tx *Transaction) (objects [][]byte, allInShard bool) {
@@ -470,20 +430,8 @@ func (s *Service) toConsensus2Triggered(tx *TxDetails) (State, error) {
 	return StateConsensus2Triggered, nil
 }
 
-func (s *Service) toWaitingForSecondConsensus(tx *TxDetails) (State, error) {
+func (s *Service) toWaitingForConsensus2(tx *TxDetails) (State, error) {
 	return StateWaitingForConsensus2, nil
-}
-
-func (s *Service) toCommitBroadcasted(tx *TxDetails) (State, error) {
-	return StateWaitingForConsensus1, nil
-}
-
-func (s *Service) toCommitRejected(tx *TxDetails) (State, error) {
-	return StateCommitRejected, nil
-}
-
-func (s *Service) toWaitingForCommitDecisionFromShards(tx *TxDetails) (State, error) {
-	return StateAborted, nil
 }
 
 func ID(data []byte) uint32 {
