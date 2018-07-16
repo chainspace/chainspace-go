@@ -113,18 +113,18 @@ func (s *Service) makeStateTable() *StateTable {
 
 func (s *Service) onAnyEvent(tx *TxDetails, event *Event) (State, error) {
 	if string(tx.ID) != string(event.msg.TransactionID) {
-		log.Errorf("Invalid transaction sent to state machine, expect(%v) got(%v)", ID(tx.ID), ID(event.msg.TransactionID))
+		log.Error("invalid transaction sent to state machine", zap.Uint32("expected", ID(tx.ID)), zap.Uint32("got", ID(event.msg.TransactionID)))
 		return StateAnyEvent, errors.New("invalid transaction ID")
 	}
 	switch event.msg.Op {
 	case SBACOpcode_ACCEPT_TRANSACTION:
-		log.Infof("(%v) received %v for ACCEPT_TRANSACTION from node %v", ID(tx.ID), SBACDecision_name[int32(event.msg.Decision)], event.peerID)
+		log.Info("ACCEPT_TRANSACTION received", zap.Uint32("id", ID(tx.ID)), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
 		tx.AcceptTransaction[event.peerID] = event.msg.Decision
 	case SBACOpcode_COMMIT_TRANSACTION:
-		log.Infof("(%v) received %v for COMMIT_TRANSACTION from node %v", ID(tx.ID), SBACDecision_name[int32(event.msg.Decision)], event.peerID)
+		log.Info("COMMIT_TRANSACTION received", zap.Uint32("id", ID(tx.ID)), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
 		tx.AcceptTransaction[event.peerID] = event.msg.Decision
 	case SBACOpcode_NEW_TRANSACTION:
-		log.Infof("(%v) received %v for NEW_TRANSACTION from node %v", ID(tx.ID), SBACDecision_name[int32(event.msg.Decision)], event.peerID)
+		log.Info("NEW_TRANSACTION received", zap.Uint32("id", ID(tx.ID)), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
 	default:
 	}
 	return StateAnyEvent, nil
@@ -176,22 +176,22 @@ func (s *Service) onAcceptTransactionReceived(tx *TxDetails, event *Event) (Stat
 			}
 		}
 		if rejected >= tplusone(s.shardSize) {
-			log.Infofi("transaction rejected", zap.Uint32("id", ID(tx.ID)))
+			log.Info("transaction rejected", zap.Uint32("id", ID(tx.ID)))
 			return StateAborted, nil
 		}
 		if accepted >= twotplusone(s.shardSize) {
-			log.Infofi("transaction accepted", zap.Uint32("id", ID(tx.ID)))
+			log.Info("transaction accepted", zap.Uint32("id", ID(tx.ID)))
 			continue
 		}
 		somePending = true
 	}
 
 	if somePending {
-		log.Infofi("transaction pending, not enough answers from shards", zap.Uint32("id", ID(tx.ID)))
+		log.Info("transaction pending, not enough answers from shards", zap.Uint32("id", ID(tx.ID)))
 		return StateWaitingForAcceptTransaction, nil
 	}
 
-	log.Infofi("transaction accepted by all shards", zap.Uint32("id", ID(tx.ID)))
+	log.Info("transaction accepted by all shards", zap.Uint32("id", ID(tx.ID)))
 	return StateSucceeded, nil
 }
 
@@ -214,7 +214,7 @@ func (s *Service) onEvidenceReceived(tx *TxDetails, _ *Event) (State, error) {
 	// TODO: need to check evidences here, as this step should happend after the first consensus round.
 	// not sure how we agregate evidence here, if we get new ones from the consensus rounds or the same that where sent with the transaction at the begining.
 	if !s.verifySignatures(tx.ID, tx.CheckersEvidences) {
-		log.Errorfi("missing/invalid signatures", zap.Uint32("id", ID(tx.ID)))
+		log.Error("missing/invalid signatures", zap.Uint32("id", ID(tx.ID)))
 		return StateRejectAcceptTransactionBroadcasted, nil
 	}
 
@@ -222,18 +222,18 @@ func (s *Service) onEvidenceReceived(tx *TxDetails, _ *Event) (State, error) {
 	for _, trace := range tx.Tx.Traces {
 		objects, ok := s.objectsExists(trace.InputObjectsKeys, trace.InputReferencesKeys)
 		if !ok {
-			log.Errorfi("some objects do not exists", zap.Uint32("id", ID(tx.ID)))
+			log.Error("some objects do not exists", zap.Uint32("id", ID(tx.ID)))
 			return StateRejectAcceptTransactionBroadcasted, nil
 		}
 		for _, v := range objects {
 			if v.Status == ObjectStatus_INACTIVE {
-				log.Errorfi("some objects are inactive", zap.Uint32("id", ID(tx.ID)))
+				log.Error("some objects are inactive", zap.Uint32("id", ID(tx.ID)))
 				return StateRejectAcceptTransactionBroadcasted, nil
 			}
 		}
 	}
 
-	log.Infofi("evidences and input objects/references checked successfully", zap.Uint32("id", ID(tx.ID)))
+	log.Info("evidences and input objects/references checked successfully", zap.Uint32("id", ID(tx.ID)))
 	return StateObjectLocked, nil
 }
 
@@ -286,7 +286,7 @@ func (s *Service) toObjectLocked(tx *TxDetails) (State, error) {
 	objects, allInShard := s.inputObjectsForShard(s.shardID, tx.Tx)
 	// lock them
 	if err := LockObjects(s.store, objects); err != nil {
-		log.Errorfi("unable to lock all objects", zap.Uint32("id", ID(tx.ID)), zap.Error(err))
+		log.Error("unable to lock all objects", zap.Uint32("id", ID(tx.ID)), zap.Error(err))
 		// return nil from here as we can abort as a valid transition
 		return StateAborted, nil
 	}
@@ -315,7 +315,7 @@ func (s *Service) sendToAllShardInvolved(tx *TxDetails, msg *service.Message) er
 			// TODO: proper timeout ?
 			_, err := s.conns.WriteRequest(node, msg, time.Second)
 			if err != nil {
-				log.Errorfi("unable to connect to node", zap.Uint32("id", ID(tx.ID)), zap.Uint64("peer.id", node))
+				log.Error("unable to connect to node", zap.Uint32("id", ID(tx.ID)), zap.Uint64("peer.id", node))
 				return fmt.Errorf("unable to connect to node(%v): %v", node, err)
 			}
 		}
@@ -331,16 +331,16 @@ func (s *Service) toRejectAcceptTransactionBroadcasted(tx *TxDetails) (State, er
 	}
 	msg, err := makeMessage(sbacmsg)
 	if err != nil {
-		log.Errorfi("unable to serialize message reject accept transaction", zap.Uint32("id", ID(tx.ID)), zap.Error(err))
+		log.Error("unable to serialize message reject accept transaction", zap.Uint32("id", ID(tx.ID)), zap.Error(err))
 		return StateAborted, err
 	}
 
 	err = s.sendToAllShardInvolved(tx, msg)
 	if err != nil {
-		log.Errorfi("unable to sent reject transaction to all shards", zap.Uint32("id", ID(tx.ID)), zap.Error(err))
+		log.Error("unable to sent reject transaction to all shards", zap.Uint32("id", ID(tx.ID)), zap.Error(err))
 	}
 
-	log.Infofi("reject transaction sent to all shards", zap.Uint32("id", ID(tx.ID)))
+	log.Info("reject transaction sent to all shards", zap.Uint32("id", ID(tx.ID)))
 	return StateAborted, err
 }
 
@@ -352,17 +352,17 @@ func (s *Service) toAcceptAcceptTransactionBroadcasted(tx *TxDetails) (State, er
 	}
 	msg, err := makeMessage(sbacmsg)
 	if err != nil {
-		log.Errorfi("unable to serialize message accept transaction accept", zap.Uint32("id", ID(tx.ID)), zap.Error(err))
+		log.Error("unable to serialize message accept transaction accept", zap.Uint32("id", ID(tx.ID)), zap.Error(err))
 		return StateAborted, err
 	}
 
 	err = s.sendToAllShardInvolved(tx, msg)
 	if err != nil {
-		log.Errorf("unable to sent accept transaction to all shards", zap.Uint32("id", ID(tx.ID)), zap.Error(err))
+		log.Error("unable to sent accept transaction to all shards", zap.Uint32("id", ID(tx.ID)), zap.Error(err))
 		return StateAborted, err
 	}
 
-	log.Infofi("accept transaction sent to all shards", zap.Uint32("id", ID(tx.ID)))
+	log.Info("accept transaction sent to all shards", zap.Uint32("id", ID(tx.ID)))
 	return StateWaitingForAcceptTransaction, nil
 }
 
@@ -374,12 +374,12 @@ func (s *Service) toObjectDeactivated(tx *TxDetails) (State, error) {
 	objects, _ := s.inputObjectsForShard(s.shardID, tx.Tx)
 	// lock them
 	if err := DeactivateObjects(s.store, objects); err != nil {
-		log.Errorf("unable to deactivate all objects", zap.Uint32("id", ID(tx.ID)), zap.Error(err))
+		log.Error("unable to deactivate all objects", zap.Uint32("id", ID(tx.ID)), zap.Error(err))
 		// return nil from here as we can abort as a valid transition
 		return StateAborted, nil
 	}
 
-	log.Infofi("all object deactivated successfully", zap.Uint32("id", ID(tx.ID)))
+	log.Info("all object deactivated successfully", zap.Uint32("id", ID(tx.ID)))
 	return StateObjectsCreated, nil
 }
 
@@ -407,10 +407,10 @@ func (s *Service) toObjectsCreated(tx *TxDetails) (State, error) {
 	}
 	err = CreateObjects(s.store, objects)
 	if err != nil {
-		log.Errorfi("unable to create objects", zap.Uint32("id", ID(tx.ID)), zap.Error(err))
+		log.Error("unable to create objects", zap.Uint32("id", ID(tx.ID)), zap.Error(err))
 		return StateAborted, err
 	}
-	log.Infofi("all objects created successfully", zap.Uint32("id", ID(tx.ID)))
+	log.Info("all objects created successfully", zap.Uint32("id", ID(tx.ID)))
 	if allObjectsInCurrentShard {
 		return StateSucceeded, nil
 	}
@@ -426,7 +426,7 @@ func (s *Service) toAborted(tx *TxDetails) (State, error) {
 	// unlock any objects maybe related to this transaction.
 	objects, _ := s.inputObjectsForShard(s.shardID, tx.Tx)
 	if err := UnlockObjects(s.store, objects); err != nil {
-		log.Errorfi("unable to unlock objects", zap.Uint32("id", ID(tx.ID)), zap.Error(err))
+		log.Error("unable to unlock objects", zap.Uint32("id", ID(tx.ID)), zap.Error(err))
 	}
 	tx.Result <- false
 	return StateAborted, nil

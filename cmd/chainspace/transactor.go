@@ -12,6 +12,7 @@ import (
 	"chainspace.io/prototype/service/transactor/client"
 
 	"github.com/tav/golly/optparse"
+	"go.uber.org/zap"
 )
 
 func getRequiredParams(
@@ -44,15 +45,15 @@ func cmdTransactor(args []string, usage string) {
 	_, err := os.Stat(*configRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Fatalf("Could not find the Chainspace root directory at %s", *configRoot)
+			log.Fatal("Could not find the Chainspace root directory", zap.String("dir", *configRoot))
 		}
-		log.Fatalf("Unable to access the Chainspace root directory at %s: %s", *configRoot, err)
+		log.Fatal("Unable to access the Chainspace root directory", zap.String("dir", *configRoot), zap.Error(err))
 	}
 
 	netPath := filepath.Join(*configRoot, networkName)
 	netCfg, err := config.LoadNetwork(filepath.Join(netPath, "network.yaml"))
 	if err != nil {
-		log.Fatalf("Could not load network.yaml: %s", err)
+		log.Fatal("Could not load network.yaml", zap.Error(err))
 	}
 
 	cfg := &transactorclient.Config{
@@ -62,64 +63,64 @@ func cmdTransactor(args []string, usage string) {
 
 	transactorClient, err := transactorclient.New(cfg)
 	if err != nil {
-		log.Fatalf("Unable to create transactor.Client")
+		log.Fatal("Unable to create transactor.Client", zap.Error(err))
 	}
 	defer transactorClient.Close()
 
 	switch cmd {
 	case "transaction":
 		if payloadPath == nil || len(*payloadPath) <= 0 {
-			log.Fatalf("missing required payload path")
+			log.Fatal("missing required payload path")
 		}
 		payload, err := ioutil.ReadFile(*payloadPath)
 		if err != nil {
-			log.Fatalf("Unable to read payload file: %v", err)
+			log.Fatal("Unable to read payload file", zap.Error(err))
 		}
 
 		tx := transactorclient.ClientTransaction{}
 		err = json.Unmarshal(payload, &tx)
 		if err != nil {
-			log.Fatalf("Invalid payload format for transaction: %v", err)
+			log.Fatal("Invalid payload format for transaction", zap.Error(err))
 		}
 		err = transactorClient.SendTransaction(&tx)
 		if err != nil {
-			log.Fatalf("Unable to send transaction: %v", err)
+			log.Fatal("Unable to send transaction", zap.Error(err))
 		}
 	case "query":
 		if key == nil || len(*key) == 0 {
-			log.Fatalf("missing object key")
+			log.Fatal("missing object key")
 		}
 		keybytes := readkey(*key)
 		err = transactorClient.Query(keybytes)
 		if err != nil {
-			log.Fatalf("Unable to query an object: %v", err)
+			log.Fatal("Unable to query an object", zap.Error(err))
 		}
 	case "create":
 		if object == nil || len(*object) <= 0 {
-			log.Fatalf("missing object to create")
+			log.Fatal("missing object to create")
 		}
 		err = transactorClient.Create(*object)
 		if err != nil {
-			log.Fatalf("Unable to create a new object: %v", err)
+			log.Fatal("Unable to create a new object", zap.Error(err))
 		}
 	case "delete":
 		if key == nil || len(*key) == 0 {
-			log.Fatalf("missing object key")
+			log.Fatal("missing object key")
 		}
 		keybytes := readkey(*key)
 		err = transactorClient.Delete(keybytes)
 		if err != nil {
-			log.Fatalf("Unable to query an object: %v", err)
+			log.Fatal("Unable to query an object", zap.Error(err))
 		}
 	default:
-		log.Fatalf("Invalid command name: %s", cmd)
+		log.Fatal("invalid/unknown command", zap.String("cmd", cmd))
 	}
 }
 
 func readkey(s string) []byte {
 	bytes, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {
-		log.Fatalf("unable to read key: %v", err)
+		log.Fatal("unable to read key", zap.Error(err))
 	}
 	return bytes
 }

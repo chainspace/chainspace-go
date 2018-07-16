@@ -94,7 +94,7 @@ func (sm *StateMachine) onNewEvent(event *Event) error {
 }
 
 func (sm *StateMachine) applyTransition(state State, fun Transition) error {
-	log.Infofi("applying transition",
+	log.Info("applying transition",
 		zap.Uint32("id", ID(sm.txDetails.ID)),
 		zap.String("old_state", sm.state.String()),
 		zap.String("new_state", state.String()),

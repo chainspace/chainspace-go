@@ -124,10 +124,7 @@ func (s *Service) genBlocks() {
 				total += tx.Size()
 				if total < s.blockLimit {
 					txs = append(txs, tx)
-					if tx := entry.GetTransaction(); tx != nil {
-						s.cb.BroadcastTransaction(tx)
-					}
-					entries = append(entries, entry)
+					s.cb.BroadcastTransaction(tx)
 				} else {
 					atLimit = true
 					pendingTxs = append(pendingTxs, tx)

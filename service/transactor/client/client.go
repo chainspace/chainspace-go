@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"chainspace.io/prototype/combihash"
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/log"
@@ -121,7 +123,7 @@ func (c *client) Close() {
 	for _, conns := range c.nodesConn {
 		for _, c := range conns {
 			if err := c.Conn.Close(); err != nil {
-				log.Errorf("transactor client: error closing connection: %v", err)
+				log.Error("transactor client: error closing connection", zap.Error(err))
 			}
 		}
 	}
@@ -149,7 +151,7 @@ func (c *client) dialUntil(shardID uint64, nodes []uint64) error {
 	for _, n := range nodes {
 		conn, err := c.top.Dial(ctx, n)
 		if err != nil {
-			log.Errorf("transactor client: unable to connect to shard(%v)->node(%v): %v", shardID, n, err)
+			log.Error("transactor client: unable to connect", zap.Uint64("peer.shard", shardID), zap.Uint64("peer.id", n), zap.Error(err))
 			retry = append(retry, n)
 		} else {
 			c.nodesConn[shardID] = append(c.nodesConn[shardID], NodeIDConnPair{n, conn})
@@ -177,10 +179,10 @@ func (c *client) helloNodes() error {
 	}
 	for k, v := range c.nodesConn {
 		for _, nc := range v {
-			log.Infof("sending hello to shard shard(%v)->node(%v)", k, nc.NodeID)
+			log.Info("sending hello", zap.Uint64("peer.shard", k), zap.Uint64("peer.id", nc.NodeID))
 			err := nc.Conn.WritePayload(hellomsg, int(c.maxPaylod), 5*time.Second)
 			if err != nil {
-				log.Errorf("transactor client: unable to send hello message to shard(%v)->node(%v): %v", k, nc.NodeID, err)
+				log.Error("unable to send hello", zap.Uint64("peer.shard", k), zap.Uint64("peer.id", nc.NodeID), zap.Error(err))
 				return err
 			}
 		}
@@ -194,7 +196,7 @@ func (c *client) checkTransaction(t *transactor.Transaction) (map[uint64][]byte,
 	}
 	txbytes, err := proto.Marshal(req)
 	if err != nil {
-		log.Errorf("transctor client: unable to marshal transaction: %v", err)
+		log.Error("transctor client: unable to marshal transaction", zap.Error(err))
 		return nil, err
 	}
 	msg := &service.Message{
@@ -209,14 +211,14 @@ func (c *client) checkTransaction(t *transactor.Transaction) (map[uint64][]byte,
 		res := transactor.CheckTransactionResponse{}
 		err = proto.Unmarshal(msg.Payload, &res)
 		if err != nil {
-			log.Errorf("unable unmarshal message from shard(%v)->node(%v): %v", s, n, err)
+			log.Error("unable to unmarshal input message", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", n), zap.Error(err))
 			return err
 		}
 		// check if Ok then add it to the evidences
 		if res.Ok {
 			evidences[n] = res.Signature
 		}
-		log.Infof("shard(%v)->node(%v) answered with {ok(%v)}", s, n, res.Ok)
+		log.Info("check transaction answer", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", n), zap.Bool("ok", res.Ok))
 		return nil
 	}
 	err = c.sendMessages(msg, f)
@@ -232,7 +234,7 @@ func (c *client) addTransaction(t *transactor.Transaction) error {
 	}
 	txbytes, err := proto.Marshal(req)
 	if err != nil {
-		log.Errorf("transctor client: unable to marshal transaction: %v", err)
+		log.Error("transctor client: unable to marshal transaction", zap.Error(err))
 		return err
 	}
 	msg := &service.Message{
@@ -243,12 +245,12 @@ func (c *client) addTransaction(t *transactor.Transaction) error {
 		res := transactor.AddTransactionResponse{}
 		err = proto.Unmarshal(msg.Payload, &res)
 		if err != nil {
-			log.Errorf("unable unmarshal message from shard(%v)->node(%v): %v", s, n, err)
+			log.Error("unable to unmarshal input message", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", n), zap.Error(err))
 			return err
 		}
 		for _, v := range res.Objects {
 			for _, object := range v.List {
-				log.Infof("shard(%v)->node(%v) answered with output object key: %v", s, n, b64(object.Key))
+				log.Info("add transaction answer", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", n), zap.String("object.id", b64(object.Key)))
 			}
 		}
 		return nil
@@ -270,6 +272,7 @@ func (c *client) SendTransaction(t *ClientTransaction) error {
 	}
 	twotplusone := (2*(len(c.nodesConn)/3) + 1)
 	if len(evidences) < twotplusone {
+		log.Error("not enough evidence returned by nodes", zap.Int("expected", twotplusone), zap.Int("got", len(evidences)))
 		return fmt.Errorf("not enough evidences returned by nodes expected(%v) got(%v)", twotplusone, len(evidences))
 	}
 	return c.addTransaction(tx)
@@ -289,6 +292,7 @@ func (c *client) Query(key []byte) error {
 	}
 	bytes, err := proto.Marshal(req)
 	if err != nil {
+		log.Error("unable to marshal QueryObject request", zap.Error(err))
 		return err
 	}
 	msg := &service.Message{
@@ -300,11 +304,16 @@ func (c *client) Query(key []byte) error {
 		res := transactor.QueryObjectResponse{}
 		err = proto.Unmarshal(msg.Payload, &res)
 		if err != nil {
-			log.Errorf("unable unmarshal message from shard(%v)->node(%v): %v", s, n, err)
+			log.Error("unable to unmarshal input message", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", n), zap.Error(err))
 			return err
 		}
 		keybase64 := base64.StdEncoding.EncodeToString(res.Object.Key)
-		log.Infof("shard(%v)->node(%v) answered with {id(%v), value(%v), status(%v)}", s, n, keybase64, string(res.Object.Value), res.Object.Status)
+		log.Info("query object answer",
+			zap.Uint64("peer.shard", s),
+			zap.Uint64("peer.id", n),
+			zap.String("object.id", keybase64),
+			zap.String("object.value", string(res.Object.Value)),
+			zap.String("object.status", res.Object.Status.String()))
 		return nil
 	}
 	return c.sendMessages(msg, f)
@@ -335,11 +344,16 @@ func (c *client) Delete(key []byte) error {
 		res := &transactor.DeleteObjectResponse{}
 		err = proto.Unmarshal(msg.Payload, res)
 		if err != nil {
-			log.Errorf("unable unmarshal message from shard(%v)->node(%v): %v", s, n, err)
+			log.Error("unable to unmarshal input message", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", n), zap.Error(err))
 			return err
 		}
 		keybase64 := base64.StdEncoding.EncodeToString(res.Object.Key)
-		log.Infof("shard(%v)->node(%v) answered with {id(%v), value(%v), status(%v)}", s, n, keybase64, string(res.Object.Value), res.Object.Status)
+		log.Info("delete object answer",
+			zap.Uint64("peer.shard", s),
+			zap.Uint64("peer.id", n),
+			zap.String("object.id", keybase64),
+			zap.String("object.value", string(res.Object.Value)),
+			zap.String("object.status", res.Object.Status.String()))
 
 		return err
 	}
@@ -355,15 +369,15 @@ func (c *client) sendMessages(msg *service.Message, f func(uint64, uint64, *serv
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				log.Infof("sending transaction to shard(%v)->node(%v)", s, v.NodeID)
+				log.Info("sending message", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", v.NodeID))
 				_, err := v.Conn.WriteRequest(msg, int(c.maxPaylod), 5*time.Second)
 				if err != nil {
-					log.Errorf("unable to write request to shard(%v)->node(%v): %v", s, v.NodeID, err)
+					log.Error("unable to write request", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", v.NodeID), zap.Error(err))
 					return
 				}
 				rmsg, err := v.Conn.ReadMessage(int(c.maxPaylod), 5*time.Second)
 				if err != nil {
-					log.Errorf("unable to read message from shard(%v)->node(%v): %v", s, v.NodeID, err)
+					log.Error("unable to read message", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", v.NodeID), zap.Error(err))
 					return
 				}
 				_ = f(s, v.NodeID, rmsg)
@@ -402,11 +416,11 @@ func (c *client) Create(obj string) error {
 		res := transactor.NewObjectResponse{}
 		err = proto.Unmarshal(msg.Payload, &res)
 		if err != nil {
-			log.Errorf("unable unmarshal message from shard(%v)->node(%v): %v", s, n, err)
+			log.Error("unable to unmarshal input message", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", n), zap.Error(err))
 			return err
 		}
 		idbase64 := base64.StdEncoding.EncodeToString(res.ID)
-		log.Infof("shard(%v)->node(%v) answered with id: %v", s, n, idbase64)
+		log.Info("Create object answer", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", n), zap.String("object.id", idbase64))
 		return nil
 	}
 	return c.sendMessages(msg, f)
