@@ -35,6 +35,7 @@ type TxDetails struct {
 	Raw               []byte
 	Result            chan bool
 	Tx                *Transaction
+	HashID            uint32
 }
 
 // Action specify an action to execute when a new event is triggered.
@@ -77,14 +78,14 @@ func (sm *StateMachine) applyTransition(transitionTo State) error {
 		}
 
 		log.Info("applying transition",
-			zap.Uint32("id", ID(sm.txDetails.ID)),
+			zap.Uint32("id", sm.txDetails.HashID),
 			zap.String("old_state", sm.state.String()),
 			zap.String("new_state", transitionTo.String()),
 		)
 		nextstate, err := f(sm.txDetails)
 		if err != nil {
 			log.Error("unable to apply transition",
-				zap.Uint32("id", ID(sm.txDetails.ID)),
+				zap.Uint32("id", sm.txDetails.HashID),
 				zap.String("old_state", sm.state.String()),
 				zap.String("new_state", transitionTo.String()),
 				zap.Error(err),
@@ -106,7 +107,7 @@ func (sm *StateMachine) moveState() error {
 			return nil
 		}
 		log.Info("applying action",
-			zap.Uint32("id", ID(sm.txDetails.ID)),
+			zap.Uint32("id", sm.txDetails.HashID),
 			zap.String("state", sm.state.String()),
 		)
 		newstate, err := action(sm.txDetails)
@@ -137,7 +138,7 @@ func (sm *StateMachine) moveState() error {
 func (sm *StateMachine) run() {
 	for e := range sm.events {
 		log.Info("processing new event",
-			zap.Uint32("id", ID(sm.txDetails.ID)),
+			zap.Uint32("id", sm.txDetails.HashID),
 			zap.String("state", sm.state.String()),
 			zap.Uint64("peer.id", e.peerID),
 		)
@@ -178,5 +179,6 @@ func NewTxDetails(txID, raw []byte, tx *Transaction, evidences map[uint64][]byte
 		Raw:               raw,
 		Result:            make(chan bool),
 		Tx:                tx,
+		HashID:            ID(txID),
 	}
 }

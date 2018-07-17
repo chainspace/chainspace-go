@@ -266,6 +266,8 @@ func (c *client) SendTransaction(t *ClientTransaction) error {
 	if err := c.helloNodes(); err != nil {
 		return err
 	}
+
+	start := time.Now()
 	evidences, err := c.checkTransaction(tx)
 	if err != nil {
 		return err
@@ -275,7 +277,9 @@ func (c *client) SendTransaction(t *ClientTransaction) error {
 		log.Error("not enough evidence returned by nodes", zap.Int("expected", twotplusone), zap.Int("got", len(evidences)))
 		return fmt.Errorf("not enough evidences returned by nodes expected(%v) got(%v)", twotplusone, len(evidences))
 	}
-	return c.addTransaction(tx)
+	err = c.addTransaction(tx)
+	log.Info("add transaction finished", zap.Duration("time_taken", time.Since(start)))
+	return err
 }
 
 func (c *client) Query(key []byte) error {
