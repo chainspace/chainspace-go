@@ -118,4 +118,5 @@ message ConsensusTransaction {
   bytes id = 2 [(gogoproto.customname) = "ID"];
   map<uint64, bytes> evidences = 3;
   uint64 peerID = 4;
+  SBACOpcode ConsensusRound = 5;
 }

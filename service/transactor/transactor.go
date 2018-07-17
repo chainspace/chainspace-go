@@ -68,7 +68,7 @@ func (s *Service) BroadcastTransaction(txdata *broadcast.TransactionData) {
 	}
 	e := &Event{
 		msg: &SBACMessage{
-			Op:                   SBACOpcode_CONSENSUS1,
+			Op:                   ctx.ConsensusRound,
 			Decision:             SBACDecision_ACCEPT,
 			TransactionID:        ctx.ID,
 			ConsensusTransaction: ctx,
@@ -219,10 +219,11 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 
 	// broadcast transaction
 	consensusTx := &ConsensusTransaction{
-		Tx:        req.Tx,
-		ID:        ids.TxID,
-		Evidences: req.Evidences,
-		PeerID:    s.nodeID,
+		Tx:             req.Tx,
+		ID:             ids.TxID,
+		Evidences:      req.Evidences,
+		PeerID:         s.nodeID,
+		ConsensusRound: SBACOpcode_CONSENSUS1,
 	}
 	b, err := proto.Marshal(consensusTx)
 	if err != nil {
