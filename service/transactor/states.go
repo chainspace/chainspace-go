@@ -35,8 +35,8 @@ const (
 	StateObjectsDeactivated
 	StateObjectsCreated
 
-	StateAcceptCommitBroadcasted
-	StateRejectCommitBroadcasted
+	StateCommitObjectsBroadcasted // notify other shards to create the objects
+	StateWaitingForCommit         // not which need to create object start it state machine with this
 
 	StateAborted
 	StateSucceeded
@@ -70,10 +70,10 @@ func (s State) String() string {
 		return "StateObjectsCreated"
 	case StateSucceeded:
 		return "StateSucceeded"
-	case StateAcceptCommitBroadcasted:
-		return "StateAcceptCommitBroadcasted"
-	case StateRejectCommitBroadcasted:
-		return "StateRejectCommitBroadcasted"
+	case StateCommitObjectsBroadcasted:
+		return "StateCommitObjectsBroadcasted"
+	case StateWaitingForCommit:
+		return "StateWaitingForCommit"
 	case StateAborted:
 		return "StateAborted"
 	default:
@@ -88,8 +88,7 @@ func (s *Service) makeStateTable() *StateTable {
 		StateWaitingForConsensus2: s.onWaitingForConsensus2,
 		StateWaitingForPhase1:     s.onWaitingForPhase1,
 		StateWaitingForPhase2:     s.onWaitingForPhase2,
-
-		// StateAnyEvent: s.onAnyEvent,
+		StateWaitingForCommit:     s.onWaitingForCommit,
 	}
 
 	// change state are triggererd from the previous state change
@@ -117,7 +116,11 @@ func (s *Service) makeStateTable() *StateTable {
 		{StateRejectPhase2Broadcasted, StateAborted}:              s.toAborted,
 		{StateAcceptPhase2Broadcasted, StateWaitingForPhase2}:     s.toWaitingForPhase2,
 		{StateWaitingForPhase2, StateAborted}:                     s.toAborted,
-		{StateWaitingForPhase2, StateSucceeded}:                   s.toSucceeded,
+		{StateWaitingForPhase2, StateObjectsDeactivated}:          s.toObjectDeactivated,
+
+		{StateObjectsCreated, StateCommitObjectsBroadcasted}: s.toCommitObjectsBroadcasted,
+		{StateCommitObjectsBroadcasted, StateAborted}:        s.toAborted,
+		{StateCommitObjectsBroadcasted, StateSucceeded}:      s.toSucceeded,
 	}
 
 	return &StateTable{actionTable, transitionTable, s.onEvent}
@@ -141,6 +144,9 @@ func (s *Service) onEvent(tx *TxDetails, event *Event) error {
 	case SBACOpcode_CONSENSUS2:
 		log.Info("CONSENSUS2 decision received", zap.Uint32("id", tx.HashID), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
 		tx.Consensus2 = event.msg.ConsensusTransaction
+	case SBACOpcode_COMMIT:
+		log.Info("COMMIT decision received", zap.Uint32("id", tx.HashID), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
+		tx.CommitDecisions[event.peerID] = event.msg.Decision
 	default:
 	}
 	return nil
@@ -171,6 +177,64 @@ func twotplusone(shardSize uint64) uint64 {
 
 func tplusone(shardSize uint64) uint64 {
 	return shardSize/3 + 1
+}
+
+type WaitingDecisionResult uint8
+
+const (
+	WaitingDecisionResultAbort WaitingDecisionResult = iota
+	WaitingDecisionResultPending
+	WaitingDecisionResultAccept
+)
+
+func (s *Service) onWaitingFor(tx *TxDetails, decisions map[uint64]SBACDecision, phaseName string) WaitingDecisionResult {
+	shards := s.shardsInvolvedInTx(tx.Tx)
+	var somePending bool
+	// for each shards, get the nodes id, and checks if they answered
+	vtwotplusone := twotplusone(s.shardSize)
+	vtplusone := tplusone(s.shardSize)
+	for _, v := range shards {
+		nodes := s.top.NodesInShard(v)
+		var accepted uint64
+		var rejected uint64
+		for _, nodeID := range nodes {
+			if d, ok := decisions[nodeID]; ok {
+				if d == SBACDecision_ACCEPT {
+					accepted += 1
+					continue
+				}
+				rejected += 1
+			}
+		}
+		if rejected >= vtplusone {
+			log.Info(phaseName+" transaction rejected",
+				zap.Uint32("id", tx.HashID),
+				zap.Uint64("peer.shard", v),
+				zap.Uint64("t+1", vtplusone),
+				zap.Uint64("rejected", rejected),
+			)
+			return WaitingDecisionResultAbort
+		}
+		if accepted >= vtwotplusone {
+			log.Info(phaseName+" transaction accepted",
+				zap.Uint32("id", tx.HashID),
+				zap.Uint64("peer.shard", v),
+				zap.Uint64s("shards_involved", shards),
+				zap.Uint64("2t+1", vtwotplusone),
+				zap.Uint64("accepted", accepted),
+			)
+			continue
+		}
+		somePending = true
+	}
+
+	if somePending {
+		log.Info("phase1 transaction pending, not enough answers from shards", zap.Uint32("id", tx.HashID))
+		return WaitingDecisionResultPending
+	}
+
+	log.Info("phase1 transaction accepted by all shards", zap.Uint32("id", tx.HashID))
+	return WaitingDecisionResultAccept
 }
 
 func (s *Service) onWaitingForPhase1(tx *TxDetails) (State, error) {
@@ -270,6 +334,57 @@ func (s *Service) onWaitingForPhase2(tx *TxDetails) (State, error) {
 	}
 
 	log.Info("phase2 transaction accepted by all shards", zap.Uint32("id", tx.HashID))
+	return StateObjectsDeactivated, nil
+}
+
+func (s *Service) onWaitingForCommit(tx *TxDetails) (State, error) {
+	/*shards := s.shardsInvolvedInTx(tx.Tx)
+	var somePending bool
+	// for each shards, get the nodes id, and checks if they answered
+	vtwotplusone := twotplusone(s.shardSize)
+	vtplusone := tplusone(s.shardSize)
+	for _, v := range shards {
+		nodes := s.top.NodesInShard(v)
+		var accepted uint64
+		var rejected uint64
+		for _, nodeID := range nodes {
+			if d, ok := tx.Phase2Decisions[nodeID]; ok {
+				if d == SBACDecision_ACCEPT {
+					accepted += 1
+					continue
+				}
+				rejected += 1
+			}
+		}
+		if rejected >= vtplusone {
+			log.Info("phase2 transaction rejected",
+				zap.Uint32("id", tx.HashID),
+				zap.Uint64("peer.shard", v),
+				zap.Uint64("t+1", vtplusone),
+				zap.Uint64("rejected", rejected),
+			)
+			return StateAborted, nil
+		}
+		if accepted >= vtwotplusone {
+			log.Info("phase2 transaction accepted",
+				zap.Uint32("id", tx.HashID),
+				zap.Uint64("peer.shard", v),
+				zap.Uint64s("shards_involved", shards),
+				zap.Uint64("2t+1", vtwotplusone),
+				zap.Uint64("accepted", accepted),
+			)
+			continue
+		}
+		somePending = true
+	}
+
+	if somePending {
+		log.Info("phase2 transaction pending, not enough answers from shards", zap.Uint32("id", tx.HashID))
+		return StateWaitingForPhase2, nil
+	}
+
+	log.Info("phase2 transaction accepted by all shards", zap.Uint32("id", tx.HashID))
+	return StateObjectsDeactivated, nil */
 	return StateSucceeded, nil
 }
 
@@ -536,7 +651,7 @@ func (s *Service) toObjectsCreated(tx *TxDetails) (State, error) {
 	if allObjectsInCurrentShard {
 		return StateSucceeded, nil
 	}
-	return StateAcceptCommitBroadcasted, nil
+	return StateCommitObjectsBroadcasted, nil
 }
 
 func (s *Service) toSucceeded(tx *TxDetails) (State, error) {
@@ -552,6 +667,71 @@ func (s *Service) toAborted(tx *TxDetails) (State, error) {
 	}
 	tx.Result <- false
 	return StateAborted, nil
+}
+
+func (s *Service) sendToShards(shards []uint64, tx *TxDetails, msg *service.Message) error {
+	for _, shard := range shards {
+		nodes := s.top.NodesInShard(shard)
+		for _, node := range nodes {
+			// TODO: proper timeout ?
+			_, err := s.conns.WriteRequest(node, msg, time.Second)
+			if err != nil {
+				log.Error("unable to connect to node", zap.Uint32("id", tx.HashID), zap.Uint64("peer.id", node))
+				return fmt.Errorf("unable to connect to node(%v): %v", node, err)
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Service) toCommitObjectsBroadcasted(tx *TxDetails) (State, error) {
+	sbacmsg := &SBACMessage{
+		Op:            SBACOpcode_COMMIT,
+		Decision:      SBACDecision_ACCEPT,
+		TransactionID: tx.ID,
+		ConsensusTransaction: &ConsensusTransaction{
+			Tx: tx.Tx,
+			ID: tx.ID,
+			// Evidences: tx.Evidences,
+		},
+	}
+	msg, err := makeMessage(sbacmsg)
+	if err != nil {
+		log.Error("commit accept unable to serialize message", zap.Uint32("id", tx.HashID), zap.Error(err))
+		return StateAborted, err
+	}
+
+	// send to all shards which will hold state for new object, and was not involved before
+	shards := s.shardsInvolvedInTx(tx.Tx)
+	shardsUniq := IDSlice(shards).ToMapUniq()
+	ids, err := MakeIDs(tx.Tx)
+	if err != nil {
+		return StateAborted, err
+	}
+	shardsInvolvedUniq := map[uint64]struct{}{}
+	for _, v := range ids.TraceObjectPairs {
+		v := v
+		for _, o := range v.OutputObjects {
+			shard := s.top.ShardForKey(o.Key)
+			if _, ok := shardsUniq[shard]; !ok {
+				shardsInvolvedUniq[shard] = struct{}{}
+			}
+
+		}
+	}
+	shardsInvolved := IDSlice{}.FromMapUniq(shardsInvolvedUniq)
+
+	err = s.sendToShards(shardsInvolved, tx, msg)
+	if err != nil {
+		log.Error("commit unable to sent accept transaction to all shards", zap.Uint32("id", tx.HashID), zap.Error(err))
+		return StateAborted, err
+	}
+
+	// TODO(): this should be blocking here waiting for the shards to send us back the response so we can return an error
+
+	log.Info("commit accept transaction sent to all shards",
+		zap.Uint32("id", tx.HashID), zap.Uint64s("shards_involved", shardsInvolved))
+	return StateSucceeded, nil
 }
 
 // TODO(): should we make our own evidences ourselves here ?
@@ -580,4 +760,22 @@ func ID(data []byte) uint32 {
 	h := fnv.New32()
 	h.Write(data)
 	return h.Sum32()
+}
+
+type IDSlice []uint64
+
+func (s IDSlice) ToMapUniq() map[uint64]struct{} {
+	out := map[uint64]struct{}{}
+	for _, v := range s {
+		out[v] = struct{}{}
+	}
+	return out
+}
+
+func (s IDSlice) FromMapUniq(m map[uint64]struct{}) []uint64 {
+	out := []uint64{}
+	for k, _ := range m {
+		out = append(out, k)
+	}
+	return out
 }

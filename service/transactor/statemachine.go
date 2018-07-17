@@ -29,6 +29,7 @@ type TxDetails struct {
 	CheckersEvidences map[uint64][]byte
 	Consensus1        *ConsensusTransaction
 	Consensus2        *ConsensusTransaction
+	CommitDecisions   map[uint64]SBACDecision
 	ID                []byte
 	Phase1Decisions   map[uint64]SBACDecision
 	Phase2Decisions   map[uint64]SBACDecision
@@ -159,10 +160,10 @@ func (sm *StateMachine) OnEvent(e *Event) {
 	sm.events <- e
 }
 
-func NewStateMachine(table *StateTable, txDetails *TxDetails) *StateMachine {
+func NewStateMachine(table *StateTable, txDetails *TxDetails, initialState State) *StateMachine {
 	sm := &StateMachine{
-		events:    make(chan *Event, 100),
-		state:     StateWaitingForConsensus1,
+		events:    make(chan *Event, 1000),
+		state:     initialState,
 		table:     table,
 		txDetails: txDetails,
 	}
@@ -173,6 +174,7 @@ func NewStateMachine(table *StateTable, txDetails *TxDetails) *StateMachine {
 func NewTxDetails(txID, raw []byte, tx *Transaction, evidences map[uint64][]byte) *TxDetails {
 	return &TxDetails{
 		CheckersEvidences: evidences,
+		CommitDecisions:   map[uint64]SBACDecision{},
 		ID:                txID,
 		Phase1Decisions:   map[uint64]SBACDecision{},
 		Phase2Decisions:   map[uint64]SBACDecision{},

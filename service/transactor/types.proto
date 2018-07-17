@@ -99,6 +99,7 @@ enum SBACOpcode {
   CONSENSUS2 = 1; // consensus 2
   PHASE1 = 2; // 2-phase commit phase 1 - accept transaction
   PHASE2 = 3; // 2-phase commit phase 2 - commit transaction
+  COMMIT = 4; // create objects in other shards
 }
 
 enum SBACDecision {
@@ -109,7 +110,8 @@ enum SBACDecision {
 message SBACMessage {
   SBACOpcode op = 1;
   SBACDecision decision = 2;
-  bytes transactionID = 3 [(gogoproto.customname) = "TransactionID"];  bytes payload = 4;
+  bytes transactionID = 3 [(gogoproto.customname) = "TransactionID"];
+  bytes payload = 4;
   ConsensusTransaction consensusTransaction = 5;
 }
 

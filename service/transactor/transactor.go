@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"sync"
+	"time"
 
 	"chainspace.io/prototype/combihash"
 	"chainspace.io/prototype/config"
@@ -46,6 +48,7 @@ type Service struct {
 	nodeID        uint64
 	privkey       signature.PrivateKey
 	txstates      map[string]*StateMachine
+	txstatesmu    sync.Mutex
 	store         *badger.DB
 	shardCount    uint64
 	shardID       uint64
@@ -105,7 +108,7 @@ func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message)
 
 func (s *Service) consumeEvents() {
 	for e := range s.pendingEvents {
-		sm, ok := s.txstates[string(e.msg.TransactionID)]
+		sm, ok := s.getSateMachine(e.msg.TransactionID)
 		if ok {
 			log.Info("sending new event to statemachine", zap.Uint32("id", ID(e.msg.TransactionID)), zap.Uint64("peer.id", e.peerID), zap.Uint64("peer.shard", s.top.ShardForNode(e.peerID)))
 			sm.OnEvent(e)
@@ -122,6 +125,12 @@ func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64)
 	if err != nil {
 		log.Error("transactor: sbac unmarshaling error", zap.Error(err))
 		return nil, fmt.Errorf("transactor: sbac unmarshaling error: %v", err)
+	}
+	// if we received a COMMIT opcode, the statemachine may not exists
+	// lets check an create it here.
+	if req.Op == SBACOpcode_COMMIT {
+		txdetails := NewTxDetails(req.TransactionID, []byte{}, req.ConsensusTransaction.Tx, req.ConsensusTransaction.Evidences)
+		_ = s.getOrCreateStateMachine(txdetails, StateWaitingForCommit)
 	}
 	e := &Event{msg: req, peerID: peerID}
 	s.pendingEvents <- e
@@ -180,6 +189,47 @@ func (s *Service) verifySignatures(txID []byte, evidences map[uint64][]byte) boo
 	return ok
 }
 
+func (s *Service) addStateMachine(txdetails *TxDetails, initialState State) *StateMachine {
+	s.txstatesmu.Lock()
+	sm := NewStateMachine(s.table, txdetails, initialState)
+	s.txstates[string(txdetails.ID)] = sm
+	s.txstatesmu.Unlock()
+	return sm
+}
+
+func (s *Service) getSateMachine(txID []byte) (*StateMachine, bool) {
+	s.txstatesmu.Lock()
+	sm, ok := s.txstates[string(txID)]
+	s.txstatesmu.Unlock()
+	return sm, ok
+}
+
+func (s *Service) getOrCreateStateMachine(txdetails *TxDetails, initialState State) *StateMachine {
+	s.txstatesmu.Lock()
+	defer s.txstatesmu.Unlock()
+	sm, ok := s.txstates[string(txdetails.ID)]
+	if ok {
+		return sm
+	}
+	sm = NewStateMachine(s.table, txdetails, initialState)
+	s.txstates[string(txdetails.ID)] = sm
+	return sm
+}
+
+func (s *Service) gcStateMachines() {
+	for {
+		time.Sleep(1 * time.Second)
+		s.txstatesmu.Lock()
+		for k, v := range s.txstates {
+			if v.State() == StateAborted || v.State() == StateSucceeded {
+				log.Info("removing statemachine", zap.String("finale_state", v.State().String()), zap.Uint32("tx.id", ID([]byte(k))))
+			}
+			delete(s.txstates, k)
+		}
+		s.txstatesmu.Unlock()
+	}
+}
+
 func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.Message, error) {
 	req := &AddTransactionRequest{}
 	err := proto.Unmarshal(payload, req)
@@ -211,11 +261,7 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 	}
 	txdetails := NewTxDetails(ids.TxID, rawtx, req.Tx, req.Evidences)
 
-	sm := NewStateMachine(s.table, txdetails)
-	// start the statemachine
-	s.txstates[string(txdetails.ID)] = sm
-
-	// send an empty event for now in order to start the transitions
+	s.addStateMachine(txdetails, StateWaitingForConsensus1)
 
 	// broadcast transaction
 	consensusTx := &ConsensusTransaction{
@@ -412,6 +458,6 @@ func New(cfg *Config) (*Service, error) {
 	s.table = s.makeStateTable()
 	s.broadcaster.Register(s)
 	go s.consumeEvents()
-
+	// go s.gcStateMachines()
 	return s, nil
 }
