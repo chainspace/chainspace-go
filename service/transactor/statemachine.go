@@ -29,6 +29,7 @@ type TxDetails struct {
 	CheckersEvidences map[uint64][]byte
 	Consensus1        *ConsensusTransaction
 	Consensus2        *ConsensusTransaction
+	ConsensusCommit   *ConsensusTransaction
 	CommitDecisions   map[uint64]SBACDecision
 	ID                []byte
 	Phase1Decisions   map[uint64]SBACDecision
@@ -161,6 +162,7 @@ func (sm *StateMachine) OnEvent(e *Event) {
 }
 
 func NewStateMachine(table *StateTable, txDetails *TxDetails, initialState State) *StateMachine {
+	log.Info("starting new statemachine", zap.Uint32("tx.id", txDetails.HashID))
 	sm := &StateMachine{
 		events:    make(chan *Event, 1000),
 		state:     initialState,

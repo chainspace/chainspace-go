@@ -100,6 +100,7 @@ enum SBACOpcode {
   PHASE1 = 2; // 2-phase commit phase 1 - accept transaction
   PHASE2 = 3; // 2-phase commit phase 2 - commit transaction
   COMMIT = 4; // create objects in other shards
+  CONSENSUS_COMMIT = 5;
 }
 
 enum SBACDecision {
