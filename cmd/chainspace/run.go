@@ -3,11 +3,13 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime/pprof"
 	"strconv"
 
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/node"
+	"github.com/tav/golly/process"
 	"go.uber.org/zap"
 )
 
@@ -15,6 +17,7 @@ func cmdRun(args []string, usage string) {
 
 	opts := newOpts("run NETWORK_NAME NODE_ID [OPTIONS]", usage)
 	configRoot := opts.Flags("-c", "--config-root").Label("PATH").String("path to the chainspace root directory [~/.chainspace]", defaultRootDir())
+	cpuProfile := opts.Flags("--cpu-profile").Label("PATH").String("write a CPU profile to the given file before exiting")
 	runtimeRoot := opts.Flags("-r", "--runtime-root").Label("PATH").String("path to the runtime root directory [~/.chainspace]", defaultRootDir())
 	networkName, nodeID := getNetworkNameAndNodeID(opts, args)
 
@@ -58,9 +61,26 @@ func cmdRun(args []string, usage string) {
 		Node:        nodeCfg,
 	}
 
-	if _, err = node.Run(cfg); err != nil {
+	var profileFile *os.File
+	if *cpuProfile != "" {
+		profileFile, err = os.Create(*cpuProfile)
+		if err != nil {
+			log.Fatal("Could not create CPU profile file", zap.String("file.path", *cpuProfile), zap.Error(err))
+		}
+		pprof.StartCPUProfile(profileFile)
+	}
+
+	s, err := node.Run(cfg)
+	if err != nil {
 		log.Fatal("Could not start node", zap.Uint64("node.id", nodeID), zap.Error(err))
 	}
+
+	process.SetExitHandler(func() {
+		s.Shutdown()
+		if *cpuProfile != "" {
+			pprof.StopCPUProfile()
+		}
+	})
 
 	wait := make(chan struct{})
 	<-wait

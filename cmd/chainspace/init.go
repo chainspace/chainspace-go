@@ -33,7 +33,7 @@ func cmdInit(args []string, usage string) {
 	createUnlessExists(netDir)
 
 	consensus := &config.Consensus{
-		BlockLimit:      128 * config.MB,
+		BlockLimit:      10 * config.MB,
 		NonceExpiration: 30 * time.Second,
 		RoundInterval:   time.Second,
 		ViewTimeout:     15,
