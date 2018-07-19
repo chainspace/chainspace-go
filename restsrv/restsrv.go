@@ -1,8 +1,10 @@
 package restsrv // import "chainspace.io/prototype/restsrv"
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
@@ -74,7 +76,37 @@ func (s *Service) object(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func readKey(rw http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to read request: %v", err))
+		return nil, false
+	}
+	req := struct {
+		Key string `json:"key"`
+	}{}
+	if err := json.Unmarshal(body, &req); err != nil {
+		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to unmarshal: %v", err))
+		return nil, false
+	}
+	if len(req.Key) <= 0 {
+		fail(rw, http.StatusBadRequest, "empty key")
+		return nil, false
+	}
+	key, err := base64.StdEncoding.DecodeString(req.Key)
+	if err != nil {
+		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to b64decode: %v", err))
+		return nil, false
+	}
+	return key, true
+}
+
 func (s *Service) queryObject(rw http.ResponseWriter, r *http.Request) {
+	key, ok := readKey(rw, r)
+	if !ok {
+		return
+	}
+	_ = key
 	success(rw, http.StatusOK, "query object")
 }
 
@@ -83,6 +115,11 @@ func (s *Service) createObject(rw http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) deleteObject(rw http.ResponseWriter, r *http.Request) {
+	key, ok := readKey(rw, r)
+	if !ok {
+		return
+	}
+	_ = key
 	success(rw, http.StatusOK, "delete object")
 }
 
