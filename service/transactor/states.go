@@ -6,10 +6,9 @@ import (
 	"hash/fnv"
 	"time"
 
+	"chainspace.io/prototype/broadcast"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/service"
-	"chainspace.io/prototype/service/broadcast"
-
 	"github.com/gogo/protobuf/proto"
 	"go.uber.org/zap"
 )

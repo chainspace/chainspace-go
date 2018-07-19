@@ -1,6 +1,6 @@
 // Package broadcast implements the network broadcast and consensus within a
 // shard.
-package broadcast
+package broadcast // import "chainspace.io/prototype/broadcast"
 
 import (
 	"context"

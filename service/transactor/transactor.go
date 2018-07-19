@@ -9,14 +9,13 @@ import (
 	"sync"
 	"time"
 
+	"chainspace.io/prototype/broadcast"
 	"chainspace.io/prototype/combihash"
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
-	"chainspace.io/prototype/service/broadcast"
-
 	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
 	"go.uber.org/zap"
