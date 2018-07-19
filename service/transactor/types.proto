@@ -111,15 +111,13 @@ enum SBACDecision {
 message SBACMessage {
   SBACOpcode op = 1;
   SBACDecision decision = 2;
-  bytes transactionID = 3 [(gogoproto.customname) = "TransactionID"];
-  bytes payload = 4;
-  ConsensusTransaction consensusTransaction = 5;
+  SBACTransaction tx = 3;
+  uint64 peerId = 4 [(gogoproto.customname) = "PeerID"];
 }
 
-message ConsensusTransaction {
-  Transaction tx = 1;
-  bytes id = 2 [(gogoproto.customname) = "ID"];
+message SBACTransaction {
+  bytes id = 1 [(gogoproto.customname) = "ID"];
+  Transaction tx = 2;
   map<uint64, bytes> evidences = 3;
-  uint64 peerID = 4;
-  SBACOpcode ConsensusRound = 5;
+  SBACOpcode op = 4;
 }

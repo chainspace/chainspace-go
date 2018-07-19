@@ -5,15 +5,6 @@ import (
 	"go.uber.org/zap"
 )
 
-type SBACDecisions uint8
-
-const (
-	Accept SBACDecisions = iota
-
-	Reject
-	Abort
-)
-
 type StateTable struct {
 	actions     map[State]Action
 	transitions map[StateTransition]Transition
@@ -26,14 +17,16 @@ type StateTransition struct {
 }
 
 type TxDetails struct {
+	Consensus1Tx      *SBACTransaction
+	Consensus2Tx      *SBACTransaction
+	ConsensusCommitTx *SBACTransaction
+
+	CommitDecisions map[uint64]SBACDecision
+	Phase1Decisions map[uint64]SBACDecision
+	Phase2Decisions map[uint64]SBACDecision
+
 	CheckersEvidences map[uint64][]byte
-	Consensus1        *ConsensusTransaction
-	Consensus2        *ConsensusTransaction
-	ConsensusCommit   *ConsensusTransaction
-	CommitDecisions   map[uint64]SBACDecision
 	ID                []byte
-	Phase1Decisions   map[uint64]SBACDecision
-	Phase2Decisions   map[uint64]SBACDecision
 	Raw               []byte
 	Result            chan bool
 	Tx                *Transaction

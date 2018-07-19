@@ -14,7 +14,6 @@ import (
 )
 
 func cmdRun(args []string, usage string) {
-
 	opts := newOpts("run NETWORK_NAME NODE_ID [OPTIONS]", usage)
 	configRoot := opts.Flags("-c", "--config-root").Label("PATH").String("path to the chainspace root directory [~/.chainspace]", defaultRootDir())
 	cpuProfile := opts.Flags("--cpu-profile").Label("PATH").String("write a CPU profile to the given file before exiting")

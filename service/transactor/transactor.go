@@ -45,16 +45,16 @@ type Service struct {
 	checkers      CheckersMap
 	conns         *ConnsCache
 	nodeID        uint64
+	pendingEvents chan *Event
 	privkey       signature.PrivateKey
-	txstates      map[string]*StateMachine
-	txstatesmu    sync.Mutex
 	store         *badger.DB
 	shardCount    uint64
 	shardID       uint64
 	shardSize     uint64
 	table         *StateTable
 	top           *network.Topology
-	pendingEvents chan *Event
+	txstates      map[string]*StateMachine
+	txstatesmu    sync.Mutex
 }
 
 func (s *Service) DeliverStart(round uint64) {
@@ -63,21 +63,20 @@ func (s *Service) DeliverStart(round uint64) {
 
 func (s *Service) DeliverTransaction(txdata *broadcast.TransactionData) {
 	// TODO(): do stuff with the fee?
-	ctx := &ConsensusTransaction{}
-	err := proto.Unmarshal(txdata.Data, ctx)
+	tx := &SBACTransaction{}
+	err := proto.Unmarshal(txdata.Data, tx)
 	if err != nil {
 		log.Error("unable to unmarshal transaction data", zap.Error(err))
 	}
 	e := &Event{
 		msg: &SBACMessage{
-			Op:                   ctx.ConsensusRound,
-			Decision:             SBACDecision_ACCEPT,
-			TransactionID:        ctx.ID,
-			ConsensusTransaction: ctx,
+			Op:       tx.Op,
+			Decision: SBACDecision_ACCEPT,
+			Tx:       tx,
 		},
-		peerID: ctx.PeerID,
+		peerID: 99,
 	}
-	log.Info("new transaction broadcasted from consensus", zap.Uint32("tx.id", ID(ctx.ID)))
+	log.Info("new transaction broadcasted from consensus", zap.Uint32("tx.id", ID(tx.ID)))
 	s.pendingEvents <- e
 }
 
@@ -107,13 +106,13 @@ func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message)
 
 func (s *Service) consumeEvents() {
 	for e := range s.pendingEvents {
-		sm, ok := s.getSateMachine(e.msg.TransactionID)
+		sm, ok := s.getSateMachine(e.msg.Tx.ID)
 		if ok {
-			log.Info("sending new event to statemachine", zap.Uint32("id", ID(e.msg.TransactionID)), zap.Uint64("peer.id", e.peerID), zap.Uint64("peer.shard", s.top.ShardForNode(e.peerID)))
+			log.Info("sending new event to statemachine", zap.Uint32("id", ID(e.msg.Tx.ID)), zap.Uint64("peer.id", e.peerID), zap.Uint64("peer.shard", s.top.ShardForNode(e.peerID)))
 			sm.OnEvent(e)
 			continue
 		}
-		log.Info("statemachine not ready", zap.Uint32("id", ID(e.msg.TransactionID)))
+		log.Info("statemachine not ready", zap.Uint32("id", ID(e.msg.Tx.ID)))
 		s.pendingEvents <- e
 	}
 }
@@ -128,7 +127,7 @@ func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64)
 	// if we received a COMMIT opcode, the statemachine may not exists
 	// lets check an create it here.
 	if req.Op == SBACOpcode_COMMIT {
-		txdetails := NewTxDetails(req.TransactionID, []byte{}, req.ConsensusTransaction.Tx, req.ConsensusTransaction.Evidences)
+		txdetails := NewTxDetails(req.Tx.ID, []byte{}, req.Tx.Tx, req.Tx.Evidences)
 		_ = s.getOrCreateStateMachine(txdetails, StateWaitingForCommit)
 	}
 	e := &Event{msg: req, peerID: peerID}
@@ -263,12 +262,11 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 	s.addStateMachine(txdetails, StateWaitingForConsensus1)
 
 	// broadcast transaction
-	consensusTx := &ConsensusTransaction{
-		Tx:             req.Tx,
-		ID:             ids.TxID,
-		Evidences:      req.Evidences,
-		PeerID:         s.nodeID,
-		ConsensusRound: SBACOpcode_CONSENSUS1,
+	consensusTx := &SBACTransaction{
+		Tx:        req.Tx,
+		ID:        ids.TxID,
+		Evidences: req.Evidences,
+		Op:        SBACOpcode_CONSENSUS1,
 	}
 	b, err := proto.Marshal(consensusTx)
 	if err != nil {

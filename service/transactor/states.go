@@ -138,29 +138,24 @@ func (s *Service) makeStateTable() *StateTable {
 }
 
 func (s *Service) onEvent(tx *TxDetails, event *Event) error {
-	if string(tx.ID) != string(event.msg.TransactionID) {
-		log.Error("invalid transaction sent to state machine", zap.Uint32("expected", tx.HashID), zap.Uint32("got", ID(event.msg.TransactionID)))
+	if string(tx.ID) != string(event.msg.Tx.ID) {
+		log.Error("invalid transaction sent to state machine", zap.Uint32("expected", tx.HashID), zap.Uint32("got", ID(event.msg.Tx.ID)))
 		return errors.New("invalid transaction ID")
 	}
+	log.Info(SBACOpcode_name[int32(event.msg.Op)]+" decision received", zap.Uint32("tx.id", tx.HashID), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
 	switch event.msg.Op {
 	case SBACOpcode_PHASE1:
-		log.Info("PHASE1 decision received", zap.Uint32("tx.id", tx.HashID), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
 		tx.Phase1Decisions[event.peerID] = event.msg.Decision
 	case SBACOpcode_PHASE2:
-		log.Info("PHASE2 decision received", zap.Uint32("tx.id", tx.HashID), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
 		tx.Phase2Decisions[event.peerID] = event.msg.Decision
 	case SBACOpcode_CONSENSUS1:
-		log.Info("CONSENSUS1 decision received", zap.Uint32("tx.id", tx.HashID), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
-		tx.Consensus1 = event.msg.ConsensusTransaction
+		tx.Consensus1Tx = event.msg.Tx
 	case SBACOpcode_CONSENSUS2:
-		log.Info("CONSENSUS2 decision received", zap.Uint32("tx.id", tx.HashID), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
-		tx.Consensus2 = event.msg.ConsensusTransaction
+		tx.Consensus2Tx = event.msg.Tx
 	case SBACOpcode_COMMIT:
-		log.Info("COMMIT decision received", zap.Uint32("tx.id", tx.HashID), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
 		tx.CommitDecisions[event.peerID] = event.msg.Decision
 	case SBACOpcode_CONSENSUS_COMMIT:
-		log.Info("CONSENSUS_COMMIT decision received", zap.Uint32("tx.id", tx.HashID), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
-		tx.ConsensusCommit = event.msg.ConsensusTransaction
+		tx.ConsensusCommitTx = event.msg.Tx
 	default:
 	}
 	return nil
@@ -302,10 +297,10 @@ func (s *Service) objectsExists(objs, refs [][]byte) ([]*Object, bool) {
 func (s *Service) onWaitingForConsensus1(tx *TxDetails) (State, error) {
 	// TODO: need to check evidences here, as this step should happend after the first consensus round.
 	// not sure how we agregate evidence here, if we get new ones from the consensus rounds or the same that where sent with the transaction at the begining.
-	if tx.Consensus1 == nil {
+	if tx.Consensus1Tx == nil {
 		return StateWaitingForConsensus1, nil
 	}
-	if !s.verifySignatures(tx.ID, tx.Consensus1.GetEvidences()) {
+	if !s.verifySignatures(tx.ID, tx.Consensus1Tx.GetEvidences()) {
 		log.Error("consensus1 missing/invalid signatures", zap.Uint32("tx.id", tx.HashID))
 		return StateRejectPhase1Broadcasted, nil
 	}
@@ -331,11 +326,11 @@ func (s *Service) onWaitingForConsensus1(tx *TxDetails) (State, error) {
 
 // TODO(): kick bad node here ? not sure which one are bad
 func (s *Service) onWaitingForConsensus2(tx *TxDetails) (State, error) {
-	if tx.Consensus2 == nil {
+	if tx.Consensus2Tx == nil {
 		return StateWaitingForConsensus2, nil
 	}
-	if !s.verifySignatures(tx.ID, tx.Consensus2.GetEvidences()) {
-		log.Error("consensus1 missing/invalid signatures", zap.Uint32("tx.id", tx.HashID))
+	if !s.verifySignatures(tx.ID, tx.Consensus2Tx.GetEvidences()) {
+		log.Error("consensus2 missing/invalid signatures", zap.Uint32("tx.id", tx.HashID))
 		return StateRejectPhase2Broadcasted, nil
 	}
 
@@ -344,8 +339,13 @@ func (s *Service) onWaitingForConsensus2(tx *TxDetails) (State, error) {
 
 // TODO(): verify signatures here, but need to be passed to first.
 func (s *Service) onWaitingForConsensusCommit(tx *TxDetails) (State, error) {
-	if tx.ConsensusCommit == nil {
+	if tx.ConsensusCommitTx == nil {
 		return StateWaitingForConsensusCommit, nil
+	}
+	if !s.verifySignatures(tx.ID, tx.ConsensusCommitTx.GetEvidences()) {
+		log.Error("consensus_commit missing/invalid signatures", zap.Uint32("tx.id", tx.HashID))
+		return StateAborted, nil
+
 	}
 	return StateObjectsCreated, nil
 
@@ -420,9 +420,15 @@ func (s *Service) sendToAllShardInvolved(tx *TxDetails, msg *service.Message) er
 
 func (s *Service) toRejectPhase1Broadcasted(tx *TxDetails) (State, error) {
 	sbacmsg := &SBACMessage{
-		Op:            SBACOpcode_PHASE1,
-		Decision:      SBACDecision_REJECT,
-		TransactionID: tx.ID,
+		Op:       SBACOpcode_PHASE1,
+		Decision: SBACDecision_REJECT,
+		PeerID:   s.nodeID,
+		Tx: &SBACTransaction{
+			ID:        tx.ID,
+			Tx:        tx.Tx,
+			Evidences: tx.CheckersEvidences,
+			Op:        SBACOpcode_PHASE1,
+		},
 	}
 	msg, err := makeMessage(sbacmsg)
 	if err != nil {
@@ -441,9 +447,15 @@ func (s *Service) toRejectPhase1Broadcasted(tx *TxDetails) (State, error) {
 
 func (s *Service) toAcceptPhase1Broadcasted(tx *TxDetails) (State, error) {
 	sbacmsg := &SBACMessage{
-		Op:            SBACOpcode_PHASE1,
-		Decision:      SBACDecision_ACCEPT,
-		TransactionID: tx.ID,
+		Op:       SBACOpcode_PHASE1,
+		Decision: SBACDecision_ACCEPT,
+		PeerID:   s.nodeID,
+		Tx: &SBACTransaction{
+			ID:        tx.ID,
+			Tx:        tx.Tx,
+			Evidences: tx.CheckersEvidences,
+			Op:        SBACOpcode_PHASE1,
+		},
 	}
 	msg, err := makeMessage(sbacmsg)
 	if err != nil {
@@ -463,9 +475,15 @@ func (s *Service) toAcceptPhase1Broadcasted(tx *TxDetails) (State, error) {
 
 func (s *Service) toRejectPhase2Broadcasted(tx *TxDetails) (State, error) {
 	sbacmsg := &SBACMessage{
-		Op:            SBACOpcode_PHASE2,
-		Decision:      SBACDecision_REJECT,
-		TransactionID: tx.ID,
+		Op:       SBACOpcode_PHASE2,
+		Decision: SBACDecision_REJECT,
+		PeerID:   s.nodeID,
+		Tx: &SBACTransaction{
+			ID:        tx.ID,
+			Tx:        tx.Tx,
+			Evidences: tx.CheckersEvidences,
+			Op:        SBACOpcode_PHASE2,
+		},
 	}
 	msg, err := makeMessage(sbacmsg)
 	if err != nil {
@@ -484,9 +502,15 @@ func (s *Service) toRejectPhase2Broadcasted(tx *TxDetails) (State, error) {
 
 func (s *Service) toAcceptPhase2Broadcasted(tx *TxDetails) (State, error) {
 	sbacmsg := &SBACMessage{
-		Op:            SBACOpcode_PHASE2,
-		Decision:      SBACDecision_ACCEPT,
-		TransactionID: tx.ID,
+		Op:       SBACOpcode_PHASE2,
+		Decision: SBACDecision_ACCEPT,
+		PeerID:   s.nodeID,
+		Tx: &SBACTransaction{
+			ID:        tx.ID,
+			Tx:        tx.Tx,
+			Evidences: tx.CheckersEvidences,
+			Op:        SBACOpcode_PHASE2,
+		},
 	}
 	msg, err := makeMessage(sbacmsg)
 	if err != nil {
@@ -591,13 +615,14 @@ func (s *Service) sendToShards(shards []uint64, tx *TxDetails, msg *service.Mess
 
 func (s *Service) toCommitObjectsBroadcasted(tx *TxDetails) (State, error) {
 	sbacmsg := &SBACMessage{
-		Op:            SBACOpcode_COMMIT,
-		Decision:      SBACDecision_ACCEPT,
-		TransactionID: tx.ID,
-		ConsensusTransaction: &ConsensusTransaction{
-			Tx: tx.Tx,
-			ID: tx.ID,
-			// Evidences: tx.Evidences,
+		Op:       SBACOpcode_COMMIT,
+		Decision: SBACDecision_ACCEPT,
+		PeerID:   s.nodeID,
+		Tx: &SBACTransaction{
+			ID:        tx.ID,
+			Tx:        tx.Tx,
+			Evidences: tx.CheckersEvidences,
+			Op:        SBACOpcode_COMMIT,
 		},
 	}
 	msg, err := makeMessage(sbacmsg)
@@ -642,12 +667,11 @@ func (s *Service) toCommitObjectsBroadcasted(tx *TxDetails) (State, error) {
 // TODO(): should we make our own evidences ourselves here ?
 func (s *Service) toConsensus2Triggered(tx *TxDetails) (State, error) {
 	// broadcast transaction
-	consensusTx := &ConsensusTransaction{
-		Tx:             tx.Tx,
-		ID:             tx.ID,
-		Evidences:      tx.Consensus1.Evidences,
-		PeerID:         s.nodeID,
-		ConsensusRound: SBACOpcode_CONSENSUS2,
+	consensusTx := &SBACTransaction{
+		Tx:        tx.Tx,
+		ID:        tx.ID,
+		Evidences: tx.CheckersEvidences,
+		Op:        SBACOpcode_CONSENSUS2,
 	}
 	b, err := proto.Marshal(consensusTx)
 	if err != nil {
@@ -659,12 +683,11 @@ func (s *Service) toConsensus2Triggered(tx *TxDetails) (State, error) {
 
 func (s *Service) toConsensusCommitTriggered(tx *TxDetails) (State, error) {
 	// broadcast transaction
-	consensusTx := &ConsensusTransaction{
-		Tx: tx.Tx,
-		ID: tx.ID,
-		// Evidences:      tx.Consensus1.Evidences,
-		PeerID:         s.nodeID,
-		ConsensusRound: SBACOpcode_CONSENSUS_COMMIT,
+	consensusTx := &SBACTransaction{
+		Tx:        tx.Tx,
+		ID:        tx.ID,
+		Evidences: tx.CheckersEvidences,
+		Op:        SBACOpcode_CONSENSUS_COMMIT,
 	}
 	b, err := proto.Marshal(consensusTx)
 	if err != nil {
