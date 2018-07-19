@@ -24,11 +24,6 @@ var (
 	genesis = []byte("genesis.block")
 )
 
-type roundData struct {
-	blocks []byzco.BlockID
-	round  uint64
-}
-
 // Callback defines the interface for the callback set registered with the
 // broadcast service. The DeliverStart method is called as soon as a particular
 // round reaches consensus, followed by individual DeliverTransaction calls for
@@ -83,29 +78,30 @@ type Service struct {
 	sent           map[uint64]uint64
 	signal         chan struct{}
 	store          *store
-	toDeliver      []*roundData
+	toDeliver      []*byzco.Interpreted
 	top            *network.Topology
 	txs            chan *TransactionData
 	writeTimeout   time.Duration
 }
 
-func (s *Service) dagCallback(round uint64, blocks []byzco.BlockID) {
-	s.store.setRoundBlocks(round, blocks)
+func (s *Service) dagCallback(data *byzco.Interpreted) {
+	s.store.setInterpreted(data)
+	s.cond.L.Lock()
 	s.mu.RLock()
 	if s.cb != nil {
 		s.mu.RUnlock()
-		s.cond.L.Lock()
-		s.toDeliver = append(s.toDeliver, &roundData{blocks, round})
+		s.toDeliver = append(s.toDeliver, data)
 		s.cond.L.Unlock()
 		s.cond.Signal()
 		return
 	}
 	s.mu.RUnlock()
+	s.cond.L.Unlock()
 }
 
 func (s *Service) deliver() {
 	s.cond.L.Lock()
-	ack, err := s.store.getRoundAcknowledged()
+	ack, err := s.store.getDeliverAcknowledged()
 	if err != nil {
 		if err != badger.ErrKeyNotFound {
 			log.Fatal("Could not load latest acknowledged round from DB", zap.Error(err))
@@ -113,12 +109,13 @@ func (s *Service) deliver() {
 	}
 	latest := s.interpreted
 	for i := ack + 1; i <= latest; i++ {
-		blocks, err := s.store.getRoundBlocks(i)
+		blocks, err := s.store.getInterpreted(i)
 		if err != nil {
 			log.Fatal("Unable to load blocks for a round", zap.Uint64("round", i), zap.Error(err))
 		}
 		s.deliverRound(i, blocks)
 	}
+	s.cond.L.Unlock()
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -132,8 +129,8 @@ func (s *Service) deliver() {
 		data := s.toDeliver[0]
 		s.toDeliver = s.toDeliver[1:]
 		s.cond.L.Unlock()
-		blocks := s.getBlocks(data.blocks)
-		s.deliverRound(data.round, blocks)
+		blocks := s.getBlocks(data.Blocks)
+		s.deliverRound(data.Round, blocks)
 	}
 }
 
@@ -238,6 +235,11 @@ func (s *Service) genBlocks() {
 			s.signal = make(chan struct{})
 			s.mu.Unlock()
 			close(signal)
+			// TODO(tav): Remove this once it's fully wired together.
+			s.dagCallback(&byzco.Interpreted{
+				Blocks: []byzco.BlockID{{Hash: string(hash), NodeID: s.nodeID, Round: round}},
+				Round:  round,
+			})
 			log.Info("Created block", zap.Uint64("round", block.Round))
 			if round%100 == 0 {
 				s.cache.prune(100)
@@ -287,15 +289,16 @@ func (s *Service) genBlocks() {
 }
 
 func (s *Service) getBlockInfo(nodeID uint64, round uint64, hash []byte) *blockInfo {
-	info := s.lru.get(byzco.BlockID{
+	ref := byzco.BlockID{
 		Hash:   string(hash),
 		NodeID: nodeID,
 		Round:  round,
-	})
+	}
+	info := s.lru.get(ref)
 	if info != nil {
 		return info
 	}
-	block, err := s.store.getBlock(nodeID, round, hash)
+	block, err := s.store.getBlock(ref)
 	if err != nil {
 		log.Error("Could not retrieve block", zap.Uint64("node.id", nodeID), zap.Uint64("round", round), zap.Error(err))
 		return nil
@@ -375,12 +378,12 @@ func (s *Service) getUnsent(peerID uint64) ([]*SignedData, uint64) {
 			for i := last; i <= cur; i++ {
 				block := s.getOwnBlock(i)
 				if block == nil {
-					panic(fmt.Sprintf("broadcast: unable to retrieve own block for round %d", i))
+					log.Fatal("Unable to retrieve own block", zap.Uint64("round", i))
 				}
 				total += len(block.Data) + len(block.Signature) + 100
-				if total > s.blockLimit {
+				if total > s.maxPayload {
 					if i == last {
-						panic(fmt.Sprintf("broadcast: size of individual block(%v) exceeds max payload size(%v)", total, s.blockLimit))
+						log.Fatal("Size of individual block exceeds max payload size", zap.Int("size", total), zap.Int("limit", s.maxPayload))
 					}
 					s.mu.RUnlock()
 					return blocks, i - 1
@@ -504,12 +507,15 @@ func (s *Service) loadState() {
 			sent[peer] = 0
 		}
 	}
-	log.Info("CURRENT ROUND", zap.Uint64("round", round))
+	log.Info("STARTUP STATE", zap.Uint64("round", round), zap.Uint64("interpreted", interpreted))
+	nodes := append([]uint64{s.nodeID}, s.peers...)
+	s.dag = byzco.NewDAG(s.ctx, nodes, interpreted, s.dagCallback)
 	s.interpreted = interpreted
 	s.previous = hash
 	s.round = round
 	s.sent = sent
 	s.signal = make(chan struct{})
+	s.replayDAGChanges()
 }
 
 func (s *Service) maintainBroadcast(peerID uint64) {
@@ -614,14 +620,21 @@ func (s *Service) processBlock(signed *SignedData) error {
 	return nil
 }
 
+func (s *Service) replayDAGChanges() {
+	for round := s.interpreted; round < s.round; round++ {
+		// block := s.getOwnBlock(round)
+	}
+}
+
 func (s *Service) setOwnBlock(round uint64, hash []byte, block *SignedData) error {
-	s.lru.set(byzco.BlockID{
+	ref := byzco.BlockID{
 		Hash:   string(hash),
 		NodeID: s.nodeID,
 		Round:  round,
-	}, &blockInfo{block, hash})
+	}
+	s.lru.set(ref, &blockInfo{block, hash})
 	s.cache.set(round, block)
-	return s.store.setOwnBlock(s.nodeID, round, hash, block)
+	return s.store.setOwnBlock(ref, block)
 }
 
 func (s *Service) writeSentMap() {
@@ -646,7 +659,7 @@ func (s *Service) writeSentMap() {
 // mark a particular round as being fully delivered. If not, all unacknowledged
 // rounds will be replayed when the node restarts.
 func (s *Service) Acknowledge(round uint64) {
-	s.store.setRoundAcknowledged(round)
+	s.store.setDeliverAcknowledged(round)
 }
 
 // AddTransaction adds the given transaction data onto a queue to be added to
@@ -706,7 +719,8 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		data: map[byzco.BlockID]*blockInfoContainer{},
 	}
 	store := &store{
-		db: db,
+		db:    db,
+		nodes: len(cfg.Peers) + 1,
 	}
 	var mu sync.Mutex
 	s := &Service{
@@ -730,7 +744,6 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		txs:            make(chan *TransactionData, 10000),
 		writeTimeout:   cfg.WriteTimeout,
 	}
-	s.dag = byzco.NewDAG(s.dagCallback)
 	s.loadState()
 	go s.genBlocks()
 	go s.writeSentMap()
