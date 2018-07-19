@@ -9,6 +9,8 @@ import (
 
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/log"
+	"chainspace.io/prototype/network"
+	"chainspace.io/prototype/restsrv"
 	"chainspace.io/prototype/transactor/client"
 
 	"github.com/tav/golly/optparse"
@@ -56,15 +58,18 @@ func cmdTransactor(args []string, usage string) {
 		log.Fatal("Could not load network.yaml", zap.Error(err))
 	}
 
+	topology, err := network.New(networkName, netCfg)
+	if err != nil {
+		log.Fatal("Could not initalize network", zap.Error(err))
+	}
+	topology.BootstrapMDNS()
+
 	cfg := &transactorclient.Config{
-		NetworkName:   networkName,
-		NetworkConfig: *netCfg,
+		Top:        topology,
+		MaxPayload: netCfg.MaxPayload,
 	}
 
-	transactorClient, err := transactorclient.New(cfg)
-	if err != nil {
-		log.Fatal("Unable to create transactor.Client", zap.Error(err))
-	}
+	transactorClient := transactorclient.New(cfg)
 	defer transactorClient.Close()
 
 	switch cmd {
@@ -77,12 +82,12 @@ func cmdTransactor(args []string, usage string) {
 			log.Fatal("Unable to read payload file", zap.Error(err))
 		}
 
-		tx := transactorclient.ClientTransaction{}
+		tx := restsrv.Transaction{}
 		err = json.Unmarshal(payload, &tx)
 		if err != nil {
 			log.Fatal("Invalid payload format for transaction", zap.Error(err))
 		}
-		err = transactorClient.SendTransaction(&tx)
+		err = transactorClient.SendTransaction(tx.ToTransactor())
 		if err != nil {
 			log.Fatal("Unable to send transaction", zap.Error(err))
 		}

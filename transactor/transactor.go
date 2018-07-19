@@ -108,11 +108,11 @@ func (s *Service) consumeEvents() {
 	for e := range s.pendingEvents {
 		sm, ok := s.getSateMachine(e.msg.Tx.ID)
 		if ok {
-			log.Info("sending new event to statemachine", zap.Uint32("id", ID(e.msg.Tx.ID)), zap.Uint64("peer.id", e.peerID), zap.Uint64("peer.shard", s.top.ShardForNode(e.peerID)))
+			log.Info("sending new event to statemachine", zap.Uint32("tx.id", ID(e.msg.Tx.ID)), zap.Uint64("peer.id", e.peerID), zap.Uint64("peer.shard", s.top.ShardForNode(e.peerID)))
 			sm.OnEvent(e)
 			continue
 		}
-		log.Info("statemachine not ready", zap.Uint32("id", ID(e.msg.Tx.ID)))
+		log.Info("statemachine not ready", zap.Uint32("tx.id", ID(e.msg.Tx.ID)))
 		s.pendingEvents <- e
 	}
 }

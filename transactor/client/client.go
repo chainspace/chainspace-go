@@ -19,73 +19,15 @@ import (
 	"github.com/gogo/protobuf/proto"
 )
 
-type ClientTransaction struct {
-	Traces []ClientTrace `json:"traces"`
-}
-
-func (ct *ClientTransaction) ToTransaction() *transactor.Transaction {
-	traces := make([]*transactor.Trace, 0, len(ct.Traces))
-	for _, t := range ct.Traces {
-		traces = append(traces, t.ToTrace())
-	}
-	return &transactor.Transaction{
-		Traces: traces,
-	}
-}
-
-type ClientTrace struct {
-	ContractID          string        `json:"contract_id"`
-	Procedure           string        `json:"procedure"`
-	InputObjectsKeys    []string      `json:"input_objects_keys"`
-	InputReferencesKeys []string      `json:"input_references_keys"`
-	OutputObjects       []string      `json:"output_objects"`
-	Parameters          []string      `json:"parameters"`
-	Returns             []string      `json:"returns"`
-	Dependencies        []ClientTrace `json:"dependencies"`
-}
-
-func (ct *ClientTrace) ToTrace() *transactor.Trace {
-	toBytes := func(s []string) [][]byte {
-		out := make([][]byte, 0, len(s))
-		for _, v := range s {
-			out = append(out, []byte(v))
-		}
-		return out
-	}
-	toBytesB64 := func(s []string) [][]byte {
-		out := make([][]byte, 0, len(s))
-		for _, v := range s {
-			bytes, _ := base64.StdEncoding.DecodeString(v)
-			out = append(out, []byte(bytes))
-		}
-		return out
-	}
-	deps := make([]*transactor.Trace, 0, len(ct.Dependencies))
-	for _, d := range ct.Dependencies {
-		deps = append(deps, d.ToTrace())
-	}
-	return &transactor.Trace{
-		ContractID:          ct.ContractID,
-		Procedure:           ct.Procedure,
-		InputObjectsKeys:    toBytesB64(ct.InputObjectsKeys),
-		InputReferencesKeys: toBytesB64(ct.InputReferencesKeys),
-		OutputObjects:       toBytes(ct.OutputObjects),
-		Parameters:          toBytesB64(ct.Parameters),
-		Returns:             toBytesB64(ct.Returns),
-		Dependencies:        deps,
-	}
-}
-
 // Config represent the configuration required to send messages
 // using the transactor
 type Config struct {
-	NetworkConfig config.Network
-	NetworkName   string
-	ShardID       uint64
+	Top        *network.Topology
+	MaxPayload config.ByteSize
 }
 
 type Client interface {
-	SendTransaction(t *ClientTransaction) error
+	SendTransaction(t *transactor.Transaction) error
 	Create(obj string) error
 	Query(key []byte) error
 	Delete(key []byte) error
@@ -104,19 +46,12 @@ type NodeIDConnPair struct {
 	Conn   *network.Conn
 }
 
-func New(cfg *Config) (Client, error) {
-	topology, err := network.New(cfg.NetworkName, &cfg.NetworkConfig)
-	if err != nil {
-		return nil, err
-	}
-	topology.BootstrapMDNS()
-	time.Sleep(1 * time.Second)
-
+func New(cfg *Config) Client {
 	return &client{
-		maxPaylod: cfg.NetworkConfig.MaxPayload,
-		top:       topology,
+		maxPaylod: cfg.MaxPayload,
+		top:       cfg.Top,
 		nodesConn: map[uint64][]NodeIDConnPair{},
-	}, nil
+	}
 }
 
 func (c *client) Close() {
@@ -258,8 +193,7 @@ func (c *client) addTransaction(t *transactor.Transaction) error {
 	return c.sendMessages(msg, f)
 }
 
-func (c *client) SendTransaction(t *ClientTransaction) error {
-	tx := t.ToTransaction()
+func (c *client) SendTransaction(tx *transactor.Transaction) error {
 	if err := c.dialNodesForTransaction(tx); err != nil {
 		return err
 	}

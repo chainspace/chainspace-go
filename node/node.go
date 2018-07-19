@@ -19,6 +19,7 @@ import (
 	"chainspace.io/prototype/freeport"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/network"
+	"chainspace.io/prototype/restsrv"
 	"chainspace.io/prototype/service"
 	"chainspace.io/prototype/transactor"
 	"github.com/gogo/protobuf/proto"
@@ -67,6 +68,7 @@ type Server struct {
 	mu              sync.RWMutex // protects nonceMap
 	nonceExpiration time.Duration
 	nonceMap        map[uint64][]usedNonce
+	restsrv         *restsrv.Service
 	sharder         service.Handler
 	top             *network.Topology
 	transactor      service.Handler
@@ -409,6 +411,15 @@ func Run(cfg *Config) (*Server, error) {
 		return nil, fmt.Errorf("node: unable to instantiate the transactor service: %s", err)
 	}
 
+	rport, _ := freeport.TCP("")
+	restsrvcfg := &restsrv.Config{
+		Addr:       "",
+		Port:       rport,
+		Top:        top,
+		MaxPayload: config.ByteSize(maxPayload),
+	}
+	restsrv := restsrv.New(restsrvcfg)
+
 	node := &Server{
 		broadcaster:     broadcaster,
 		cancel:          cancel,
@@ -420,6 +431,7 @@ func Run(cfg *Config) (*Server, error) {
 		nonceExpiration: cfg.Network.Consensus.NonceExpiration,
 		nonceMap:        map[uint64][]usedNonce{},
 		readTimeout:     cfg.Node.Connections.ReadTimeout,
+		restsrv:         restsrv,
 		top:             top,
 		transactor:      txtor,
 		writeTimeout:    cfg.Node.Connections.WriteTimeout,
