@@ -58,11 +58,11 @@ type Service struct {
 	pendingEvents chan *Event
 }
 
-func (s *Service) BroadcastStart(round uint64) {
-	log.Info("BROADCAST START", zap.Uint64("round", round))
+func (s *Service) DeliverStart(round uint64) {
+	log.Info("DELIVER START", zap.Uint64("round", round))
 }
 
-func (s *Service) BroadcastTransaction(txdata *broadcast.TransactionData) {
+func (s *Service) DeliverTransaction(txdata *broadcast.TransactionData) {
 	// TODO(): do stuff with the fee?
 	ctx := &ConsensusTransaction{}
 	err := proto.Unmarshal(txdata.Data, ctx)
@@ -82,8 +82,8 @@ func (s *Service) BroadcastTransaction(txdata *broadcast.TransactionData) {
 	s.pendingEvents <- e
 }
 
-func (s *Service) BroadcastEnd(round uint64) {
-	log.Info("BROADCAST END", zap.Uint64("round", round))
+func (s *Service) DeliverEnd(round uint64) {
+	log.Info("DELIVER END", zap.Uint64("round", round))
 }
 
 func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message) (*service.Message, error) {
