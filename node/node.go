@@ -20,7 +20,7 @@ import (
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
-	"chainspace.io/prototype/service/transactor"
+	"chainspace.io/prototype/transactor"
 	"github.com/gogo/protobuf/proto"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/tav/golly/process"

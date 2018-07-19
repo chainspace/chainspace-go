@@ -9,7 +9,7 @@ import (
 
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/log"
-	"chainspace.io/prototype/service/transactor/client"
+	"chainspace.io/prototype/transactor/client"
 
 	"github.com/tav/golly/optparse"
 	"go.uber.org/zap"

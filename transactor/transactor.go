@@ -1,4 +1,4 @@
-package transactor // import "chainspace.io/prototype/service/transactor"
+package transactor // import "chainspace.io/prototype/transactor"
 
 import (
 	"context"
