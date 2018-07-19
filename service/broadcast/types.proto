@@ -14,7 +14,7 @@ enum OP {
 message Block {
   uint64 node = 1;
   bytes previous = 2;
-  repeated BlockReference references = 3;
+  repeated SignedData references = 3;
   uint64 round = 4;
   repeated TransactionData transactions = 5;
 }

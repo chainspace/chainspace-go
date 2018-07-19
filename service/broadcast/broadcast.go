@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"chainspace.io/prototype/byzco"
 	"chainspace.io/prototype/combihash"
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/log"
@@ -23,17 +24,21 @@ var (
 	genesis = []byte("genesis.block")
 )
 
+type roundData struct {
+	blocks []byzco.BlockID
+	round  uint64
+}
+
 // Callback defines the interface for the callback set registered with the
-// broadcast service. The BroadcastStart method is called as soon as a
-// particular round reaches consensus, followed by individual
-// BroadcastTransaction calls for each of the transactions in consensus order,
-// and finished off with a BroadcastEnd call for each round. The BroadcastEnd
-// method should call Acknowledge at some point so as to mark the delivery of
-// the round as successful.
+// broadcast service. The DeliverStart method is called as soon as a particular
+// round reaches consensus, followed by individual DeliverTransaction calls for
+// each of the transactions in consensus order, and finished off with a
+// DeliverEnd call for each round. The DeliverEnd method should call Acknowledge
+// at some point so as to mark the delivery of the round as successful.
 type Callback interface {
-	BroadcastStart(round uint64)
-	BroadcastTransaction(txdata *TransactionData)
-	BroadcastEnd(round uint64)
+	DeliverStart(round uint64)
+	DeliverTransaction(txdata *TransactionData)
+	DeliverEnd(round uint64)
 }
 
 // Config for the broadcast service.
@@ -57,8 +62,11 @@ type Service struct {
 	blockLimit     int
 	cache          *cache
 	cb             Callback
+	cond           *sync.Cond
 	ctx            context.Context
+	dag            *byzco.DAG
 	initialBackoff time.Duration
+	interpreted    uint64
 	interval       time.Duration
 	key            signature.KeyPair
 	keys           map[uint64]signature.PublicKey
@@ -70,22 +78,88 @@ type Service struct {
 	peers          []uint64
 	previous       []byte
 	readTimeout    time.Duration
-	refs           chan *BlockReference
+	refs           chan *SignedData
 	round          uint64
 	sent           map[uint64]uint64
 	signal         chan struct{}
 	store          *store
+	toDeliver      []*roundData
 	top            *network.Topology
 	txs            chan *TransactionData
 	writeTimeout   time.Duration
 }
 
+func (s *Service) dagCallback(round uint64, blocks []byzco.BlockID) {
+	s.store.setRoundBlocks(round, blocks)
+	s.mu.RLock()
+	if s.cb != nil {
+		s.mu.RUnlock()
+		s.cond.L.Lock()
+		s.toDeliver = append(s.toDeliver, &roundData{blocks, round})
+		s.cond.L.Unlock()
+		s.cond.Signal()
+		return
+	}
+	s.mu.RUnlock()
+}
+
+func (s *Service) deliver() {
+	s.cond.L.Lock()
+	ack, err := s.store.getRoundAcknowledged()
+	if err != nil {
+		if err != badger.ErrKeyNotFound {
+			log.Fatal("Could not load latest acknowledged round from DB", zap.Error(err))
+		}
+	}
+	latest := s.interpreted
+	for i := ack + 1; i <= latest; i++ {
+		blocks, err := s.store.getRoundBlocks(i)
+		if err != nil {
+			log.Fatal("Unable to load blocks for a round", zap.Uint64("round", i), zap.Error(err))
+		}
+		s.deliverRound(i, blocks)
+	}
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		default:
+		}
+		s.cond.L.Lock()
+		for len(s.toDeliver) == 0 {
+			s.cond.Wait()
+		}
+		data := s.toDeliver[0]
+		s.toDeliver = s.toDeliver[1:]
+		s.cond.L.Unlock()
+		blocks := s.getBlocks(data.blocks)
+		s.deliverRound(data.round, blocks)
+	}
+}
+
+func (s *Service) deliverRound(round uint64, blocks []*SignedData) {
+	var txlist transactionList
+	for _, block := range blocks {
+		txs, err := block.Transactions()
+		if err != nil {
+			log.Fatal("Unable to decode transactions", zap.Uint64("round", round), zap.String("block.hash", fmt.Sprintf("%X", block.Digest())))
+		}
+		txlist = append(txlist, txs...)
+	}
+	txlist.Sort()
+	s.cb.DeliverStart(round)
+	for _, tx := range txlist {
+		s.cb.DeliverTransaction(tx)
+	}
+	s.cb.DeliverEnd(round)
+}
+
 func (s *Service) genBlocks() {
 	var (
 		atLimit     bool
-		pendingRefs []*BlockReference
+		pendingRefs []*SignedData
 		pendingTxs  []*TransactionData
-		refs        []*BlockReference
+		refs        []*SignedData
 		txs         []*TransactionData
 	)
 	block := &Block{
@@ -153,20 +227,18 @@ func (s *Service) genBlocks() {
 			s.previous = hash
 			hasher.Reset()
 			signal := s.signal
-			s.setOwnBlock(round, hash, signed)
+			if err := s.setOwnBlock(round, hash, signed); err != nil {
+				log.Fatal("Could not write own block to the DB", zap.Uint64("round", round), zap.Error(err))
+			}
+			if err := s.store.setCurrentRoundAndHash(round, hash); err != nil {
+				log.Fatal("Could not write current round and hash to the DB", zap.Error(err))
+			}
 			s.mu.Lock()
 			s.round = round
 			s.signal = make(chan struct{})
 			s.mu.Unlock()
 			close(signal)
 			log.Info("Created block", zap.Uint64("round", block.Round))
-			if s.cb != nil {
-				s.cb.BroadcastStart(round)
-				for _, tx := range txs {
-					s.cb.BroadcastTransaction(tx)
-				}
-				s.cb.BroadcastEnd(round)
-			}
 			if round%100 == 0 {
 				s.cache.prune(100)
 				s.lru.prune(len(s.peers) * 100)
@@ -175,7 +247,7 @@ func (s *Service) genBlocks() {
 			total = 0
 			if len(pendingTxs) > 0 {
 				var (
-					npendingRefs []*BlockReference
+					npendingRefs []*SignedData
 					npendingTxs  []*TransactionData
 				)
 				for _, ref := range pendingRefs {
@@ -204,9 +276,6 @@ func (s *Service) genBlocks() {
 				}
 				pendingTxs = npendingTxs
 			}
-			if s.cb != nil {
-				s.cb.BroadcastStart(round)
-			}
 		case <-s.ctx.Done():
 			tick.Stop()
 			if err := s.store.db.Close(); err != nil {
@@ -218,7 +287,11 @@ func (s *Service) genBlocks() {
 }
 
 func (s *Service) getBlockInfo(nodeID uint64, round uint64, hash []byte) *blockInfo {
-	info := s.lru.get(blockPointer{nodeID, round, string(hash)})
+	info := s.lru.get(byzco.BlockID{
+		Hash:   string(hash),
+		NodeID: nodeID,
+		Round:  round,
+	})
 	if info != nil {
 		return info
 	}
@@ -231,8 +304,39 @@ func (s *Service) getBlockInfo(nodeID uint64, round uint64, hash []byte) *blockI
 		block: block,
 		hash:  hash,
 	}
-	s.lru.set(blockPointer{nodeID, round, string(hash)}, info)
+	s.lru.set(byzco.BlockID{
+		Hash:   string(hash),
+		NodeID: nodeID,
+		Round:  round,
+	}, info)
 	return info
+}
+
+func (s *Service) getBlocks(refs []byzco.BlockID) []*SignedData {
+	var missing []byzco.BlockID
+	blocks := make([]*SignedData, len(refs))
+	for idx, ref := range refs {
+		info := s.lru.get(ref)
+		if info == nil {
+			missing = append(missing, ref)
+		} else {
+			blocks[idx] = info.block
+		}
+	}
+	if len(missing) > 0 {
+		res, err := s.store.getBlocks(missing)
+		if err != nil {
+			log.Fatal("Unable to retrieve blocks", zap.Error(err))
+		}
+		used := 0
+		for idx, block := range blocks {
+			if block == nil {
+				blocks[idx] = res[used]
+				used++
+			}
+		}
+	}
+	return blocks
 }
 
 func (s *Service) getOwnBlock(round uint64) *SignedData {
@@ -344,6 +448,7 @@ func (s *Service) handleGetHashes(peerID uint64, msg *service.Message) (*service
 	var hashes [][]byte
 	s.mu.RLock()
 	latest := s.round
+	s.mu.RUnlock()
 	total := 0
 	if req.Since < latest {
 		for i := req.Since + 1; i <= latest; i++ {
@@ -355,7 +460,6 @@ func (s *Service) handleGetHashes(peerID uint64, msg *service.Message) (*service
 			hashes = append(hashes, hash)
 		}
 	}
-	s.mu.RUnlock()
 	data, err := proto.Marshal(&HashList{
 		Hashes: hashes,
 		Latest: latest,
@@ -383,12 +487,28 @@ func (s *Service) loadState() {
 		hash = genesis
 		round = 0
 	}
+	interpreted, err := s.store.getLastInterpreted()
+	if err != nil {
+		if err != badger.ErrKeyNotFound {
+			log.Fatal("Could not load last interpreted from DB", zap.Error(err))
+		}
+		interpreted = 0
+	}
+	sent, err := s.store.getSentMap()
+	if err != nil {
+		if err != badger.ErrKeyNotFound {
+			log.Fatal("Could not load sent map from DB", zap.Error(err))
+		}
+		sent = map[uint64]uint64{}
+		for _, peer := range s.peers {
+			sent[peer] = 0
+		}
+	}
+	log.Info("CURRENT ROUND", zap.Uint64("round", round))
+	s.interpreted = interpreted
 	s.previous = hash
 	s.round = round
-	s.sent = map[uint64]uint64{}
-	for _, peer := range s.peers {
-		s.sent[peer] = 0
-	}
+	s.sent = sent
 	s.signal = make(chan struct{})
 }
 
@@ -494,21 +614,43 @@ func (s *Service) processBlock(signed *SignedData) error {
 	return nil
 }
 
-func (s *Service) setOwnBlock(round uint64, hash []byte, block *SignedData) {
-	s.lru.set(blockPointer{s.nodeID, round, string(hash)}, &blockInfo{block, hash})
+func (s *Service) setOwnBlock(round uint64, hash []byte, block *SignedData) error {
+	s.lru.set(byzco.BlockID{
+		Hash:   string(hash),
+		NodeID: s.nodeID,
+		Round:  round,
+	}, &blockInfo{block, hash})
 	s.cache.set(round, block)
-	s.store.setOwnBlock(s.nodeID, round, hash, block)
+	return s.store.setOwnBlock(s.nodeID, round, hash, block)
+}
+
+func (s *Service) writeSentMap() {
+	ticker := time.NewTicker(20 * s.interval)
+	for {
+		select {
+		case <-ticker.C:
+			sent := make(map[uint64]uint64, len(s.peers))
+			s.mu.RLock()
+			for k, v := range s.sent {
+				sent[k] = v
+			}
+			s.mu.RUnlock()
+			s.store.setSentMap(sent)
+		case <-s.ctx.Done():
+			return
+		}
+	}
 }
 
 // Acknowledge should be called by BroadcastEnd in the registered Callback to
 // mark a particular round as being fully delivered. If not, all unacknowledged
 // rounds will be replayed when the node restarts.
 func (s *Service) Acknowledge(round uint64) {
+	s.store.setRoundAcknowledged(round)
 }
 
 // AddTransaction adds the given transaction data onto a queue to be added to
-// the current block. Register should be used to register a Callback before any
-// AddTransaction calls are made.
+// the current block.
 func (s *Service) AddTransaction(txdata *TransactionData) {
 	s.txs <- txdata
 }
@@ -536,14 +678,19 @@ func (s *Service) Name() string {
 }
 
 // Register saves the given callback to be called when transactions have reached
-// consensus. Register should be called before any AddTransaction calls.
+// consensus. It'll also trigger the replaying of any unacknowledged rounds.
 func (s *Service) Register(cb Callback) {
+	s.mu.Lock()
+	if s.cb != nil {
+		s.mu.Unlock()
+		log.Fatal("Attempt to register a broadcast.Callback when one already exists")
+	}
 	s.cb = cb
+	s.mu.Unlock()
+	go s.deliver()
 }
 
-// New returns a fully instantiated broadcaster service. Soon after the service
-// is instantiated, Register should be called on it to register a callback,
-// before any AddTransaction calls are made.
+// New returns a fully instantiated broadcaster service.
 func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, error) {
 	opts := badger.DefaultOptions
 	opts.Dir = filepath.Join(cfg.Directory, "broadcast")
@@ -556,14 +703,16 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		data: map[uint64]*SignedData{},
 	}
 	lru := &lru{
-		data: map[blockPointer]*blockInfoContainer{},
+		data: map[byzco.BlockID]*blockInfoContainer{},
 	}
 	store := &store{
 		db: db,
 	}
+	var mu sync.Mutex
 	s := &Service{
 		blockLimit:     cfg.BlockLimit,
 		cache:          cache,
+		cond:           sync.NewCond(&mu),
 		ctx:            ctx,
 		interval:       cfg.RoundInterval,
 		key:            cfg.Key,
@@ -575,14 +724,16 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		nodeID:         cfg.NodeID,
 		peers:          cfg.Peers,
 		readTimeout:    cfg.ReadTimeout,
-		refs:           make(chan *BlockReference, 10000),
+		refs:           make(chan *SignedData, 10000),
 		store:          store,
 		top:            top,
 		txs:            make(chan *TransactionData, 10000),
 		writeTimeout:   cfg.WriteTimeout,
 	}
+	s.dag = byzco.NewDAG(s.dagCallback)
 	s.loadState()
 	go s.genBlocks()
+	go s.writeSentMap()
 	for _, peer := range cfg.Peers {
 		go s.maintainBroadcast(peer)
 	}

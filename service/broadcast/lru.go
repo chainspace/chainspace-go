@@ -3,6 +3,8 @@ package broadcast
 import (
 	"sort"
 	"sync"
+
+	"chainspace.io/prototype/byzco"
 )
 
 type blockInfo struct {
@@ -15,19 +17,13 @@ type blockInfoContainer struct {
 	lastSeen uint64
 }
 
-type blockPointer struct {
-	node  uint64
-	round uint64
-	hash  string
-}
-
 type lru struct {
-	data   map[blockPointer]*blockInfoContainer
+	data   map[byzco.BlockID]*blockInfoContainer
 	mu     sync.Mutex
 	seenID uint64
 }
 
-func (l *lru) get(key blockPointer) *blockInfo {
+func (l *lru) get(key byzco.BlockID) *blockInfo {
 	l.mu.Lock()
 	c, exists := l.data[key]
 	if !exists {
@@ -40,7 +36,7 @@ func (l *lru) get(key blockPointer) *blockInfo {
 	return c.info
 }
 
-func (l *lru) set(key blockPointer, value *blockInfo) {
+func (l *lru) set(key byzco.BlockID, value *blockInfo) {
 	l.mu.Lock()
 	l.seenID++
 	c := &blockInfoContainer{value, l.seenID}
@@ -50,7 +46,7 @@ func (l *lru) set(key blockPointer, value *blockInfo) {
 
 func (l *lru) prune(size int) {
 	type kv struct {
-		key   blockPointer
+		key   byzco.BlockID
 		value *blockInfoContainer
 	}
 	var xs []kv
@@ -66,7 +62,7 @@ func (l *lru) prune(size int) {
 		return xs[i].value.lastSeen > xs[j].value.lastSeen
 	})
 	xs = xs[:size]
-	data := map[blockPointer]*blockInfoContainer{}
+	data := map[byzco.BlockID]*blockInfoContainer{}
 	for _, kv := range xs {
 		data[kv.key] = kv.value
 	}
