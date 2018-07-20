@@ -95,11 +95,11 @@ func cmdTransactor(args []string, usage string) {
 		if key == nil || len(*key) == 0 {
 			log.Fatal("missing object key")
 		}
-		keybytes := readkey(*key)
-		err = transactorClient.Query(keybytes)
-		if err != nil {
-			log.Fatal("Unable to query an object", zap.Error(err))
-		}
+		//keybytes := readkey(*key)
+		// err = transactorClient.Query(keybytes)
+		// if err != nil {
+		// 	log.Fatal("Unable to query an object", zap.Error(err))
+		//}
 	case "create":
 		if object == nil || len(*object) <= 0 {
 			log.Fatal("missing object to create")

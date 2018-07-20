@@ -106,8 +106,29 @@ func (s *Service) queryObject(rw http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	_ = key
-	success(rw, http.StatusOK, "query object")
+	objs, err := s.txclient.Query(key)
+	if err != nil {
+		error(rw, http.StatusInternalServerError, err.Error())
+		return
+	}
+	data := []Object{}
+	for _, v := range objs {
+		o := Object{
+			Key:    base64.StdEncoding.EncodeToString(v.Key),
+			Value:  base64.StdEncoding.EncodeToString(v.Value),
+			Status: v.Status.String(),
+		}
+		data = append(data, o)
+
+	}
+	for _, v := range data {
+		if v != data[0] {
+			error(rw, http.StatusInternalServerError, "inconsistent data")
+			return
+		}
+	}
+
+	success(rw, http.StatusOK, data[0])
 }
 
 func (s *Service) createObject(rw http.ResponseWriter, r *http.Request) {

@@ -29,7 +29,7 @@ type Config struct {
 type Client interface {
 	SendTransaction(t *transactor.Transaction) error
 	Create(obj string) error
-	Query(key []byte) error
+	Query(key []byte) ([]*transactor.Object, error)
 	Delete(key []byte) error
 	Close()
 }
@@ -216,13 +216,13 @@ func (c *client) SendTransaction(tx *transactor.Transaction) error {
 	return err
 }
 
-func (c *client) Query(key []byte) error {
+func (c *client) Query(key []byte) ([]*transactor.Object, error) {
 	shardID := c.top.ShardForKey(key)
 	if err := c.dialNodes(map[uint64]struct{}{shardID: struct{}{}}); err != nil {
-		return err
+		return nil, err
 	}
 	if err := c.helloNodes(); err != nil {
-		return err
+		return nil, err
 	}
 
 	req := &transactor.QueryObjectRequest{
@@ -231,13 +231,15 @@ func (c *client) Query(key []byte) error {
 	bytes, err := proto.Marshal(req)
 	if err != nil {
 		log.Error("unable to marshal QueryObject request", zap.Error(err))
-		return err
+		return nil, err
 	}
 	msg := &service.Message{
 		Opcode:  uint32(transactor.Opcode_QUERY_OBJECT),
 		Payload: bytes,
 	}
 
+	mu := sync.Mutex{}
+	objs := []*transactor.Object{}
 	f := func(s, n uint64, msg *service.Message) error {
 		res := transactor.QueryObjectResponse{}
 		err = proto.Unmarshal(msg.Payload, &res)
@@ -245,16 +247,17 @@ func (c *client) Query(key []byte) error {
 			log.Error("unable to unmarshal input message", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", n), zap.Error(err))
 			return err
 		}
-		keybase64 := base64.StdEncoding.EncodeToString(res.Object.Key)
-		log.Info("query object answer",
-			zap.Uint64("peer.shard", s),
-			zap.Uint64("peer.id", n),
-			zap.String("object.id", keybase64),
-			zap.String("object.value", string(res.Object.Value)),
-			zap.String("object.status", res.Object.Status.String()))
+		mu.Lock()
+		objs = append(objs, res.Object)
+		mu.Unlock()
 		return nil
 	}
-	return c.sendMessages(msg, f)
+	err = c.sendMessages(msg, f)
+	if err != nil {
+		return nil, err
+	}
+
+	return objs, nil
 }
 
 func (c *client) Delete(key []byte) error {
