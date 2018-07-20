@@ -17,7 +17,7 @@ const (
 	interpretedPrefix
 	lastInterpretedPrefix
 	ownBlockPrefix
-	ownHashPrefix
+	receivedMapPrefix
 	roundAcknowledgedPrefix
 	sentMapPrefix
 )
@@ -27,9 +27,9 @@ type store struct {
 	nodes int
 }
 
-func (s *store) getBlock(ref byzco.BlockID) (*SignedData, error) {
+func (s *store) getBlock(id byzco.BlockID) (*SignedData, error) {
 	block := &SignedData{}
-	key := blockKey(ref)
+	key := blockKey(id)
 	err := s.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(key)
 		if err != nil {
@@ -44,14 +44,14 @@ func (s *store) getBlock(ref byzco.BlockID) (*SignedData, error) {
 	return block, err
 }
 
-func (s *store) getBlocks(refs []byzco.BlockID) ([]*SignedData, error) {
-	keys := make([][]byte, len(refs))
-	for idx, ref := range refs {
-		keys[idx] = blockKey(ref)
+func (s *store) getBlocks(ids []byzco.BlockID) ([]*SignedData, error) {
+	keys := make([][]byte, len(ids))
+	for i, id := range ids {
+		keys[i] = blockKey(id)
 	}
-	blocks := make([]*SignedData, len(refs))
+	blocks := make([]*SignedData, len(ids))
 	err := s.db.View(func(txn *badger.Txn) error {
-		for idx, key := range keys {
+		for i, key := range keys {
 			item, err := txn.Get(key)
 			if err != nil {
 				return err
@@ -64,7 +64,7 @@ func (s *store) getBlocks(refs []byzco.BlockID) ([]*SignedData, error) {
 			if err = proto.Unmarshal(val, block); err != nil {
 				return err
 			}
-			blocks[idx] = block
+			blocks[i] = block
 		}
 		return nil
 	})
@@ -176,6 +176,41 @@ func (s *store) getLastInterpreted() (uint64, error) {
 	return round, err
 }
 
+func (s *store) getMissing(nodeID uint64, since uint64, limit int) ([]uint64, uint64, error) {
+	var (
+		rounds []uint64
+	)
+	added := 0
+	latest := since
+	prefix := append([]byte{blockPrefix}, sortableUint64(nodeID)...)
+	start := append([]byte{blockPrefix}, sortableUint64(nodeID)...)
+	start = append(start, sortableUint64(since+1)...)
+	err := s.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchSize = 20
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Seek(start); it.ValidForPrefix(prefix); it.Next() {
+			key := it.Item().Key()
+			next, err := strconv.ParseUint(string(key[21:41]), 10, 64)
+			if err != nil {
+				return err
+			}
+			for i := latest + 1; i < next; i++ {
+				latest = i
+				rounds = append(rounds, i)
+				if added == limit {
+					return nil
+				}
+				added++
+			}
+			latest = next
+		}
+		return nil
+	})
+	return rounds, latest, err
+}
+
 func (s *store) getOwnBlock(round uint64) (*SignedData, error) {
 	block := &SignedData{}
 	key := ownBlockKey(round)
@@ -194,25 +229,6 @@ func (s *store) getOwnBlock(round uint64) (*SignedData, error) {
 		return err
 	})
 	return block, err
-}
-
-func (s *store) getOwnHash(round uint64) ([]byte, error) {
-	var hash []byte
-	key := ownHashKey(round)
-	err := s.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(key)
-		if err != nil {
-			return err
-		}
-		val, err := item.Value()
-		if err != nil {
-			return err
-		}
-		hash = make([]byte, len(val))
-		copy(hash, val)
-		return nil
-	})
-	return hash, err
 }
 
 // getRoundBlocks returns all seen blocks for a given round.
@@ -256,6 +272,32 @@ func (s *store) getRoundBlocks(round uint64) (map[byzco.BlockID]*Block, error) {
 	return data, err
 }
 
+func (s *store) getReceivedMap() (map[uint64]receivedInfo, error) {
+	data := map[uint64]receivedInfo{}
+	key := []byte{receivedMapPrefix}
+	err := s.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(key)
+		if err != nil {
+			return err
+		}
+		val, err := item.Value()
+		if err != nil {
+			return err
+		}
+		n := int(binary.LittleEndian.Uint64(val[:8]))
+		idx := 8
+		for i := 0; i < n; i++ {
+			k := binary.LittleEndian.Uint64(val[idx : idx+8])
+			latest := binary.LittleEndian.Uint64(val[idx+8 : idx+16])
+			sequence := binary.LittleEndian.Uint64(val[idx+16 : idx+24])
+			data[k] = receivedInfo{latest, sequence}
+			idx += 24
+		}
+		return nil
+	})
+	return data, err
+}
+
 func (s *store) getSentMap() (map[uint64]uint64, error) {
 	data := map[uint64]uint64{}
 	key := []byte{sentMapPrefix}
@@ -281,8 +323,8 @@ func (s *store) getSentMap() (map[uint64]uint64, error) {
 	return data, err
 }
 
-func (s *store) setBlock(ref byzco.BlockID, block *SignedData) error {
-	key := blockKey(ref)
+func (s *store) setBlock(id byzco.BlockID, block *SignedData) error {
+	key := blockKey(id)
 	val, err := proto.Marshal(block)
 	if err != nil {
 		return err
@@ -318,8 +360,8 @@ func (s *store) setDeliverAcknowledged(round uint64) error {
 func (s *store) setInterpreted(data *byzco.Interpreted) error {
 	size := 8
 	keys := make([][]byte, len(data.Blocks))
-	for i, ref := range data.Blocks {
-		key := blockKey(ref)
+	for i, id := range data.Blocks {
+		key := blockKey(id)
 		size += 2 + len(key)
 		keys[i] = key
 	}
@@ -332,16 +374,21 @@ func (s *store) setInterpreted(data *byzco.Interpreted) error {
 		copy(enc[idx+2:], key)
 		idx += 2 + len(key)
 	}
+	lkey := []byte{lastInterpretedPrefix}
+	lval := make([]byte, 8)
 	rkey := interpretedKey(data.Round)
+	binary.LittleEndian.PutUint64(lval, data.Round)
 	return s.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(rkey, enc)
+		if err := txn.Set(rkey, enc); err != nil {
+			return err
+		}
+		return txn.Set(lkey, lval)
 	})
 }
 
-func (s *store) setOwnBlock(ref byzco.BlockID, block *SignedData) error {
-	bkey := ownBlockKey(ref.Round)
-	hkey := ownHashKey(ref.Round)
-	rkey := blockKey(ref)
+func (s *store) setOwnBlock(id byzco.BlockID, block *SignedData) error {
+	bkey := ownBlockKey(id.Round)
+	rkey := blockKey(id)
 	val, err := proto.Marshal(block)
 	if err != nil {
 		return err
@@ -350,10 +397,23 @@ func (s *store) setOwnBlock(ref byzco.BlockID, block *SignedData) error {
 		if err := txn.Set(bkey, val); err != nil {
 			return err
 		}
-		if err := txn.Set(rkey, val); err != nil {
-			return err
-		}
-		return txn.Set(hkey, []byte(ref.Hash))
+		return txn.Set(rkey, val)
+	})
+}
+
+func (s *store) setReceivedMap(data map[uint64]receivedInfo) error {
+	enc := make([]byte, 8+(len(data)*24))
+	binary.LittleEndian.PutUint64(enc[:8], uint64(len(data)))
+	idx := 8
+	for k, v := range data {
+		binary.LittleEndian.PutUint64(enc[idx:idx+8], k)
+		binary.LittleEndian.PutUint64(enc[idx+8:idx+16], v.latest)
+		binary.LittleEndian.PutUint64(enc[idx+16:idx+24], v.sequence)
+		idx += 24
+	}
+	key := []byte{receivedMapPrefix}
+	return s.db.Update(func(txn *badger.Txn) error {
+		return txn.Set(key, enc)
 	})
 }
 
@@ -372,11 +432,11 @@ func (s *store) setSentMap(data map[uint64]uint64) error {
 	})
 }
 
-func blockKey(ref byzco.BlockID) []byte {
+func blockKey(id byzco.BlockID) []byte {
 	key := []byte{blockPrefix}
-	key = append(key, sortableUint64(ref.Round)...)
-	key = append(key, sortableUint64(ref.NodeID)...)
-	return append(key, ref.Hash...)
+	key = append(key, sortableUint64(id.NodeID)...)
+	key = append(key, sortableUint64(id.Round)...)
+	return append(key, id.Hash...)
 }
 
 func interpretedKey(round uint64) []byte {
@@ -386,11 +446,6 @@ func interpretedKey(round uint64) []byte {
 
 func ownBlockKey(round uint64) []byte {
 	key := []byte{ownBlockPrefix}
-	return append(key, sortableUint64(round)...)
-}
-
-func ownHashKey(round uint64) []byte {
-	key := []byte{ownHashPrefix}
 	return append(key, sortableUint64(round)...)
 }
 

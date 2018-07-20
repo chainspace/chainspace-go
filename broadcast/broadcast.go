@@ -55,9 +55,8 @@ type Config struct {
 // Service implements the broadcast and consensus system.
 type Service struct {
 	blockLimit     int
-	cache          *cache
 	cb             Callback
-	cond           *sync.Cond
+	cond           *sync.Cond // protects interpreted, toDeliver
 	ctx            context.Context
 	dag            *byzco.DAG
 	initialBackoff time.Duration
@@ -70,9 +69,11 @@ type Service struct {
 	maxPayload     int
 	mu             sync.RWMutex // protects previous, round, sent, signal
 	nodeID         uint64
+	ownblocks      *ownblocks
 	peers          []uint64
 	previous       []byte
 	readTimeout    time.Duration
+	received       *receivedMap
 	refs           chan *SignedData
 	round          uint64
 	sent           map[uint64]uint64
@@ -84,19 +85,15 @@ type Service struct {
 	writeTimeout   time.Duration
 }
 
+// NOTE(tav): toDeliver will keep growing indefinitely if a Callback is never
+// registered.
 func (s *Service) dagCallback(data *byzco.Interpreted) {
 	s.store.setInterpreted(data)
 	s.cond.L.Lock()
-	s.mu.RLock()
-	if s.cb != nil {
-		s.mu.RUnlock()
-		s.toDeliver = append(s.toDeliver, data)
-		s.cond.L.Unlock()
-		s.cond.Signal()
-		return
-	}
-	s.mu.RUnlock()
+	s.interpreted = data.Round
+	s.toDeliver = append(s.toDeliver, data)
 	s.cond.L.Unlock()
+	s.cond.Signal()
 }
 
 func (s *Service) deliver() {
@@ -149,6 +146,136 @@ func (s *Service) deliverRound(round uint64, blocks []*SignedData) {
 		s.cb.DeliverTransaction(tx)
 	}
 	s.cb.DeliverEnd(round)
+}
+
+func (s *Service) fillMissingBlocks(peerID uint64) {
+	var (
+		latest uint64
+		rounds []uint64
+	)
+	backoff := s.initialBackoff
+	blockList := &BlockList{}
+	getRounds := &GetRounds{}
+	getRoundsReq := &service.Message{Opcode: uint32(OP_GET_ROUNDS)}
+	log := log.With(zap.Uint64("peer.id", peerID))
+	maxBlocks := s.maxPayload / s.blockLimit
+	retry := false
+	for {
+		if retry {
+			backoff *= 2
+			if backoff > s.maxBackoff {
+				backoff = s.maxBackoff
+			}
+			time.Sleep(backoff)
+			retry = false
+		}
+		select {
+		case <-s.ctx.Done():
+			return
+		default:
+		}
+		conn, err := s.top.Dial(s.ctx, peerID)
+		if err == nil {
+			backoff = s.initialBackoff
+		} else {
+			log.Error("Couldn't dial node", zap.Error(err))
+			retry = true
+			continue
+		}
+		hello, err := service.SignHello(s.nodeID, peerID, s.key, service.CONNECTION_BROADCAST)
+		if err != nil {
+			log.Error("Couldn't create Hello payload for filling missing blocks", zap.Error(err))
+			retry = true
+			continue
+		}
+		if err = conn.WritePayload(hello, s.maxPayload, s.writeTimeout); err != nil {
+			log.Error("Couldn't send Hello", zap.Error(err))
+			retry = true
+			continue
+		}
+		for {
+			select {
+			case <-s.ctx.Done():
+				return
+			default:
+			}
+			if rounds == nil {
+				info := s.received.get(peerID)
+				if info.latest == info.sequence {
+					time.Sleep(s.interval)
+					continue
+				}
+				rounds, latest, err = s.store.getMissing(peerID, info.sequence, maxBlocks)
+				log.Info("GOT MISSING", zap.Uint64s("rounds", rounds), zap.Uint64("latest", latest))
+				if err != nil {
+					log.Fatal("Could not load missing rounds from DB", zap.Error(err))
+				}
+				if len(rounds) == 0 {
+					if latest != info.sequence && latest != 0 {
+						s.received.setSequence(peerID, latest)
+					}
+					continue
+				}
+			}
+			getRounds.Rounds = rounds
+			getRoundsReq.Payload, err = proto.Marshal(getRounds)
+			if err != nil {
+				log.Fatal("Could not encode request for get rounds", zap.Error(err))
+			}
+			if err = conn.WritePayload(getRoundsReq, s.maxPayload, s.writeTimeout); err != nil {
+				log.Error("Could not write get rounds request", zap.Error(err))
+				retry = true
+				break
+			}
+			resp, err := conn.ReadMessage(s.maxPayload, s.readTimeout)
+			if err != nil {
+				log.Error("Could not read response to get rounds request", zap.Error(err))
+				retry = true
+				break
+			}
+			blockList.Blocks = nil
+			if err := proto.Unmarshal(resp.Payload, blockList); err != nil {
+				log.Error("Could not decode response to get rounds request", zap.Error(err))
+				retry = true
+				break
+			}
+			if len(blockList.Blocks) == 0 {
+				log.Error("Received empty map of hashes")
+				retry = true
+				break
+			}
+			seen := map[uint64]struct{}{}
+			for _, block := range blockList.Blocks {
+				round, err := s.processBlock(block)
+				if err != nil {
+					log.Error("Could not process block received in response to get rounds request", zap.Error(err))
+					continue
+				}
+				seen[round] = struct{}{}
+			}
+			var latestSeen uint64
+			var missing []uint64
+			for _, round := range rounds {
+				if _, exists := seen[round]; !exists {
+					missing = append(missing, round)
+					continue
+				}
+				latestSeen = round
+			}
+			if latestSeen != 0 {
+				if len(missing) != 0 {
+					s.received.setSequence(peerID, latest)
+				} else {
+					s.received.setSequence(peerID, latestSeen)
+				}
+			}
+			if len(missing) == 0 {
+				rounds = nil
+			} else {
+				rounds = missing
+			}
+		}
+	}
 }
 
 func (s *Service) genBlocks() {
@@ -242,8 +369,8 @@ func (s *Service) genBlocks() {
 			})
 			log.Info("Created block", zap.Uint64("round", block.Round))
 			if round%100 == 0 {
-				s.cache.prune(100)
 				s.lru.prune(len(s.peers) * 100)
+				s.ownblocks.prune(100)
 			}
 			txs = nil
 			total = 0
@@ -289,16 +416,16 @@ func (s *Service) genBlocks() {
 }
 
 func (s *Service) getBlockInfo(nodeID uint64, round uint64, hash []byte) *blockInfo {
-	ref := byzco.BlockID{
+	id := byzco.BlockID{
 		Hash:   string(hash),
 		NodeID: nodeID,
 		Round:  round,
 	}
-	info := s.lru.get(ref)
+	info := s.lru.get(id)
 	if info != nil {
 		return info
 	}
-	block, err := s.store.getBlock(ref)
+	block, err := s.store.getBlock(id)
 	if err != nil {
 		log.Error("Could not retrieve block", zap.Uint64("node.id", nodeID), zap.Uint64("round", round), zap.Error(err))
 		return nil
@@ -315,15 +442,15 @@ func (s *Service) getBlockInfo(nodeID uint64, round uint64, hash []byte) *blockI
 	return info
 }
 
-func (s *Service) getBlocks(refs []byzco.BlockID) []*SignedData {
+func (s *Service) getBlocks(ids []byzco.BlockID) []*SignedData {
 	var missing []byzco.BlockID
-	blocks := make([]*SignedData, len(refs))
-	for idx, ref := range refs {
-		info := s.lru.get(ref)
+	blocks := make([]*SignedData, len(ids))
+	for i, id := range ids {
+		info := s.lru.get(id)
 		if info == nil {
-			missing = append(missing, ref)
+			missing = append(missing, id)
 		} else {
-			blocks[idx] = info.block
+			blocks[i] = info.block
 		}
 	}
 	if len(missing) > 0 {
@@ -332,9 +459,9 @@ func (s *Service) getBlocks(refs []byzco.BlockID) []*SignedData {
 			log.Fatal("Unable to retrieve blocks", zap.Error(err))
 		}
 		used := 0
-		for idx, block := range blocks {
+		for i, block := range blocks {
 			if block == nil {
-				blocks[idx] = res[used]
+				blocks[i] = res[used]
 				used++
 			}
 		}
@@ -342,32 +469,23 @@ func (s *Service) getBlocks(refs []byzco.BlockID) []*SignedData {
 	return blocks
 }
 
-func (s *Service) getOwnBlock(round uint64) *SignedData {
-	block := s.cache.get(round)
+func (s *Service) getOwnBlock(round uint64) (*SignedData, error) {
+	block := s.ownblocks.get(round)
 	if block != nil {
-		return block
+		return block, nil
 	}
 	block, err := s.store.getOwnBlock(round)
 	if err != nil {
-		log.Error("Could not retrieve own block", zap.Uint64("round", round), zap.Error(err))
-		return nil
+		return nil, err
 	}
-	s.cache.set(round, block)
-	return block
-}
-
-func (s *Service) getOwnHash(round uint64) []byte {
-	hash, err := s.store.getOwnHash(round)
-	if err != nil {
-		log.Fatal("Got error retrieving own hash", zap.Uint64("round", round), zap.Error(err))
-	}
-	return hash
+	s.ownblocks.set(round, block)
+	return block, nil
 }
 
 // getUnsent returns a slice of unsent blocks for the given peer. If it looks
 // like the peer is up-to-date, then the call blocks until a new block is
 // available.
-func (s *Service) getUnsent(peerID uint64) ([]*SignedData, uint64) {
+func (s *Service) getUnsent(peerID uint64) []*SignedData {
 	for {
 		s.mu.RLock()
 		cur := s.round
@@ -376,9 +494,9 @@ func (s *Service) getUnsent(peerID uint64) ([]*SignedData, uint64) {
 			blocks := []*SignedData{}
 			total := 0
 			for i := last; i <= cur; i++ {
-				block := s.getOwnBlock(i)
-				if block == nil {
-					log.Fatal("Unable to retrieve own block", zap.Uint64("round", i))
+				block, err := s.getOwnBlock(i)
+				if err != nil {
+					log.Fatal("Unable to retrieve own block", zap.Uint64("round", i), zap.Error(err))
 				}
 				total += len(block.Data) + len(block.Signature) + 100
 				if total > s.maxPayload {
@@ -386,21 +504,46 @@ func (s *Service) getUnsent(peerID uint64) ([]*SignedData, uint64) {
 						log.Fatal("Size of individual block exceeds max payload size", zap.Int("size", total), zap.Int("limit", s.maxPayload))
 					}
 					s.mu.RUnlock()
-					return blocks, i - 1
+					return blocks
 				}
 				blocks = append(blocks, block)
 			}
 			s.mu.RUnlock()
-			return blocks, cur
+			return blocks
 		}
 		signal := s.signal
 		s.mu.RUnlock()
 		select {
 		case <-signal:
 		case <-s.ctx.Done():
-			return nil, 0
+			return nil
 		}
 	}
+}
+
+func (s *Service) handleBroadcastList(peerID uint64, msg *service.Message) (*service.Message, error) {
+	listing := &BlockList{}
+	if err := proto.Unmarshal(msg.Payload, listing); err != nil {
+		return nil, err
+	}
+	var last uint64
+	for _, block := range listing.Blocks {
+		round, err := s.processBlock(block)
+		if err != nil {
+			return nil, err
+		}
+		last = round
+	}
+	data, err := proto.Marshal(&BroadcastAck{
+		Last: last,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &service.Message{
+		Opcode:  uint32(OP_BROADCAST_ACK),
+		Payload: data,
+	}, nil
 }
 
 func (s *Service) handleBlockList(peerID uint64, msg *service.Message) error {
@@ -409,7 +552,7 @@ func (s *Service) handleBlockList(peerID uint64, msg *service.Message) error {
 		return err
 	}
 	for _, block := range listing.Blocks {
-		if err := s.processBlock(block); err != nil {
+		if _, err := s.processBlock(block); err != nil {
 			return err
 		}
 	}
@@ -422,14 +565,14 @@ func (s *Service) handleGetBlocks(peerID uint64, msg *service.Message) (*service
 		return nil, err
 	}
 	blocks := make([]*SignedData, len(req.Blocks))
-	for idx, ref := range req.Blocks {
+	for i, ref := range req.Blocks {
 		info := s.getBlockInfo(ref.Node, ref.Round, ref.Hash)
 		if info == nil {
-			blocks[idx] = nil
+			blocks[i] = nil
 			log.Error("Got request for unknown block", zap.Uint64("peer.id", peerID), zap.Uint64("round", ref.Round))
 			continue
 		}
-		blocks[idx] = info.block
+		blocks[i] = info.block
 	}
 	data, err := proto.Marshal(&BlockList{
 		Blocks: blocks,
@@ -443,42 +586,30 @@ func (s *Service) handleGetBlocks(peerID uint64, msg *service.Message) (*service
 	}, nil
 }
 
-func (s *Service) handleGetHashes(peerID uint64, msg *service.Message) (*service.Message, error) {
-	req := &GetHashes{}
+func (s *Service) handleGetRounds(peerID uint64, msg *service.Message) (*service.Message, error) {
+	req := &GetRounds{}
 	if err := proto.Unmarshal(msg.Payload, req); err != nil {
 		return nil, err
 	}
-	var hashes [][]byte
-	s.mu.RLock()
-	latest := s.round
-	s.mu.RUnlock()
-	total := 0
-	if req.Since < latest {
-		for i := req.Since + 1; i <= latest; i++ {
-			hash := s.getOwnHash(i)
-			total += len(hash) + 100
-			if total > s.maxPayload {
-				break
-			}
-			hashes = append(hashes, hash)
+	var blocks []*SignedData
+	for _, round := range req.Rounds {
+		block, err := s.getOwnBlock(round)
+		if err != nil {
+			log.Error("Unable to retrieve own block for get rounds request", zap.Uint64("round", round), zap.Error(err))
+			continue
 		}
+		blocks = append(blocks, block)
 	}
-	data, err := proto.Marshal(&HashList{
-		Hashes: hashes,
-		Latest: latest,
-		Since:  req.Since,
+	data, err := proto.Marshal(&BlockList{
+		Blocks: blocks,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &service.Message{
-		Opcode:  uint32(OP_HASH_LIST),
+		Opcode:  uint32(OP_BLOCK_LIST),
 		Payload: data,
 	}, nil
-}
-
-func (s *Service) handleHashList(peerID uint64, msg *service.Message) error {
-	return nil
 }
 
 func (s *Service) loadState() {
@@ -497,6 +628,16 @@ func (s *Service) loadState() {
 		}
 		interpreted = 0
 	}
+	rmap, err := s.store.getReceivedMap()
+	if err != nil {
+		if err != badger.ErrKeyNotFound {
+			log.Fatal("Could not load received map from DB", zap.Error(err))
+		}
+		rmap = map[uint64]receivedInfo{}
+		for _, peer := range s.peers {
+			rmap[peer] = receivedInfo{}
+		}
+	}
 	sent, err := s.store.getSentMap()
 	if err != nil {
 		if err != badger.ErrKeyNotFound {
@@ -512,6 +653,7 @@ func (s *Service) loadState() {
 	s.dag = byzco.NewDAG(s.ctx, nodes, interpreted, s.dagCallback)
 	s.interpreted = interpreted
 	s.previous = hash
+	s.received = &receivedMap{data: rmap}
 	s.round = round
 	s.sent = sent
 	s.signal = make(chan struct{})
@@ -519,12 +661,9 @@ func (s *Service) loadState() {
 }
 
 func (s *Service) maintainBroadcast(peerID uint64) {
-	var (
-		blocks []*SignedData
-		round  uint64
-	)
+	ack := &BroadcastAck{}
 	backoff := s.initialBackoff
-	msg := &service.Message{Opcode: uint32(OP_BLOCK_LIST)}
+	msg := &service.Message{Opcode: uint32(OP_BROADCAST_LIST)}
 	listing := &BlockList{}
 	retry := false
 	for {
@@ -561,11 +700,18 @@ func (s *Service) maintainBroadcast(peerID uint64) {
 			continue
 		}
 		for {
+			select {
+			case <-s.ctx.Done():
+				return
+			default:
+			}
+			blocks := s.getUnsent(peerID)
+			if blocks == nil {
+				return
+			}
 			if len(blocks) == 0 {
-				blocks, round = s.getUnsent(peerID)
-				if blocks == nil {
-					return
-				}
+				time.Sleep(s.interval)
+				continue
 			}
 			listing.Blocks = blocks
 			msg.Payload, err = proto.Marshal(listing)
@@ -577,8 +723,18 @@ func (s *Service) maintainBroadcast(peerID uint64) {
 				retry = true
 				break
 			}
-			s.markSent(peerID, round)
-			blocks = nil
+			resp, err := conn.ReadMessage(s.maxPayload, s.readTimeout)
+			if err != nil {
+				log.Error("Could not read broadcast ack response", zap.Uint64("peer.id", peerID), zap.Error(err))
+				retry = true
+				break
+			}
+			if err = proto.Unmarshal(resp.Payload, ack); err != nil {
+				log.Error("Could not decode broadcast ack response", zap.Uint64("peer.id", peerID), zap.Error(err))
+				retry = true
+				break
+			}
+			s.markSent(peerID, ack.Last)
 		}
 	}
 }
@@ -590,18 +746,18 @@ func (s *Service) markSent(peerID uint64, round uint64) {
 	s.mu.Unlock()
 }
 
-func (s *Service) processBlock(signed *SignedData) error {
+func (s *Service) processBlock(signed *SignedData) (uint64, error) {
 	block := &Block{}
 	if err := proto.Unmarshal(signed.Data, block); err != nil {
-		return err
+		return 0, err
 	}
 	key, exists := s.keys[block.Node]
 	if !exists {
-		return fmt.Errorf("broadcast: unable to find signing.key for node %d", block.Node)
+		return 0, fmt.Errorf("broadcast: unable to find signing.key for node %d", block.Node)
 	}
 	hasher := combihash.New()
 	if _, err := hasher.Write(signed.Data); err != nil {
-		return fmt.Errorf("broadcast: unable to hash received signed block data: %s", err)
+		return 0, fmt.Errorf("broadcast: unable to hash received signed block data: %s", err)
 	}
 	hash := hasher.Digest()
 	ref := &BlockReference{
@@ -611,13 +767,20 @@ func (s *Service) processBlock(signed *SignedData) error {
 	}
 	enc, err := proto.Marshal(ref)
 	if err != nil {
-		return fmt.Errorf("broadcast: unable to encode block reference: %s", err)
+		return 0, fmt.Errorf("broadcast: unable to encode block reference: %s", err)
 	}
 	if !key.Verify(enc, signed.Signature) {
-		return fmt.Errorf("broadcast: unable to verify signature for block %d from node %d", block.Round, block.Node)
+		return 0, fmt.Errorf("broadcast: unable to verify signature for block %d from node %d", block.Round, block.Node)
 	}
+	// TOOD(tav): Check and validate .Previous hash.
 	log.Info("Received block", zap.Uint64("node.id", block.Node), zap.Uint64("round", block.Round))
-	return nil
+	id := byzco.BlockID{
+		Hash:   string(hash),
+		NodeID: ref.Node,
+		Round:  ref.Round,
+	}
+	s.received.set(ref.Node, ref.Round)
+	return ref.Round, s.setBlock(id, signed)
 }
 
 func (s *Service) replayDAGChanges() {
@@ -626,15 +789,41 @@ func (s *Service) replayDAGChanges() {
 	}
 }
 
+func (s *Service) setBlock(id byzco.BlockID, block *SignedData) error {
+	if err := s.store.setBlock(id, block); err != nil {
+		return err
+	}
+	s.lru.set(id, &blockInfo{block, []byte(id.Hash)})
+	return nil
+}
+
 func (s *Service) setOwnBlock(round uint64, hash []byte, block *SignedData) error {
-	ref := byzco.BlockID{
+	id := byzco.BlockID{
 		Hash:   string(hash),
 		NodeID: s.nodeID,
 		Round:  round,
 	}
-	s.lru.set(ref, &blockInfo{block, hash})
-	s.cache.set(round, block)
-	return s.store.setOwnBlock(ref, block)
+	s.lru.set(id, &blockInfo{block, hash})
+	s.ownblocks.set(round, block)
+	return s.store.setOwnBlock(id, block)
+}
+
+func (s *Service) writeReceivedMap() {
+	ticker := time.NewTicker(20 * s.interval)
+	for {
+		select {
+		case <-ticker.C:
+			rmap := make(map[uint64]receivedInfo, len(s.peers))
+			s.received.mu.RLock()
+			for k, v := range s.received.data {
+				rmap[k] = v
+			}
+			s.received.mu.RUnlock()
+			s.store.setReceivedMap(rmap)
+		case <-s.ctx.Done():
+			return
+		}
+	}
 }
 
 func (s *Service) writeSentMap() {
@@ -672,14 +861,14 @@ func (s *Service) AddTransaction(txdata *TransactionData) {
 // received over a connection.
 func (s *Service) Handle(ctx context.Context, peerID uint64, msg *service.Message) (*service.Message, error) {
 	switch OP(msg.Opcode) {
+	case OP_BROADCAST_LIST:
+		return s.handleBroadcastList(peerID, msg)
 	case OP_BLOCK_LIST:
 		return nil, s.handleBlockList(peerID, msg)
 	case OP_GET_BLOCKS:
 		return s.handleGetBlocks(peerID, msg)
-	case OP_GET_HASHES:
-		return s.handleGetHashes(peerID, msg)
-	case OP_HASH_LIST:
-		return nil, s.handleHashList(peerID, msg)
+	case OP_GET_ROUNDS:
+		return s.handleGetRounds(peerID, msg)
 	default:
 		return nil, fmt.Errorf("broadcast: unknown message opcode: %d", msg.Opcode)
 	}
@@ -712,11 +901,11 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 	if err != nil {
 		return nil, err
 	}
-	cache := &cache{
-		data: map[uint64]*SignedData{},
-	}
 	lru := &lru{
 		data: map[byzco.BlockID]*blockInfoContainer{},
+	}
+	ownblocks := &ownblocks{
+		data: map[uint64]*SignedData{},
 	}
 	store := &store{
 		db:    db,
@@ -725,7 +914,6 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 	var mu sync.Mutex
 	s := &Service{
 		blockLimit:     cfg.BlockLimit,
-		cache:          cache,
 		cond:           sync.NewCond(&mu),
 		ctx:            ctx,
 		interval:       cfg.RoundInterval,
@@ -736,6 +924,7 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		maxBackoff:     cfg.MaxBackoff,
 		maxPayload:     cfg.MaxPayload,
 		nodeID:         cfg.NodeID,
+		ownblocks:      ownblocks,
 		peers:          cfg.Peers,
 		readTimeout:    cfg.ReadTimeout,
 		refs:           make(chan *SignedData, 10000),
@@ -746,8 +935,10 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 	}
 	s.loadState()
 	go s.genBlocks()
+	go s.writeReceivedMap()
 	go s.writeSentMap()
 	for _, peer := range cfg.Peers {
+		go s.fillMissingBlocks(peer)
 		go s.maintainBroadcast(peer)
 	}
 	return s, nil
