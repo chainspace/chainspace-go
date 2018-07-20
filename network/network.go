@@ -16,11 +16,10 @@ import (
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/log"
-	"go.uber.org/zap"
-
 	"github.com/grandcat/zeroconf"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/minio/highwayhash"
+	"go.uber.org/zap"
 )
 
 // Error values.
