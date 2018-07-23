@@ -5,12 +5,14 @@ import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 
 enum OP {
   UNKNOWN = 0;
-  BLOCK_LIST = 1;
-  BROADCAST_ACK = 2;
-  BROADCAST_LIST = 3;
-  GET_BLOCKS = 4;
-  GET_ROUNDS = 5;
+  ACK_BROADCAST = 1;
+  BROADCAST = 2;
+  GET_BLOCKS = 3;
+  GET_ROUNDS = 4;
+  LIST_BLOCKS = 5;
 }
+
+message AckBroadcast { uint64 last = 1; }
 
 message Block {
   uint64 node = 1;
@@ -20,19 +22,17 @@ message Block {
   repeated TransactionData transactions = 5;
 }
 
-message BlockList { repeated SignedData blocks = 1; }
-
 message BlockReference {
   bytes hash = 1;
   uint64 node = 2;
   uint64 round = 3;
 }
 
-message BroadcastAck { uint64 last = 1; }
-
 message GetBlocks { repeated BlockReference blocks = 1; }
 
 message GetRounds { repeated uint64 rounds = 1; }
+
+message ListBlocks { repeated SignedData blocks = 1; }
 
 message SignedData {
   bytes data = 1;
