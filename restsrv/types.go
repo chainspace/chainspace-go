@@ -38,13 +38,6 @@ type Trace struct {
 }
 
 func (ct *Trace) ToTransactor() *transactor.Trace {
-	toBytes := func(s []string) [][]byte {
-		out := make([][]byte, 0, len(s))
-		for _, v := range s {
-			out = append(out, []byte(v))
-		}
-		return out
-	}
 	toBytesB64 := func(s []string) [][]byte {
 		out := make([][]byte, 0, len(s))
 		for _, v := range s {
@@ -62,7 +55,7 @@ func (ct *Trace) ToTransactor() *transactor.Trace {
 		Procedure:           ct.Procedure,
 		InputObjectsKeys:    toBytesB64(ct.InputObjectsKeys),
 		InputReferencesKeys: toBytesB64(ct.InputReferencesKeys),
-		OutputObjects:       toBytes(ct.OutputObjects),
+		OutputObjects:       toBytesB64(ct.OutputObjects),
 		Parameters:          toBytesB64(ct.Parameters),
 		Returns:             toBytesB64(ct.Returns),
 		Dependencies:        deps,

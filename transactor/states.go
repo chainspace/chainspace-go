@@ -591,7 +591,8 @@ func (s *Service) toSucceeded(tx *TxDetails) (State, error) {
 func (s *Service) toAborted(tx *TxDetails) (State, error) {
 	// unlock any objects maybe related to this transaction.
 	objects, _ := s.inputObjectsForShard(s.shardID, tx.Tx)
-	if err := UnlockObjects(s.store, objects); err != nil {
+	err := UnlockObjects(s.store, objects)
+	if err != nil {
 		log.Error("unable to unlock objects", zap.Uint32("tx.id", tx.HashID), zap.Error(err))
 	}
 	tx.Result <- false

@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -87,36 +89,87 @@ func cmdTransactor(args []string, usage string) {
 		if err != nil {
 			log.Fatal("Invalid payload format for transaction", zap.Error(err))
 		}
-		err = transactorClient.SendTransaction(tx.ToTransactor())
+
+		objects, err := transactorClient.SendTransaction(tx.ToTransactor())
 		if err != nil {
-			log.Fatal("Unable to send transaction", zap.Error(err))
+			log.Fatal("unable to send transaction", zap.Error(err))
 		}
+		data := []restsrv.Object{}
+		for _, v := range objects {
+			v := v
+			o := restsrv.Object{
+				Key:    base64.StdEncoding.EncodeToString(v.Key),
+				Value:  base64.StdEncoding.EncodeToString(v.Value),
+				Status: v.Status.String(),
+			}
+			data = append(data, o)
+		}
+		b, err := json.Marshal(data)
+		if err != nil {
+			log.Fatal("unable to marshal result", zap.Error(err))
+		}
+		fmt.Printf("%v\n", string(b))
 	case "query":
 		if key == nil || len(*key) == 0 {
 			log.Fatal("missing object key")
 		}
-		//keybytes := readkey(*key)
-		// err = transactorClient.Query(keybytes)
-		// if err != nil {
-		// 	log.Fatal("Unable to query an object", zap.Error(err))
-		//}
-	case "create":
-		if object == nil || len(*object) <= 0 {
-			log.Fatal("missing object to create")
-		}
-		err = transactorClient.Create(*object)
+		keybytes := readkey(*key)
+		objs, err := transactorClient.Query(keybytes)
 		if err != nil {
-			log.Fatal("Unable to create a new object", zap.Error(err))
+			log.Fatal("unable to query object", zap.Error(err))
 		}
+		obj, err := restsrv.BuildObjectResponse(objs)
+		if err != nil {
+			log.Fatal("error building result", zap.Error(err))
+		}
+		b, err := json.Marshal(obj)
+		if err != nil {
+			log.Fatal("unable to marshal result", zap.Error(err))
+		}
+		fmt.Printf("%v\n", string(b))
+	case "create":
+		if key == nil || len(*object) == 0 {
+			log.Fatal("missing object key")
+		}
+		objbytes := readkey(*object)
+		ids, err := transactorClient.Create(objbytes)
+		if err != nil {
+			log.Fatal("unable to query object", zap.Error(err))
+		}
+		for _, v := range ids {
+			if string(v) != string(ids[0]) {
+				log.Fatal("error building result", zap.Error(errors.New("inconsistent data")))
+				return
+			}
+		}
+		res := struct {
+			ID string `json:"id"`
+		}{
+			ID: base64.StdEncoding.EncodeToString(ids[0]),
+		}
+		b, err := json.Marshal(res)
+		if err != nil {
+			log.Fatal("unable to marshal result", zap.Error(err))
+		}
+		fmt.Printf("%v\n", string(b))
 	case "delete":
 		if key == nil || len(*key) == 0 {
 			log.Fatal("missing object key")
 		}
 		keybytes := readkey(*key)
-		err = transactorClient.Delete(keybytes)
+		objs, err := transactorClient.Delete(keybytes)
 		if err != nil {
-			log.Fatal("Unable to query an object", zap.Error(err))
+			log.Fatal("unable to delete object", zap.Error(err))
 		}
+		obj, err := restsrv.BuildObjectResponse(objs)
+		if err != nil {
+			log.Fatal("error building result", zap.Error(err))
+		}
+		b, err := json.Marshal(obj)
+		if err != nil {
+			log.Fatal("unable to marshal result", zap.Error(err))
+		}
+		fmt.Printf("%v\n", string(b))
 	default:
 		log.Fatal("invalid/unknown command", zap.String("cmd", cmd))
 	}

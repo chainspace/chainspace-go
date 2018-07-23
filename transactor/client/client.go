@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"go.uber.org/zap"
 
 	"chainspace.io/prototype/combihash"
@@ -27,10 +29,10 @@ type Config struct {
 }
 
 type Client interface {
-	SendTransaction(t *transactor.Transaction) error
-	Create(obj string) error
+	SendTransaction(t *transactor.Transaction) ([]*transactor.Object, error)
+	Create(obj []byte) ([][]byte, error)
 	Query(key []byte) ([]*transactor.Object, error)
-	Delete(key []byte) error
+	Delete(key []byte) ([]*transactor.Object, error)
 	Close()
 }
 
@@ -163,19 +165,21 @@ func (c *client) checkTransaction(t *transactor.Transaction) (map[uint64][]byte,
 	return evidences, nil
 }
 
-func (c *client) addTransaction(t *transactor.Transaction) error {
+func (c *client) addTransaction(t *transactor.Transaction) ([]*transactor.Object, error) {
 	req := &transactor.AddTransactionRequest{
 		Tx: t,
 	}
 	txbytes, err := proto.Marshal(req)
 	if err != nil {
 		log.Error("transctor client: unable to marshal transaction", zap.Error(err))
-		return err
+		return nil, err
 	}
 	msg := &service.Message{
 		Opcode:  uint32(transactor.Opcode_ADD_TRANSACTION),
 		Payload: txbytes,
 	}
+	mu := sync.Mutex{}
+	objects := map[string]*transactor.Object{}
 	f := func(s, n uint64, msg *service.Message) error {
 		res := transactor.AddTransactionResponse{}
 		err = proto.Unmarshal(msg.Payload, &res)
@@ -183,37 +187,50 @@ func (c *client) addTransaction(t *transactor.Transaction) error {
 			log.Error("unable to unmarshal input message", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", n), zap.Error(err))
 			return err
 		}
+		mu.Lock()
 		for _, v := range res.Objects {
 			for _, object := range v.List {
+				object := object
 				log.Info("add transaction answer", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", n), zap.String("object.id", b64(object.Key)))
+				objects[string(object.Key)] = object
 			}
 		}
+		mu.Unlock()
 		return nil
 	}
-	return c.sendMessages(msg, f)
+	if err := c.sendMessages(msg, f); err != nil {
+		return nil, err
+	}
+	objectsres := []*transactor.Object{}
+	for _, v := range objects {
+		v := v
+		objectsres = append(objectsres, v)
+	}
+
+	return objectsres, nil
 }
 
-func (c *client) SendTransaction(tx *transactor.Transaction) error {
+func (c *client) SendTransaction(tx *transactor.Transaction) ([]*transactor.Object, error) {
 	if err := c.dialNodesForTransaction(tx); err != nil {
-		return err
+		return nil, err
 	}
 	if err := c.helloNodes(); err != nil {
-		return err
+		return nil, err
 	}
 
 	start := time.Now()
 	evidences, err := c.checkTransaction(tx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	twotplusone := (2*(len(c.nodesConn)/3) + 1)
 	if len(evidences) < twotplusone {
 		log.Error("not enough evidence returned by nodes", zap.Int("expected", twotplusone), zap.Int("got", len(evidences)))
-		return fmt.Errorf("not enough evidences returned by nodes expected(%v) got(%v)", twotplusone, len(evidences))
+		return nil, fmt.Errorf("not enough evidences returned by nodes expected(%v) got(%v)", twotplusone, len(evidences))
 	}
-	err = c.addTransaction(tx)
+	objs, err := c.addTransaction(tx)
 	log.Info("add transaction finished", zap.Duration("time_taken", time.Since(start)))
-	return err
+	return objs, err
 }
 
 func (c *client) Query(key []byte) ([]*transactor.Object, error) {
@@ -260,13 +277,13 @@ func (c *client) Query(key []byte) ([]*transactor.Object, error) {
 	return objs, nil
 }
 
-func (c *client) Delete(key []byte) error {
+func (c *client) Delete(key []byte) ([]*transactor.Object, error) {
 	shardID := c.top.ShardForKey(key)
 	if err := c.dialNodes(map[uint64]struct{}{shardID: struct{}{}}); err != nil {
-		return err
+		return nil, err
 	}
 	if err := c.helloNodes(); err != nil {
-		return err
+		return nil, err
 	}
 
 	req := &transactor.DeleteObjectRequest{
@@ -274,13 +291,15 @@ func (c *client) Delete(key []byte) error {
 	}
 	bytes, err := proto.Marshal(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	msg := &service.Message{
 		Opcode:  uint32(transactor.Opcode_DELETE_OBJECT),
 		Payload: bytes,
 	}
 
+	mu := sync.Mutex{}
+	objs := []*transactor.Object{}
 	f := func(s, n uint64, msg *service.Message) error {
 		res := &transactor.DeleteObjectResponse{}
 		err = proto.Unmarshal(msg.Payload, res)
@@ -288,71 +307,75 @@ func (c *client) Delete(key []byte) error {
 			log.Error("unable to unmarshal input message", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", n), zap.Error(err))
 			return err
 		}
-		keybase64 := base64.StdEncoding.EncodeToString(res.Object.Key)
-		log.Info("delete object answer",
-			zap.Uint64("peer.shard", s),
-			zap.Uint64("peer.id", n),
-			zap.String("object.id", keybase64),
-			zap.String("object.value", string(res.Object.Value)),
-			zap.String("object.status", res.Object.Status.String()))
-
+		mu.Lock()
+		objs = append(objs, res.Object)
+		mu.Unlock()
 		return err
 	}
-	return c.sendMessages(msg, f)
+	if err := c.sendMessages(msg, f); err != nil {
+		return nil, err
+	}
+	return objs, nil
 }
 
 func (c *client) sendMessages(msg *service.Message, f func(uint64, uint64, *service.Message) error) error {
-	wg := &sync.WaitGroup{}
+	wg, _ := errgroup.WithContext(context.TODO())
 	for s, nc := range c.nodesConn {
 		s := s
 		for _, v := range nc {
 			v := v
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() error {
 				log.Info("sending message", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", v.NodeID))
 				_, err := v.Conn.WriteRequest(msg, int(c.maxPaylod), 5*time.Second)
 				if err != nil {
 					log.Error("unable to write request", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", v.NodeID), zap.Error(err))
-					return
+					return err
 				}
 				rmsg, err := v.Conn.ReadMessage(int(c.maxPaylod), 5*time.Second)
 				if err != nil {
 					log.Error("unable to read message", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", v.NodeID), zap.Error(err))
-					return
+					return err
 				}
-				_ = f(s, v.NodeID, rmsg)
-			}()
+				err = f(s, v.NodeID, rmsg)
+				if err != nil {
+					return err
+				}
+				return nil
+			})
 		}
 	}
 
-	wg.Wait()
+	if err := wg.Wait(); err != nil {
+		return err
+	}
 	return nil
 }
 
-func (c *client) Create(obj string) error {
+func (c *client) Create(obj []byte) ([][]byte, error) {
 	ch := combihash.New()
 	ch.Write([]byte(obj))
 	key := ch.Digest()
 	shardID := c.top.ShardForKey(key)
 	if err := c.dialNodes(map[uint64]struct{}{shardID: struct{}{}}); err != nil {
-		return err
+		return nil, err
 	}
 	if err := c.helloNodes(); err != nil {
-		return err
+		return nil, err
 	}
 	req := &transactor.NewObjectRequest{
-		Object: []byte(obj),
+		Object: obj,
 	}
 	bytes, err := proto.Marshal(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	msg := &service.Message{
 		Opcode:  uint32(transactor.Opcode_CREATE_OBJECT),
 		Payload: bytes,
 	}
 
+	mu := sync.Mutex{}
+	objs := [][]byte{}
 	f := func(s, n uint64, msg *service.Message) error {
 		res := transactor.NewObjectResponse{}
 		err = proto.Unmarshal(msg.Payload, &res)
@@ -360,11 +383,15 @@ func (c *client) Create(obj string) error {
 			log.Error("unable to unmarshal input message", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", n), zap.Error(err))
 			return err
 		}
-		idbase64 := base64.StdEncoding.EncodeToString(res.ID)
-		log.Info("Create object answer", zap.Uint64("peer.shard", s), zap.Uint64("peer.id", n), zap.String("object.id", idbase64))
+		mu.Lock()
+		objs = append(objs, res.ID)
+		mu.Unlock()
 		return nil
 	}
-	return c.sendMessages(msg, f)
+	if err := c.sendMessages(msg, f); err != nil {
+		return nil, err
+	}
+	return objs, nil
 }
 
 func b64(data []byte) string {

@@ -3,6 +3,7 @@ package restsrv // import "chainspace.io/prototype/restsrv"
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/network"
+	"chainspace.io/prototype/transactor"
 	"chainspace.io/prototype/transactor/client"
 
 	"github.com/rs/cors"
@@ -47,7 +49,7 @@ func fail(rw http.ResponseWriter, status int, data interface{}) {
 	response(rw, status, resp{data, "fail"})
 }
 
-func error(rw http.ResponseWriter, status int, data interface{}) {
+func errorr(rw http.ResponseWriter, status int, data interface{}) {
 	response(rw, status, resp{data, "error"})
 }
 
@@ -76,24 +78,24 @@ func (s *Service) object(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func readKey(rw http.ResponseWriter, r *http.Request) ([]byte, bool) {
+func readdata(rw http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to read request: %v", err))
 		return nil, false
 	}
 	req := struct {
-		Key string `json:"key"`
+		Data string `json:"data"`
 	}{}
 	if err := json.Unmarshal(body, &req); err != nil {
 		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to unmarshal: %v", err))
 		return nil, false
 	}
-	if len(req.Key) <= 0 {
-		fail(rw, http.StatusBadRequest, "empty key")
+	if len(req.Data) <= 0 {
+		fail(rw, http.StatusBadRequest, "empty data")
 		return nil, false
 	}
-	key, err := base64.StdEncoding.DecodeString(req.Key)
+	key, err := base64.StdEncoding.DecodeString(req.Data)
 	if err != nil {
 		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to b64decode: %v", err))
 		return nil, false
@@ -101,18 +103,12 @@ func readKey(rw http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	return key, true
 }
 
-func (s *Service) queryObject(rw http.ResponseWriter, r *http.Request) {
-	key, ok := readKey(rw, r)
-	if !ok {
-		return
-	}
-	objs, err := s.txclient.Query(key)
-	if err != nil {
-		error(rw, http.StatusInternalServerError, err.Error())
-		return
+func BuildObjectResponse(objects []*transactor.Object) (Object, error) {
+	if len(objects) <= 0 {
+		return Object{}, errors.New("object already inactive")
 	}
 	data := []Object{}
-	for _, v := range objs {
+	for _, v := range objects {
 		o := Object{
 			Key:    base64.StdEncoding.EncodeToString(v.Key),
 			Value:  base64.StdEncoding.EncodeToString(v.Value),
@@ -123,25 +119,72 @@ func (s *Service) queryObject(rw http.ResponseWriter, r *http.Request) {
 	}
 	for _, v := range data {
 		if v != data[0] {
-			error(rw, http.StatusInternalServerError, "inconsistent data")
-			return
+			return Object{}, errors.New("inconsistent data")
 		}
 	}
-
-	success(rw, http.StatusOK, data[0])
+	return data[0], nil
 }
 
 func (s *Service) createObject(rw http.ResponseWriter, r *http.Request) {
-	success(rw, http.StatusOK, "create object")
-}
-
-func (s *Service) deleteObject(rw http.ResponseWriter, r *http.Request) {
-	key, ok := readKey(rw, r)
+	rawObject, ok := readdata(rw, r)
 	if !ok {
 		return
 	}
-	_ = key
-	success(rw, http.StatusOK, "delete object")
+	ids, err := s.txclient.Create(rawObject)
+	if err != nil {
+		errorr(rw, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for _, v := range ids {
+		if string(v) != string(ids[0]) {
+			errorr(rw, http.StatusInternalServerError, "inconsistent data")
+			return
+		}
+	}
+	res := struct {
+		ID string `json:"id"`
+	}{
+		ID: base64.StdEncoding.EncodeToString(ids[0]),
+	}
+	success(rw, http.StatusOK, res)
+}
+
+func (s *Service) queryObject(rw http.ResponseWriter, r *http.Request) {
+	key, ok := readdata(rw, r)
+	if !ok {
+		return
+	}
+	objs, err := s.txclient.Query(key)
+	if err != nil {
+		errorr(rw, http.StatusInternalServerError, err.Error())
+		return
+	}
+	obj, err := BuildObjectResponse(objs)
+	if err != nil {
+		errorr(rw, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	success(rw, http.StatusOK, obj)
+}
+
+func (s *Service) deleteObject(rw http.ResponseWriter, r *http.Request) {
+	key, ok := readdata(rw, r)
+	if !ok {
+		return
+	}
+	objs, err := s.txclient.Delete(key)
+	if err != nil {
+		errorr(rw, http.StatusInternalServerError, err.Error())
+		return
+	}
+	obj, err := BuildObjectResponse(objs)
+	if err != nil {
+		errorr(rw, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	success(rw, http.StatusOK, obj)
 }
 
 func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
@@ -152,7 +195,39 @@ func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
 	if !strings.EqualFold(r.Header.Get("Content-Type"), "application/json") {
 		fail(rw, http.StatusBadRequest, "unsupported content-type")
 	}
-	success(rw, http.StatusOK, "lol")
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to read request: %v", err))
+		return
+	}
+	req := Transaction{}
+	if err := json.Unmarshal(body, &req); err != nil {
+		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to unmarshal: %v", err))
+		return
+	}
+	// require at least input object.
+	for _, v := range req.Traces {
+		if len(v.InputObjectsKeys) <= 0 {
+			fail(rw, http.StatusBadRequest, "no input objects for a trace")
+			return
+		}
+	}
+	objects, err := s.txclient.SendTransaction(req.ToTransactor())
+	if err != nil {
+		errorr(rw, http.StatusInternalServerError, err.Error())
+		return
+	}
+	data := []Object{}
+	for _, v := range objects {
+		v := v
+		o := Object{
+			Key:    base64.StdEncoding.EncodeToString(v.Key),
+			Value:  base64.StdEncoding.EncodeToString(v.Value),
+			Status: v.Status.String(),
+		}
+		data = append(data, o)
+	}
+	success(rw, http.StatusOK, data)
 }
 
 func (s *Service) makeServ(addr string, port int) *http.Server {
