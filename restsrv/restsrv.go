@@ -28,9 +28,10 @@ type Config struct {
 }
 
 type Service struct {
-	port     int
-	srv      *http.Server
-	txclient transactorclient.Client
+	port       int
+	srv        *http.Server
+	top        *network.Topology
+	maxPayload config.ByteSize
 }
 
 type resp struct {
@@ -130,7 +131,8 @@ func (s *Service) createObject(rw http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ids, err := s.txclient.Create(rawObject)
+	txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
+	ids, err := txclient.Create(rawObject)
 	if err != nil {
 		errorr(rw, http.StatusInternalServerError, err.Error())
 		return
@@ -154,7 +156,8 @@ func (s *Service) queryObject(rw http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	objs, err := s.txclient.Query(key)
+	txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
+	objs, err := txclient.Query(key)
 	if err != nil {
 		errorr(rw, http.StatusInternalServerError, err.Error())
 		return
@@ -173,7 +176,8 @@ func (s *Service) deleteObject(rw http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	objs, err := s.txclient.Delete(key)
+	txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
+	objs, err := txclient.Delete(key)
 	if err != nil {
 		errorr(rw, http.StatusInternalServerError, err.Error())
 		return
@@ -212,7 +216,8 @@ func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	objects, err := s.txclient.SendTransaction(req.ToTransactor())
+	txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
+	objects, err := txclient.SendTransaction(req.ToTransactor())
 	if err != nil {
 		errorr(rw, http.StatusInternalServerError, err.Error())
 		return
@@ -245,8 +250,9 @@ func (s *Service) makeServ(addr string, port int) *http.Server {
 
 func New(cfg *Config) *Service {
 	s := &Service{
-		port:     cfg.Port,
-		txclient: transactorclient.New(&transactorclient.Config{Top: cfg.Top, MaxPayload: cfg.MaxPayload}),
+		port:       cfg.Port,
+		top:        cfg.Top,
+		maxPayload: cfg.MaxPayload,
 	}
 	s.srv = s.makeServ(cfg.Addr, cfg.Port)
 	go func() {
