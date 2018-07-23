@@ -36,6 +36,10 @@ const (
 	FatalLevel
 )
 
+func Debug(msg string, fields ...zap.Field) {
+	root.Debug(msg, fields...)
+}
+
 func Error(msg string, fields ...zap.Field) {
 	root.Error(msg, fields...)
 }
