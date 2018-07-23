@@ -68,14 +68,14 @@ type Topology struct {
 // BootstrapFile will use the JSON file at the given path for the initial set of
 // addresses for nodes in the network.
 func (t *Topology) BootstrapFile(path string) error {
-	log.Info("Bootstrapping network via file", zap.String("network.name", t.name), zap.String("file.path", path))
+	log.Debug("Bootstrapping network via file", zap.String("network.name", t.name), zap.String("file.path", path))
 	return errors.New("network: bootstrapping from a static map is not supported yet")
 }
 
 // BootstrapMDNS will try to auto-discover the addresses of initial nodes using
 // multicast DNS.
 func (t *Topology) BootstrapMDNS() {
-	log.Info("Bootstrapping network via mDNS", zap.String("network.name", t.name))
+	log.Debug("Bootstrapping network via mDNS", zap.String("network.name", t.name))
 	go func() {
 		for {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -115,7 +115,7 @@ func (t *Topology) bootstrapMDNS(ctx context.Context) error {
 					addr := fmt.Sprintf("%s:%d", entry.AddrIPv4[0].String(), entry.Port)
 					oldAddr := t.contacts.get(nodeID)
 					if oldAddr != addr {
-						log.Info("Found node address", zap.Uint64("node.id", nodeID), zap.String("address", addr))
+						log.Debug("Found node address", zap.Uint64("node.id", nodeID), zap.String("address", addr))
 						t.contacts.set(nodeID, addr)
 					}
 				}
@@ -131,7 +131,7 @@ func (t *Topology) bootstrapMDNS(ctx context.Context) error {
 // BootstrapStatic will use the given static map of addresses for the initial
 // addresses of nodes in the network.
 func (t *Topology) BootstrapStatic(addresses map[uint64]string) error {
-	log.Info("Bootstrapping network via a static map", zap.String("network.name", t.name))
+	log.Debug("Bootstrapping network via a static map", zap.String("network.name", t.name))
 	t.contacts.Lock()
 	for id, addr := range addresses {
 		t.contacts.data[id] = addr
@@ -143,7 +143,7 @@ func (t *Topology) BootstrapStatic(addresses map[uint64]string) error {
 // BootstrapURL will use the given URL endpoint to discover the initial
 // addresses of nodes in the network.
 func (t *Topology) BootstrapURL(endpoint string) error {
-	log.Info("Bootstrapping network via URL", zap.String("network.name", t.name))
+	log.Debug("Bootstrapping network via URL", zap.String("network.name", t.name))
 	return errors.New("network: bootstrapping from a URL is not supported yet")
 }
 
