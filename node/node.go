@@ -411,14 +411,22 @@ func Run(cfg *Config) (*Server, error) {
 		return nil, fmt.Errorf("node: unable to instantiate the transactor service: %s", err)
 	}
 
-	rport, _ := freeport.TCP("")
-	restsrvcfg := &restsrv.Config{
-		Addr:       "",
-		Port:       rport,
-		Top:        top,
-		MaxPayload: config.ByteSize(maxPayload),
+	var rstsrv *restsrv.Service
+	if cfg.Node.HTTP.Enabled {
+		var rport int
+		if cfg.Node.HTTP.Port != nil {
+			rport = *cfg.Node.HTTP.Port
+		} else {
+			rport, _ = freeport.TCP("")
+		}
+		restsrvcfg := &restsrv.Config{
+			Addr:       "",
+			Port:       rport,
+			Top:        top,
+			MaxPayload: config.ByteSize(maxPayload),
+		}
+		rstsrv = restsrv.New(restsrvcfg)
 	}
-	restsrv := restsrv.New(restsrvcfg)
 
 	node := &Server{
 		broadcaster:     broadcaster,
@@ -431,7 +439,7 @@ func Run(cfg *Config) (*Server, error) {
 		nonceExpiration: cfg.Network.Consensus.NonceExpiration,
 		nonceMap:        map[uint64][]usedNonce{},
 		readTimeout:     cfg.Node.Connections.ReadTimeout,
-		restsrv:         restsrv,
+		restsrv:         rstsrv,
 		top:             top,
 		transactor:      txtor,
 		writeTimeout:    cfg.Node.Connections.WriteTimeout,

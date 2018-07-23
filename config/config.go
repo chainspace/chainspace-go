@@ -95,8 +95,15 @@ type Node struct {
 	Bootstrap   *Bootstrap
 	Broadcast   *Broadcast
 	Connections *Connections `yaml:"connections"`
+	HTTP        HTTP
 	Logging     *Logging
 	Storage     *Storage
+}
+
+// HTTP represents the configuration for the rest http api exposed by a node
+type HTTP struct {
+	Enabled bool
+	Port    *int `yaml:"port,omitempty"`
 }
 
 // Peer represents the cryptographic public keys of a node in a Chainspace
