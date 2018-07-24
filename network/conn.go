@@ -89,6 +89,11 @@ func (c *Conn) ReadPayload(limit int, timeout time.Duration) ([]byte, error) {
 	return buf, nil
 }
 
+// StreamID returns the underlying StreamID.
+func (c *Conn) StreamID() quic.StreamID {
+	return c.stream.StreamID()
+}
+
 // Write writes the given bytes to the underlying connection.
 func (c *Conn) Write(p []byte) (int, error) {
 	return c.stream.Write(p)
