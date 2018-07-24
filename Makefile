@@ -2,8 +2,13 @@ FILES=	service/types.proto\
 	broadcast/types.proto\
 	transactor/types.proto
 
-install: ## install the chainspace binary
+install: chainspace httptest ## install the chainspace binary
+
+chainspace:
 	go install chainspace.io/prototype/cmd/chainspace
+
+httptest:
+	go install chainspace.io/prototype/cmd/httptest
 
 proto: ## recompile all protobuf definitions
 	$(foreach f,$(FILES),\

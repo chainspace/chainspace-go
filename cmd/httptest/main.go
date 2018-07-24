@@ -35,13 +35,15 @@ const (
 
 func seedObjects() ([]string, error) {
 	out := []string{}
-	client := http.Client{}
 	url := (&url.URL{
 		Scheme: "http",
 		Host:   address,
 		Path:   "object",
 	}).String()
 	for i := 0; i < objects; i += 1 {
+		client := http.Client{
+			Timeout: 10 * time.Second,
+		}
 		payload := bytes.NewBufferString(fmt.Sprintf(`{"data": "%v"}`, randSeq(30)))
 		req, err := http.NewRequest(http.MethodPost, url, payload)
 		req.Header.Add("Content-Type", "application/json")
@@ -95,7 +97,6 @@ func worker(ctx context.Context, seed []string, wg *sync.WaitGroup, id int) {
 	wg.Add(1)
 	defer wg.Done()
 
-	client := http.Client{}
 	url := (&url.URL{
 		Scheme: "http",
 		Host:   address,
@@ -105,10 +106,14 @@ func worker(ctx context.Context, seed []string, wg *sync.WaitGroup, id int) {
 	mu.Lock()
 	metrics[id] = []time.Duration{}
 	mu.Unlock()
-
 	for {
 		if err := ctx.Err(); err != nil {
-			return
+			fmt.Printf("context error: %v\n", err)
+			break
+		}
+
+		client := http.Client{
+			Timeout: 5 * time.Second,
 		}
 
 		fmt.Printf("worker %v sending new transaction\n", id)
@@ -117,42 +122,46 @@ func worker(ctx context.Context, seed []string, wg *sync.WaitGroup, id int) {
 		txbytes := makeTransactionPayload(seed)
 		payload := bytes.NewBuffer(txbytes)
 		req, err := http.NewRequest(http.MethodPost, url, payload)
+		req = req.WithContext(ctx)
 		req.Header.Add("Content-Type", "application/json")
 		resp, err := client.Do(req)
 		if err != nil {
-			fmt.Printf("error calling node: %v", err.Error())
-			os.Exit(1)
+			fmt.Printf("error calling node: %v\n", err.Error())
+			continue
 		}
 		b, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			fmt.Printf("error reading response from POST /object: %v", err.Error())
-			os.Exit(1)
+			fmt.Printf("error reading response from POST /object: %v\n", err.Error())
+			continue
 		}
 		resp.Body.Close()
 
 		res := struct {
-			Data   []restsrv.Object `json:"data"`
-			Status string           `json:"status"`
+			Data   interface{} `json:"data"`
+			Status string      `json:"status"`
 		}{}
 		err = json.Unmarshal(b, &res)
 		if err != nil {
 			fmt.Printf("unable to unmarshal response: %v\n", err.Error())
-			os.Exit(1)
+			break
 		}
 		if res.Status != "success" {
 			fmt.Printf("error from server: %v\n", string(b))
-			os.Exit(1)
+			continue
 		}
 
-		for i, v := range res.Data {
-			seed[i] = v.Key
+		data := res.Data.([]interface{})
+		for i, v := range data {
+			seed[i] = v.(map[string]interface{})["key"].(string)
 		}
 
 		mu.Lock()
 		metrics[id] = append(metrics[id], time.Since(start))
 		mu.Unlock()
 		fmt.Printf("worker %v received new objects keys: %v\n", id, seed)
+		time.Sleep(200 * time.Millisecond)
 	}
+	fmt.Printf("worker %v finished at: %v\n", id, time.Now().Format(time.Stamp))
 }
 
 func main() {
@@ -175,7 +184,7 @@ func main() {
 	}
 
 	t := time.NewTimer(time.Duration(duration) * time.Second)
-	fmt.Printf("starting test for %v seconds (until %v)\n", time.Duration(duration)*time.Second, time.Now().Add(time.Duration(duration)*time.Second).Format(time.Stamp))
+	fmt.Printf("starting tests (at %v) for %v seconds (until %v)\n", time.Now(), time.Duration(duration)*time.Second, time.Now().Add(time.Duration(duration)*time.Second).Format(time.Stamp))
 	select {
 	case <-t.C:
 		cancel()
@@ -184,7 +193,7 @@ func main() {
 	durations := []time.Duration{}
 	for k, v := range metrics {
 		v := v
-		fmt.Printf("worker %v: %v txs sent", k, len(v))
+		fmt.Printf("worker %v: %v txs\n", k, len(v))
 		durations = append(durations, v...)
 	}
 	var total uint64
@@ -192,8 +201,7 @@ func main() {
 		total += uint64(v)
 	}
 	fmt.Printf("average duration per tx: %v\n", time.Duration(total/uint64(len(durations))))
-
-	fmt.Println("looks good to me.")
+	fmt.Printf("testing finished at: %v\n", time.Now().Format(time.Stamp))
 }
 
 func init() {

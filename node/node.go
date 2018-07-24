@@ -117,7 +117,6 @@ func (s *Server) handleStream(stream quic.Stream) {
 			stream.Close()
 			return
 		}
-		log.Info("New transactor hello nesssage")
 	default:
 		log.Error("Unknown connection type", zap.Int32("type", int32(hello.Type)))
 		stream.Close()

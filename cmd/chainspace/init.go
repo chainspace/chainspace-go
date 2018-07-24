@@ -94,6 +94,14 @@ func cmdInit(args []string, usage string) {
 			log.Fatal("Could not generate keys", zap.Error(err))
 		}
 
+		var httpcfg config.HTTP
+		if i == 1 {
+			httpport := 8080
+			httpcfg = config.HTTP{
+				Port:    &httpport,
+				Enabled: true,
+			}
+		}
 		// Create node.yaml
 		cfg := &config.Node{
 			Announce:    []string{"mdns"},
@@ -102,6 +110,7 @@ func cmdInit(args []string, usage string) {
 			Connections: connections,
 			Logging:     logging,
 			Storage:     storage,
+			HTTP:        httpcfg,
 		}
 
 		if err := writeYAML(filepath.Join(nodeDir, "node.yaml"), cfg); err != nil {

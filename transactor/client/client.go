@@ -58,7 +58,9 @@ func New(cfg *Config) Client {
 
 func (c *client) Close() {
 	for _, conns := range c.nodesConn {
+		conns := conns
 		for _, c := range conns {
+			c := c
 			if err := c.Conn.Close(); err != nil {
 				log.Error("transactor client: error closing connection", zap.Error(err))
 			}
@@ -171,7 +173,7 @@ func (c *client) addTransaction(t *transactor.Transaction) ([]*transactor.Object
 	}
 	txbytes, err := proto.Marshal(req)
 	if err != nil {
-		log.Error("transctor client: unable to marshal transaction", zap.Error(err))
+		log.Error("transactor client: unable to marshal transaction", zap.Error(err))
 		return nil, err
 	}
 	msg := &service.Message{
@@ -205,6 +207,7 @@ func (c *client) addTransaction(t *transactor.Transaction) ([]*transactor.Object
 	for _, v := range objects {
 		v := v
 		objectsres = append(objectsres, v)
+
 	}
 
 	return objectsres, nil
@@ -217,7 +220,6 @@ func (c *client) SendTransaction(tx *transactor.Transaction) ([]*transactor.Obje
 	if err := c.helloNodes(); err != nil {
 		return nil, err
 	}
-
 	start := time.Now()
 	evidences, err := c.checkTransaction(tx)
 	if err != nil {

@@ -8,7 +8,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
-	"time"
 
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/log"
@@ -132,6 +131,7 @@ func (s *Service) createObject(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
+	defer txclient.Close()
 	ids, err := txclient.Create(rawObject)
 	if err != nil {
 		errorr(rw, http.StatusInternalServerError, err.Error())
@@ -157,6 +157,7 @@ func (s *Service) queryObject(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
+	defer txclient.Close()
 	objs, err := txclient.Query(key)
 	if err != nil {
 		errorr(rw, http.StatusInternalServerError, err.Error())
@@ -177,6 +178,7 @@ func (s *Service) deleteObject(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
+	defer txclient.Close()
 	objs, err := txclient.Delete(key)
 	if err != nil {
 		errorr(rw, http.StatusInternalServerError, err.Error())
@@ -217,6 +219,7 @@ func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 	txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
+	defer txclient.Close()
 	objects, err := txclient.SendTransaction(req.ToTransactor())
 	if err != nil {
 		errorr(rw, http.StatusInternalServerError, err.Error())
@@ -240,12 +243,14 @@ func (s *Service) makeServ(addr string, port int) *http.Server {
 	mux.HandleFunc("/object", s.object)
 	mux.HandleFunc("/transaction", s.transaction)
 	handler := cors.Default().Handler(mux)
-	return &http.Server{
-		Addr:         fmt.Sprintf("%v:%v", addr, port),
-		Handler:      handler,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+	h := &http.Server{
+		Addr:    fmt.Sprintf("%v:%v", addr, port),
+		Handler: handler,
+		//ReadTimeout:  10 * time.Second,
+		//WriteTimeout: 10 * time.Second,
 	}
+	h.SetKeepAlivesEnabled(false)
+	return h
 }
 
 func New(cfg *Config) *Service {
