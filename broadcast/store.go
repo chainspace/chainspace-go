@@ -2,10 +2,9 @@ package broadcast
 
 import (
 	"encoding/binary"
-	"fmt"
-	"strconv"
 
 	"chainspace.io/prototype/byzco"
+	"chainspace.io/prototype/lexinum"
 	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
 )
@@ -182,17 +181,18 @@ func (s *store) getMissing(nodeID uint64, since uint64, limit int) ([]uint64, ui
 	)
 	added := 0
 	latest := since
-	prefix := append([]byte{blockPrefix}, sortableUint64(nodeID)...)
-	start := append([]byte{blockPrefix}, sortableUint64(nodeID)...)
-	start = append(start, sortableUint64(since+1)...)
+	prefix := append([]byte{blockPrefix}, lexinum.Encode(nodeID)...)
+	prefix = append(prefix, 0x00)
+	start := make([]byte, len(prefix))
+	copy(start, prefix)
+	start = append(start, lexinum.Encode(since+1)...)
 	err := s.db.View(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
 		opts.PrefetchSize = 20
 		it := txn.NewIterator(opts)
 		defer it.Close()
 		for it.Seek(start); it.ValidForPrefix(prefix); it.Next() {
-			key := it.Item().Key()
-			next, err := strconv.ParseUint(string(key[21:41]), 10, 64)
+			next, err := decodeBlockRound(it.Item().Key())
 			if err != nil {
 				return err
 			}
@@ -234,7 +234,7 @@ func (s *store) getOwnBlock(round uint64) (*SignedData, error) {
 // getRoundBlocks returns all seen blocks for a given round.
 func (s *store) getRoundBlocks(round uint64) (map[byzco.BlockID]*Block, error) {
 	data := map[byzco.BlockID]*Block{}
-	prefix := append([]byte{blockPrefix}, sortableUint64(round)...)
+	prefix := append([]byte{blockPrefix}, lexinum.Encode(round)...)
 	err := s.db.View(func(txn *badger.Txn) error {
 		_ = prefix
 		opts := badger.DefaultIteratorOptions
@@ -249,7 +249,7 @@ func (s *store) getRoundBlocks(round uint64) (map[byzco.BlockID]*Block, error) {
 			if err != nil {
 				return err
 			}
-			nodeID, err := strconv.ParseUint(string(key[21:41]), 10, 64)
+			nodeID, err := lexinum.Decode(key[21:])
 			if err != nil {
 				return err
 			}
@@ -434,21 +434,34 @@ func (s *store) setSentMap(data map[uint64]uint64) error {
 
 func blockKey(id byzco.BlockID) []byte {
 	key := []byte{blockPrefix}
-	key = append(key, sortableUint64(id.NodeID)...)
-	key = append(key, sortableUint64(id.Round)...)
+	key = append(key, lexinum.Encode(id.NodeID)...)
+	key = append(key, 0x00)
+	key = append(key, lexinum.Encode(id.Round)...)
+	key = append(key, 0x00)
 	return append(key, id.Hash...)
+}
+
+func decodeBlockRound(d []byte) (uint64, error) {
+	rstart, rend := 0, 0
+	for i, char := range d[1:] {
+		if char == 0x00 {
+			if rstart == 0 {
+				rstart = i + 2
+			} else {
+				rend = i + 1
+				break
+			}
+		}
+	}
+	return lexinum.Decode(d[rstart:rend])
 }
 
 func interpretedKey(round uint64) []byte {
 	key := []byte{interpretedPrefix}
-	return append(key, sortableUint64(round)...)
+	return append(key, lexinum.Encode(round)...)
 }
 
 func ownBlockKey(round uint64) []byte {
 	key := []byte{ownBlockPrefix}
-	return append(key, sortableUint64(round)...)
-}
-
-func sortableUint64(v uint64) []byte {
-	return []byte(fmt.Sprintf("%020d", v))
+	return append(key, lexinum.Encode(round)...)
 }
