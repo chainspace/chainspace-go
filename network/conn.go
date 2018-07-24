@@ -31,11 +31,6 @@ func (c *Conn) Context() context.Context {
 	return c.stream.Context()
 }
 
-// Read reads from the underlying connection.
-func (c *Conn) Read(p []byte) (int, error) {
-	return c.stream.Read(p)
-}
-
 // ReadHello reads a service.Hello from the underlying connection.
 func (c *Conn) ReadHello(limit int, timeout time.Duration) (*service.Hello, error) {
 	payload, err := c.ReadPayload(limit, timeout)
@@ -68,6 +63,7 @@ func (c *Conn) ReadPayload(limit int, timeout time.Duration) ([]byte, error) {
 		n, err := c.stream.Read(buf[4-need:])
 		if err != nil {
 			log.Error("Got error reading from stream", zap.Error(err))
+			c.stream.Close()
 			return nil, err
 		}
 		need -= n
@@ -85,6 +81,7 @@ func (c *Conn) ReadPayload(limit int, timeout time.Duration) ([]byte, error) {
 		n, err := c.stream.Read(buf[size-need:])
 		if err != nil {
 			log.Error("Got error reading from stream", zap.Error(err))
+			c.stream.Close()
 			return nil, err
 		}
 		need -= n
@@ -117,6 +114,7 @@ func (c *Conn) WritePayload(pb proto.Message, limit int, timeout time.Duration) 
 		c.stream.SetWriteDeadline(time.Now().Add(timeout))
 		n, err := c.stream.Write(buf)
 		if err != nil {
+			c.stream.Close()
 			return err
 		}
 		buf = buf[n:]
@@ -126,6 +124,7 @@ func (c *Conn) WritePayload(pb proto.Message, limit int, timeout time.Duration) 
 		c.stream.SetWriteDeadline(time.Now().Add(timeout))
 		n, err := c.stream.Write(payload)
 		if err != nil {
+			c.stream.Close()
 			return err
 		}
 		payload = payload[n:]
