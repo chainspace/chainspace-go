@@ -228,7 +228,8 @@ func GetTransaction(store *badger.DB, txkey []byte) ([]byte, bool, error) {
 		if err != nil {
 			return err
 		}
-		txvalue = val
+		txvalue = make([]byte, len(val))
+		copy(txvalue, val)
 		txcommitted = status[0] == 1
 		return nil
 	})
@@ -252,10 +253,12 @@ func GetObjects(store *badger.DB, keys [][]byte) ([]*Object, error) {
 			if err != nil {
 				return err
 			}
-			o.Value, err = item.Value()
+			val, err := item.Value()
 			if err != nil {
 				return err
 			}
+			o.Value = make([]byte, len(val))
+			copy(o.Value, val)
 			statuskey := objectStatusKey(key)
 			item, err = txn.Get(statuskey)
 			rawStatus, err := item.Value()

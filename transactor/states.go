@@ -145,15 +145,16 @@ func (s *Service) onEvent(tx *TxDetails, event *Event) error {
 	log.Info(SBACOpcode_name[int32(event.msg.Op)]+" decision received", zap.Uint32("tx.id", tx.HashID), zap.String("decision", SBACDecision_name[int32(event.msg.Decision)]), zap.Uint64("peer.id", event.peerID))
 	switch event.msg.Op {
 	case SBACOpcode_PHASE1:
-		tx.Phase1Decisions[event.peerID] = event.msg.Decision
+		tx.Phase1Decisions[event.peerID] = SignedDecision{event.msg.Decision, event.msg.Tx.GetSignature()}
 	case SBACOpcode_PHASE2:
-		tx.Phase2Decisions[event.peerID] = event.msg.Decision
+		tx.Phase2Decisions[event.peerID] = SignedDecision{event.msg.Decision, event.msg.Tx.GetSignature()}
+	case SBACOpcode_COMMIT:
+		tx.CommitDecisions[event.peerID] = SignedDecision{event.msg.Decision, event.msg.Tx.GetSignature()}
+
 	case SBACOpcode_CONSENSUS1:
 		tx.Consensus1Tx = event.msg.Tx
 	case SBACOpcode_CONSENSUS2:
 		tx.Consensus2Tx = event.msg.Tx
-	case SBACOpcode_COMMIT:
-		tx.CommitDecisions[event.peerID] = event.msg.Decision
 	case SBACOpcode_CONSENSUS_COMMIT:
 		tx.ConsensusCommitTx = event.msg.Tx
 	default:
@@ -196,7 +197,17 @@ const (
 	WaitingDecisionResultAccept
 )
 
-func (s *Service) onWaitingFor(tx *TxDetails, decisions map[uint64]SBACDecision, phaseName string) WaitingDecisionResult {
+func (s *Service) verifySignature(tx *Transaction, signature []byte, nodeID uint64) (bool, error) {
+	b, err := proto.Marshal(tx)
+	if err != nil {
+		return false, err
+	}
+	keys := s.top.SeedPublicKeys()
+	key := keys[nodeID]
+	return key.Verify(b, signature), nil
+}
+
+func (s *Service) onWaitingFor(tx *TxDetails, decisions map[uint64]SignedDecision, phaseName string) WaitingDecisionResult {
 	shards := s.shardsInvolvedInTx(tx.Tx)
 	var somePending bool
 	// for each shards, get the nodes id, and checks if they answered
@@ -208,7 +219,7 @@ func (s *Service) onWaitingFor(tx *TxDetails, decisions map[uint64]SBACDecision,
 		var rejected uint64
 		for _, nodeID := range nodes {
 			if d, ok := decisions[nodeID]; ok {
-				if d == SBACDecision_ACCEPT {
+				if d.Decision == SBACDecision_ACCEPT {
 					accepted += 1
 					continue
 				}
@@ -243,6 +254,19 @@ func (s *Service) onWaitingFor(tx *TxDetails, decisions map[uint64]SBACDecision,
 	}
 
 	log.Info(phaseName+" transaction accepted by all shards", zap.Uint32("tx.id", tx.HashID))
+
+	// verify signatures now
+	for k, v := range decisions {
+		// TODO(): what to do with nodes with invalid signature
+		ok, err := s.verifySignature(tx.Tx, v.Signature, k)
+		if err != nil {
+			log.Error(phaseName+"unable to verify signature", zap.Uint32("tx.id", tx.HashID), zap.Error(err))
+		}
+		if !ok {
+			log.Error(phaseName+" invalid signature for a decision", zap.Uint32("tx.id", tx.HashID), zap.Uint64("peer.id", k))
+		}
+	}
+
 	return WaitingDecisionResultAccept
 }
 
@@ -295,8 +319,6 @@ func (s *Service) objectsExists(objs, refs [][]byte) ([]*Object, bool) {
 }
 
 func (s *Service) onWaitingForConsensus1(tx *TxDetails) (State, error) {
-	// TODO: need to check evidences here, as this step should happend after the first consensus round.
-	// not sure how we agregate evidence here, if we get new ones from the consensus rounds or the same that where sent with the transaction at the begining.
 	if tx.Consensus1Tx == nil {
 		return StateWaitingForConsensus1, nil
 	}
@@ -418,7 +440,20 @@ func (s *Service) sendToAllShardInvolved(tx *TxDetails, msg *service.Message) er
 	return nil
 }
 
+func (s *Service) signTransaction(tx *Transaction) ([]byte, error) {
+	b, err := proto.Marshal(tx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to marshal transaction, %v", err)
+	}
+	return s.privkey.Sign(b), nil
+}
+
 func (s *Service) toRejectPhase1Broadcasted(tx *TxDetails) (State, error) {
+	signature, err := s.signTransaction(tx.Tx)
+	if err != nil {
+		log.Error("unable to sign transaction", zap.Error(err))
+		return StateAborted, err
+	}
 	sbacmsg := &SBACMessage{
 		Op:       SBACOpcode_PHASE1,
 		Decision: SBACDecision_REJECT,
@@ -426,8 +461,8 @@ func (s *Service) toRejectPhase1Broadcasted(tx *TxDetails) (State, error) {
 		Tx: &SBACTransaction{
 			ID:        tx.ID,
 			Tx:        tx.Tx,
-			Evidences: tx.CheckersEvidences,
 			Op:        SBACOpcode_PHASE1,
+			Signature: signature,
 		},
 	}
 	msg, err := makeMessage(sbacmsg)
@@ -446,6 +481,11 @@ func (s *Service) toRejectPhase1Broadcasted(tx *TxDetails) (State, error) {
 }
 
 func (s *Service) toAcceptPhase1Broadcasted(tx *TxDetails) (State, error) {
+	signature, err := s.signTransaction(tx.Tx)
+	if err != nil {
+		log.Error("unable to sign transaction", zap.Error(err))
+		return StateAborted, err
+	}
 	sbacmsg := &SBACMessage{
 		Op:       SBACOpcode_PHASE1,
 		Decision: SBACDecision_ACCEPT,
@@ -453,8 +493,8 @@ func (s *Service) toAcceptPhase1Broadcasted(tx *TxDetails) (State, error) {
 		Tx: &SBACTransaction{
 			ID:        tx.ID,
 			Tx:        tx.Tx,
-			Evidences: tx.CheckersEvidences,
 			Op:        SBACOpcode_PHASE1,
+			Signature: signature,
 		},
 	}
 	msg, err := makeMessage(sbacmsg)
@@ -474,6 +514,11 @@ func (s *Service) toAcceptPhase1Broadcasted(tx *TxDetails) (State, error) {
 }
 
 func (s *Service) toRejectPhase2Broadcasted(tx *TxDetails) (State, error) {
+	signature, err := s.signTransaction(tx.Tx)
+	if err != nil {
+		log.Error("unable to sign transaction", zap.Error(err))
+		return StateAborted, err
+	}
 	sbacmsg := &SBACMessage{
 		Op:       SBACOpcode_PHASE2,
 		Decision: SBACDecision_REJECT,
@@ -481,8 +526,8 @@ func (s *Service) toRejectPhase2Broadcasted(tx *TxDetails) (State, error) {
 		Tx: &SBACTransaction{
 			ID:        tx.ID,
 			Tx:        tx.Tx,
-			Evidences: tx.CheckersEvidences,
 			Op:        SBACOpcode_PHASE2,
+			Signature: signature,
 		},
 	}
 	msg, err := makeMessage(sbacmsg)
@@ -501,6 +546,11 @@ func (s *Service) toRejectPhase2Broadcasted(tx *TxDetails) (State, error) {
 }
 
 func (s *Service) toAcceptPhase2Broadcasted(tx *TxDetails) (State, error) {
+	signature, err := s.signTransaction(tx.Tx)
+	if err != nil {
+		log.Error("unable to sign transaction", zap.Error(err))
+		return StateAborted, err
+	}
 	sbacmsg := &SBACMessage{
 		Op:       SBACOpcode_PHASE2,
 		Decision: SBACDecision_ACCEPT,
@@ -508,8 +558,8 @@ func (s *Service) toAcceptPhase2Broadcasted(tx *TxDetails) (State, error) {
 		Tx: &SBACTransaction{
 			ID:        tx.ID,
 			Tx:        tx.Tx,
-			Evidences: tx.CheckersEvidences,
 			Op:        SBACOpcode_PHASE2,
+			Signature: signature,
 		},
 	}
 	msg, err := makeMessage(sbacmsg)
@@ -615,6 +665,11 @@ func (s *Service) sendToShards(shards []uint64, tx *TxDetails, msg *service.Mess
 }
 
 func (s *Service) toCommitObjectsBroadcasted(tx *TxDetails) (State, error) {
+	signature, err := s.signTransaction(tx.Tx)
+	if err != nil {
+		log.Error("unable to sign transaction", zap.Error(err))
+		return StateAborted, err
+	}
 	sbacmsg := &SBACMessage{
 		Op:       SBACOpcode_COMMIT,
 		Decision: SBACDecision_ACCEPT,
@@ -622,8 +677,8 @@ func (s *Service) toCommitObjectsBroadcasted(tx *TxDetails) (State, error) {
 		Tx: &SBACTransaction{
 			ID:        tx.ID,
 			Tx:        tx.Tx,
-			Evidences: tx.CheckersEvidences,
 			Op:        SBACOpcode_COMMIT,
+			Signature: signature,
 		},
 	}
 	msg, err := makeMessage(sbacmsg)

@@ -1,7 +1,7 @@
 package transactor // import "chainspace.io/prototype/transactor"
+
 import (
 	"chainspace.io/prototype/log"
-
 	"go.uber.org/zap"
 )
 
@@ -16,14 +16,19 @@ type StateTransition struct {
 	To   State
 }
 
+type SignedDecision struct {
+	Decision  SBACDecision
+	Signature []byte
+}
+
 type TxDetails struct {
 	Consensus1Tx      *SBACTransaction
 	Consensus2Tx      *SBACTransaction
 	ConsensusCommitTx *SBACTransaction
 
-	CommitDecisions map[uint64]SBACDecision
-	Phase1Decisions map[uint64]SBACDecision
-	Phase2Decisions map[uint64]SBACDecision
+	CommitDecisions map[uint64]SignedDecision
+	Phase1Decisions map[uint64]SignedDecision
+	Phase2Decisions map[uint64]SignedDecision
 
 	CheckersEvidences map[uint64][]byte
 	ID                []byte
@@ -169,10 +174,10 @@ func NewStateMachine(table *StateTable, txDetails *TxDetails, initialState State
 func NewTxDetails(txID, raw []byte, tx *Transaction, evidences map[uint64][]byte) *TxDetails {
 	return &TxDetails{
 		CheckersEvidences: evidences,
-		CommitDecisions:   map[uint64]SBACDecision{},
+		CommitDecisions:   map[uint64]SignedDecision{},
 		ID:                txID,
-		Phase1Decisions:   map[uint64]SBACDecision{},
-		Phase2Decisions:   map[uint64]SBACDecision{},
+		Phase1Decisions:   map[uint64]SignedDecision{},
+		Phase2Decisions:   map[uint64]SignedDecision{},
 		Raw:               raw,
 		Result:            make(chan bool),
 		Tx:                tx,

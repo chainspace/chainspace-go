@@ -120,4 +120,5 @@ message SBACTransaction {
   Transaction tx = 2;
   map<uint64, bytes> evidences = 3;
   SBACOpcode op = 4;
+  bytes signature = 5;
 }
