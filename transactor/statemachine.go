@@ -55,7 +55,7 @@ type Event struct {
 
 type StateMachine struct {
 	txDetails *TxDetails
-	events    chan *Event
+	events    *pendingEvents
 	state     State
 	table     *StateTable
 }
@@ -135,39 +135,38 @@ func (sm *StateMachine) moveState() error {
 	}
 }
 
-func (sm *StateMachine) run() {
-	for e := range sm.events {
-		log.Info("processing new event",
-			zap.Uint32("id", sm.txDetails.HashID),
-			zap.String("state", sm.state.String()),
-			zap.Uint64("peer.id", e.peerID),
-		)
-		sm.table.onEvent(sm.txDetails, e)
-		if sm.state == StateSucceeded || sm.state == StateAborted {
-			log.Info("statemachine reach end", zap.String("final_state", sm.state.String()))
-			return
-		}
-		err := sm.moveState()
-		if err != nil {
-			log.Error("something happend while moving states", zap.Error(err))
-		}
-
+func (sm *StateMachine) consumeEvent(e *Event) bool {
+	log.Info("processing new event",
+		zap.Uint32("id", sm.txDetails.HashID),
+		zap.String("state", sm.state.String()),
+		zap.Uint64("peer.id", e.peerID),
+	)
+	sm.table.onEvent(sm.txDetails, e)
+	if sm.state == StateSucceeded || sm.state == StateAborted {
+		log.Info("statemachine reach end", zap.String("final_state", sm.state.String()))
+		return true
 	}
+	err := sm.moveState()
+	if err != nil {
+		log.Error("something happend while moving states", zap.Error(err))
+	}
+
+	return true
 }
 
 func (sm *StateMachine) OnEvent(e *Event) {
-	sm.events <- e
+	sm.events.OnEvent(e)
 }
 
 func NewStateMachine(table *StateTable, txDetails *TxDetails, initialState State) *StateMachine {
 	log.Info("starting new statemachine", zap.Uint32("tx.id", txDetails.HashID))
 	sm := &StateMachine{
-		events:    make(chan *Event, 1000),
 		state:     initialState,
 		table:     table,
 		txDetails: txDetails,
 	}
-	go sm.run()
+	sm.events = NewPendingEvents(sm.consumeEvent)
+	go sm.events.Run()
 	return sm
 }
 

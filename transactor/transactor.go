@@ -41,20 +41,20 @@ type Config struct {
 }
 
 type Service struct {
-	broadcaster   *broadcast.Service
-	checkers      CheckersMap
-	conns         *ConnsCache
-	nodeID        uint64
-	pendingEvents chan *Event
-	privkey       signature.PrivateKey
-	store         *badger.DB
-	shardCount    uint64
-	shardID       uint64
-	shardSize     uint64
-	table         *StateTable
-	top           *network.Topology
-	txstates      map[string]*StateMachine
-	txstatesmu    sync.Mutex
+	broadcaster *broadcast.Service
+	checkers    CheckersMap
+	conns       *ConnsCache
+	nodeID      uint64
+	pe          *pendingEvents
+	privkey     signature.PrivateKey
+	store       *badger.DB
+	shardCount  uint64
+	shardID     uint64
+	shardSize   uint64
+	table       *StateTable
+	top         *network.Topology
+	txstates    map[string]*StateMachine
+	txstatesmu  sync.Mutex
 }
 
 func (s *Service) DeliverStart(round uint64) {
@@ -77,7 +77,7 @@ func (s *Service) DeliverTransaction(txdata *broadcast.TransactionData) {
 		peerID: 99,
 	}
 	log.Info("new transaction broadcasted from consensus", zap.Uint32("tx.id", ID(tx.ID)))
-	s.pendingEvents <- e
+	s.pe.OnEvent(e)
 }
 
 func (s *Service) DeliverEnd(round uint64) {
@@ -104,17 +104,15 @@ func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message)
 	}
 }
 
-func (s *Service) consumeEvents() {
-	for e := range s.pendingEvents {
-		sm, ok := s.getSateMachine(e.msg.Tx.ID)
-		if ok {
-			log.Info("sending new event to statemachine", zap.Uint32("tx.id", ID(e.msg.Tx.ID)), zap.Uint64("peer.id", e.peerID), zap.Uint64("peer.shard", s.top.ShardForNode(e.peerID)))
-			sm.OnEvent(e)
-			continue
-		}
-		log.Info("statemachine not ready", zap.Uint32("tx.id", ID(e.msg.Tx.ID)))
-		s.pendingEvents <- e
+func (s *Service) consumeEvents(e *Event) bool {
+	sm, ok := s.getSateMachine(e.msg.Tx.ID)
+	if ok {
+		log.Info("sending new event to statemachine", zap.Uint32("tx.id", ID(e.msg.Tx.ID)), zap.Uint64("peer.id", e.peerID), zap.Uint64("peer.shard", s.top.ShardForNode(e.peerID)))
+		sm.OnEvent(e)
+		return true
 	}
+	log.Info("statemachine not ready", zap.Uint32("tx.id", ID(e.msg.Tx.ID)))
+	return false
 }
 
 func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64) (*service.Message, error) {
@@ -131,7 +129,7 @@ func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64)
 		_ = s.getOrCreateStateMachine(txdetails, StateWaitingForCommit)
 	}
 	e := &Event{msg: req, peerID: peerID}
-	s.pendingEvents <- e
+	s.pe.OnEvent(e)
 	return &service.Message{}, nil
 }
 
@@ -439,22 +437,22 @@ func New(cfg *Config) (*Service, error) {
 	}
 
 	s := &Service{
-		broadcaster:   cfg.Broadcaster,
-		conns:         NewConnsCache(context.TODO(), cfg.NodeID, cfg.Top, cfg.MaxPayload, cfg.Key),
-		checkers:      checkers,
-		nodeID:        cfg.NodeID,
-		privkey:       privkey,
-		top:           cfg.Top,
-		txstates:      map[string]*StateMachine{},
-		store:         store,
-		shardID:       cfg.Top.ShardForNode(cfg.NodeID),
-		shardCount:    cfg.ShardCount,
-		shardSize:     cfg.ShardSize,
-		pendingEvents: make(chan *Event, 1000),
+		broadcaster: cfg.Broadcaster,
+		conns:       NewConnsCache(context.TODO(), cfg.NodeID, cfg.Top, cfg.MaxPayload, cfg.Key),
+		checkers:    checkers,
+		nodeID:      cfg.NodeID,
+		privkey:     privkey,
+		top:         cfg.Top,
+		txstates:    map[string]*StateMachine{},
+		store:       store,
+		shardID:     cfg.Top.ShardForNode(cfg.NodeID),
+		shardCount:  cfg.ShardCount,
+		shardSize:   cfg.ShardSize,
 	}
+	s.pe = NewPendingEvents(s.consumeEvents)
 	s.table = s.makeStateTable()
 	s.broadcaster.Register(s)
-	go s.consumeEvents()
+	go s.pe.Run()
 	// go s.gcStateMachines()
 	return s, nil
 }
