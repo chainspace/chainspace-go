@@ -7,6 +7,7 @@ import (
 	"encoding/base32"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -87,11 +88,12 @@ func (s *Server) handleConnection(conn quic.Session) {
 }
 
 func (s *Server) handleStream(stream quic.Stream) {
-	defer stream.Close()
 	c := network.NewConn(stream)
 	hello, err := c.ReadHello(s.maxPayload, s.readTimeout)
 	if err != nil {
-		log.Error("Unable to read hello message from stream", zap.Error(err))
+		if err != io.EOF {
+			log.Error("Unable to read hello message from stream", zap.Error(err))
+		}
 		return
 	}
 	var (
@@ -104,6 +106,7 @@ func (s *Server) handleStream(stream quic.Stream) {
 		peerID, err = s.verifyPeerID(hello)
 		if err != nil {
 			log.Error("Unable to verify peer ID from the hello message", zap.Error(err))
+			stream.Close()
 			return
 		}
 	case service.CONNECTION_TRANSACTOR:
@@ -111,28 +114,35 @@ func (s *Server) handleStream(stream quic.Stream) {
 		peerID, err = s.verifyPeerID(hello)
 		if err != nil {
 			log.Error("Unable to verify peer ID from the hello message", zap.Error(err))
+			stream.Close()
 			return
 		}
 		log.Info("New transactor hello nesssage")
 	default:
 		log.Error("Unknown connection type", zap.Int32("type", int32(hello.Type)))
+		stream.Close()
 		return
 	}
 	ctx := stream.Context()
 	for {
 		msg, err := c.ReadMessage(s.maxPayload, s.readTimeout)
 		if err != nil {
-			log.Error("Could not decode message from an incoming stream", zap.Error(err))
+			if err != io.EOF {
+				log.Error("Could not decode message from an incoming stream", zap.Error(err))
+			}
 			return
 		}
 		resp, err := svc.Handle(ctx, peerID, msg)
 		if err != nil {
 			log.Error("Received error response", zap.String("service", svc.Name()), zap.Error(err))
+			stream.Close()
 			return
 		}
 		if resp != nil {
 			if err = c.WritePayload(resp, s.maxPayload, s.writeTimeout); err != nil {
-				log.Error("Unable to write response to peer", zap.Uint64("peer.id", peerID), zap.Error(err))
+				if err != io.EOF {
+					log.Error("Unable to write response to peer", zap.Uint64("peer.id", peerID), zap.Error(err))
+				}
 				return
 			}
 		}
