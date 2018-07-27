@@ -106,7 +106,7 @@ func writeTextBytes(b *buffer, s []byte) {
 }
 
 func writeTextCombihash(b *buffer, hash []byte) {
-	for _, v := range hash[2:8] {
+	for _, v := range hash[6:12] {
 		b.buf = append(b.buf, hexUpper[v>>4], hexUpper[v&0x0f])
 	}
 }
