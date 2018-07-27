@@ -1,29 +1,46 @@
 package transactor // import "chainspace.io/prototype/transactor"
 
 import (
+	"context"
 	"sync"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
+	"go.uber.org/zap"
+
 	"chainspace.io/prototype/crypto/signature"
+	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
-
-	"golang.org/x/net/context"
 )
 
+type ConnChan struct {
+	conn *network.Conn
+	stop chan bool
+}
+
 type ConnsCache struct {
-	conns      map[uint64]*network.Conn
+	conns      map[uint64]*ConnChan
 	ctx        context.Context
 	key        signature.KeyPair
 	maxPayload int
 	mu         sync.Mutex
 	selfID     uint64
 	top        *network.Topology
+	msgAcks    map[uint64]MessageAck
+	msgAcksmu  sync.Mutex
+}
+
+type MessageAck struct {
+	nodeID  uint64
+	msg     *service.Message
+	sentAt  time.Time
+	timeout time.Duration
 }
 
 func (c *ConnsCache) Close() error {
 	for _, v := range c.conns {
-		if err := v.Close(); err != nil {
+		if err := v.conn.Close(); err != nil {
 			return err
 		}
 	}
@@ -38,12 +55,12 @@ func (c *ConnsCache) sendHello(nodeID uint64, conn *network.Conn) error {
 	return conn.WritePayload(hellomsg, c.maxPayload, time.Second)
 }
 
-func (c *ConnsCache) dial(nodeID uint64) (*network.Conn, error) {
+func (c *ConnsCache) dial(nodeID uint64) (*ConnChan, error) {
 	c.mu.Lock()
-	conn, ok := c.conns[nodeID]
+	cc, ok := c.conns[nodeID]
 	c.mu.Unlock()
 	if ok {
-		return conn, nil
+		return cc, nil
 	}
 	conn, err := c.top.Dial(c.ctx, nodeID)
 	if err != nil {
@@ -54,10 +71,13 @@ func (c *ConnsCache) dial(nodeID uint64) (*network.Conn, error) {
 		conn.Close()
 		return nil, err
 	}
+	stop := make(chan bool)
+	cc = &ConnChan{conn, stop}
+	go c.readAck(cc.conn, stop)
 	c.mu.Lock()
-	c.conns[nodeID] = conn
+	c.conns[nodeID] = cc
 	c.mu.Unlock()
-	return conn, nil
+	return cc, nil
 }
 
 func (c *ConnsCache) release(nodeID uint64) {
@@ -66,26 +86,94 @@ func (c *ConnsCache) release(nodeID uint64) {
 	delete(c.conns, nodeID)
 }
 
-func (c *ConnsCache) WriteRequest(nodeID uint64, msg *service.Message, timeout time.Duration) (uint64, error) {
-	conn, err := c.dial(nodeID)
+func (c *ConnsCache) WriteRequest(nodeID uint64, msg *service.Message, timeout time.Duration, ack bool) (uint64, error) {
+	cc, err := c.dial(nodeID)
 	if err != nil {
 		return 0, err
 	}
-	id, err := conn.WriteRequest(msg, c.maxPayload, timeout)
+	id, err := cc.conn.WriteRequest(msg, c.maxPayload, timeout)
 	if err != nil {
+		cc.stop <- true
 		c.release(nodeID)
-		return c.WriteRequest(nodeID, msg, timeout)
+		return c.WriteRequest(nodeID, msg, timeout, ack)
+	}
+	if ack {
+		c.addMessageAck(nodeID, msg, timeout, id)
 	}
 	return id, err
 }
 
+func (c *ConnsCache) addMessageAck(nodeID uint64, msg *service.Message, timeout time.Duration, id uint64) {
+	mack := MessageAck{
+		sentAt:  time.Now(),
+		nodeID:  nodeID,
+		msg:     msg,
+		timeout: timeout,
+	}
+	c.msgAcksmu.Lock()
+	c.msgAcks[id] = mack
+	c.msgAcksmu.Unlock()
+}
+
+func (c *ConnsCache) check() {
+	for {
+		redolist := []MessageAck{}
+		time.Sleep(500 * time.Millisecond)
+		c.msgAcksmu.Lock()
+		for k, v := range c.msgAcks {
+			// resend message
+			if time.Since(v.sentAt) >= 1*time.Second {
+				redolist = append(redolist, v)
+				delete(c.msgAcks, k)
+			}
+		}
+		c.msgAcksmu.Unlock()
+		for _, v := range redolist {
+			c.WriteRequest(v.nodeID, v.msg, v.timeout, true)
+		}
+	}
+}
+
+func (c *ConnsCache) readAck(conn *network.Conn, stop chan bool) {
+	for {
+		select {
+		case _ = <-stop:
+			break
+		default:
+			rmsg, err := conn.ReadMessage(int(c.maxPayload), 5*time.Second)
+			if err == nil {
+				msgack := SBACMessageAck{}
+				err := proto.Unmarshal(rmsg.Payload, &msgack)
+				// TODO(): stream closed or sumthing
+				if err != nil {
+					log.Error("connscache: invalid proto", zap.Error(err))
+				}
+				c.msgAcksmu.Lock()
+				_, ok := c.msgAcks[msgack.LastID]
+				if !ok {
+					// unknow lastID
+					log.Info("unknown lastID", zap.Uint64("lastid, ", msgack.LastID))
+				} else {
+					delete(c.msgAcks, msgack.LastID)
+				}
+				c.msgAcksmu.Unlock()
+
+			}
+		}
+	}
+}
+
 func NewConnsCache(ctx context.Context, nodeID uint64, top *network.Topology, maxPayload int, key signature.KeyPair) *ConnsCache {
-	return &ConnsCache{
-		conns:      map[uint64]*network.Conn{},
+	c := &ConnsCache{
+		conns:      map[uint64]*ConnChan{},
 		ctx:        ctx,
 		maxPayload: maxPayload,
 		selfID:     nodeID,
 		top:        top,
 		key:        key,
+		msgAcks:    map[uint64]MessageAck{},
 	}
+
+	go c.check()
+	return c
 }

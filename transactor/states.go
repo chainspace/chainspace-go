@@ -430,7 +430,7 @@ func (s *Service) sendToAllShardInvolved(tx *TxDetails, msg *service.Message) er
 		nodes := s.top.NodesInShard(shard)
 		for _, node := range nodes {
 			// TODO: proper timeout ?
-			_, err := s.conns.WriteRequest(node, msg, time.Hour)
+			_, err := s.conns.WriteRequest(node, msg, time.Hour, true)
 			if err != nil {
 				log.Error("unable to connect to node", zap.Uint32("tx.id", tx.HashID), zap.Uint64("peer.id", node))
 				return fmt.Errorf("unable to connect to node(%v): %v", node, err)
@@ -654,7 +654,7 @@ func (s *Service) sendToShards(shards []uint64, tx *TxDetails, msg *service.Mess
 		nodes := s.top.NodesInShard(shard)
 		for _, node := range nodes {
 			// TODO: proper timeout ?
-			_, err := s.conns.WriteRequest(node, msg, time.Hour)
+			_, err := s.conns.WriteRequest(node, msg, time.Hour, true)
 			if err != nil {
 				log.Error("unable to connect to node", zap.Uint32("tx.id", tx.HashID), zap.Uint64("peer.id", node))
 				return fmt.Errorf("unable to connect to node(%v): %v", node, err)

@@ -115,6 +115,10 @@ message SBACMessage {
   uint64 peerId = 4 [(gogoproto.customname) = "PeerID"];
 }
 
+message SBACMessageAck {
+  uint64 lastId = 1 [(gogoproto.customname) = "LastID"];
+}
+
 message SBACTransaction {
   bytes id = 1 [(gogoproto.customname) = "ID"];
   Transaction tx = 2;

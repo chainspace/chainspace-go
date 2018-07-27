@@ -97,7 +97,7 @@ func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message)
 	case Opcode_CREATE_OBJECT:
 		return s.createObject(ctx, m.Payload)
 	case Opcode_SBAC:
-		return s.handleSBAC(ctx, m.Payload, peerID)
+		return s.handleSBAC(ctx, m.Payload, peerID, m.ID)
 	default:
 		log.Error("transactor: unknown message opcode", zap.Uint32("opcode", m.Opcode), zap.Uint64("peer.id", peerID))
 		return nil, fmt.Errorf("transactor: unknown message opcode: %v", m.Opcode)
@@ -115,7 +115,7 @@ func (s *Service) consumeEvents(e *Event) bool {
 	return false
 }
 
-func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64) (*service.Message, error) {
+func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64, msgID uint64) (*service.Message, error) {
 	req := &SBACMessage{}
 	err := proto.Unmarshal(payload, req)
 	if err != nil {
@@ -130,7 +130,9 @@ func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64)
 	}
 	e := &Event{msg: req, peerID: peerID}
 	s.pe.OnEvent(e)
-	return &service.Message{}, nil
+	res := SBACMessageAck{LastID: msgID}
+	payloadres, err := proto.Marshal(&res)
+	return &service.Message{Payload: payloadres}, nil
 }
 
 func (s *Service) checkTransaction(ctx context.Context, payload []byte) (*service.Message, error) {
