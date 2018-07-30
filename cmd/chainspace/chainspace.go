@@ -14,7 +14,7 @@ const logo = `          [0;1;34;94m█[0m               [0;1;31;91m▀[0m
                                              [0;1;36;96m▀[0m`
 
 func main() {
-	log.InitConsoleLogger(log.DebugLevel)
+	log.ToConsole(log.DebugLevel)
 	cmds := map[string]func([]string, string){
 		"genkeys":    cmdGenKeys,
 		"init":       cmdInit,

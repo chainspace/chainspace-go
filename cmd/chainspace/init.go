@@ -6,9 +6,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"chainspace.io/prototype/log/fld"
+
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/log"
-	"go.uber.org/zap"
 )
 
 func cmdInit(args []string, usage string) {
@@ -20,7 +21,7 @@ func cmdInit(args []string, usage string) {
 	params := opts.Parse(args)
 
 	if err := ensureDir(*configRoot); err != nil {
-		log.Fatal("Could not ensure the existence of the root directory", zap.Error(err))
+		log.Fatal("Could not ensure the existence of the root directory", fld.Err(err))
 	}
 
 	if len(params) < 1 {
@@ -75,13 +76,13 @@ func cmdInit(args []string, usage string) {
 	}
 
 	if ((3 * (*shardSize / 3)) + 1) != *shardSize {
-		log.Fatal("The given --shard-size does not satisfy the 3f+1 requirement", zap.Int("shard.size", *shardSize))
+		log.Fatal("The given --shard-size does not satisfy the 3f+1 requirement", fld.ShardSize(uint64(*shardSize)))
 	}
 
 	totalNodes := *shardCount * *shardSize
 	for i := 1; i <= totalNodes; i++ {
 
-		log.Info("Generating node", zap.String("network.name", networkName), zap.Int("node.id", i))
+		log.Info("Generating node", fld.NetworkName(networkName), fld.NodeID(uint64(i)))
 
 		nodeID := uint64(i)
 		dirName := fmt.Sprintf("node-%d", i)
@@ -91,7 +92,7 @@ func cmdInit(args []string, usage string) {
 		// Create keys.yaml
 		signingKey, cert, err := genKeys(filepath.Join(nodeDir, "keys.yaml"), networkName, nodeID)
 		if err != nil {
-			log.Fatal("Could not generate keys", zap.Error(err))
+			log.Fatal("Could not generate keys", fld.Err(err))
 		}
 
 		var httpcfg config.HTTP
@@ -114,7 +115,7 @@ func cmdInit(args []string, usage string) {
 		}
 
 		if err := writeYAML(filepath.Join(nodeDir, "node.yaml"), cfg); err != nil {
-			log.Fatal("Could not write to node.yaml", zap.Error(err))
+			log.Fatal("Could not write to node.yaml", fld.Err(err))
 		}
 
 		peers[nodeID] = &config.Peer{
@@ -132,12 +133,12 @@ func cmdInit(args []string, usage string) {
 
 	networkID, err := network.Hash()
 	if err != nil {
-		log.Fatal("Could not generate the Network ID", zap.Error(err))
+		log.Fatal("Could not generate the Network ID", fld.Err(err))
 	}
 
 	network.ID = b32.EncodeToString(networkID)
 	if err := writeYAML(filepath.Join(netDir, "network.yaml"), network); err != nil {
-		log.Fatal("Could not write to network.yaml", zap.Error(err))
+		log.Fatal("Could not write to network.yaml", fld.Err(err))
 	}
 
 }

@@ -19,6 +19,7 @@ import (
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/freeport"
 	"chainspace.io/prototype/log"
+	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/restsrv"
 	"chainspace.io/prototype/service"
@@ -26,7 +27,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/tav/golly/process"
-	"go.uber.org/zap"
 )
 
 const (
@@ -80,7 +80,7 @@ func (s *Server) handleConnection(conn quic.Session) {
 	for {
 		stream, err := conn.AcceptStream()
 		if err != nil {
-			log.Error("Unable to open new stream from session", zap.Error(err))
+			log.Error("Unable to open new stream from session", fld.Err(err))
 			return
 		}
 		go s.handleStream(stream)
@@ -92,7 +92,7 @@ func (s *Server) handleStream(stream quic.Stream) {
 	hello, err := c.ReadHello(s.maxPayload, s.readTimeout)
 	if err != nil {
 		if err != io.EOF {
-			log.Error("Unable to read hello message from stream", zap.Error(err))
+			log.Error("Unable to read hello message from stream", fld.Err(err))
 		}
 		return
 	}
@@ -105,7 +105,7 @@ func (s *Server) handleStream(stream quic.Stream) {
 		svc = s.broadcaster
 		peerID, err = s.verifyPeerID(hello)
 		if err != nil {
-			log.Error("Unable to verify peer ID from the hello message", zap.Error(err))
+			log.Error("Unable to verify peer ID from the hello message", fld.Err(err))
 			stream.Close()
 			return
 		}
@@ -113,12 +113,12 @@ func (s *Server) handleStream(stream quic.Stream) {
 		svc = s.transactor
 		peerID, err = s.verifyPeerID(hello)
 		if err != nil {
-			log.Error("Unable to verify peer ID from the hello message", zap.Error(err))
+			log.Error("Unable to verify peer ID from the hello message", fld.Err(err))
 			stream.Close()
 			return
 		}
 	default:
-		log.Error("Unknown connection type", zap.Int32("type", int32(hello.Type)))
+		log.Error("Unknown connection type", fld.ConnectionType(int32(hello.Type)))
 		stream.Close()
 		return
 	}
@@ -127,20 +127,20 @@ func (s *Server) handleStream(stream quic.Stream) {
 		msg, err := c.ReadMessage(s.maxPayload, s.readTimeout)
 		if err != nil {
 			if err != io.EOF {
-				log.Error("Could not decode message from an incoming stream", zap.Error(err))
+				log.Error("Could not decode message from an incoming stream", fld.Err(err))
 			}
 			return
 		}
 		resp, err := svc.Handle(ctx, peerID, msg)
 		if err != nil {
-			log.Error("Received error response", zap.String("service", svc.Name()), zap.Error(err))
+			log.Error("Received error response", fld.Service(svc.Name()), fld.Err(err))
 			stream.Close()
 			return
 		}
 		if resp != nil {
 			if err = c.WritePayload(resp, s.maxPayload, s.writeTimeout); err != nil {
 				if err != io.EOF {
-					log.Error("Unable to write response to peer", zap.Uint64("peer.id", peerID), zap.Error(err))
+					log.Error("Unable to write response to peer", fld.PeerID(peerID), fld.Err(err))
 				}
 				return
 			}
@@ -154,7 +154,7 @@ func (s *Server) listen(l quic.Listener) {
 		conn, err := l.Accept()
 		if err != nil {
 			s.cancel()
-			log.Fatal("Could not accept new connections", zap.Error(err))
+			log.Fatal("Could not accept new connections", fld.Err(err))
 		}
 		go s.handleConnection(conn)
 	}
@@ -269,7 +269,7 @@ func Run(cfg *Config) (*Server, error) {
 		if !os.IsNotExist(err) {
 			return nil, err
 		}
-		log.Info("Creating directory", zap.String("path", dir))
+		log.Info("Creating directory", fld.Path(dir))
 		if err = os.MkdirAll(dir, dirPerms); err != nil {
 			return nil, err
 		}
@@ -279,8 +279,8 @@ func Run(cfg *Config) (*Server, error) {
 		return nil, err
 	}
 
-	if err := log.InitFileLogger(filepath.Join(dir, "server.log"), log.DebugLevel); err != nil {
-		log.Fatal("Could not initialise the file logger", zap.Error(err))
+	if err := log.ToFile(filepath.Join(dir, "server.log"), log.DebugLevel); err != nil {
+		log.Fatal("Could not initialise the file logger", fld.Err(err))
 	}
 
 	// Initialise the topology.
@@ -357,7 +357,7 @@ func Run(cfg *Config) (*Server, error) {
 		return nil, fmt.Errorf("node: got no peers for the node %d", cfg.NodeID)
 	}
 
-	log.SetGlobalFields(zap.Uint64("self.node.id", cfg.NodeID), zap.Uint64("self.shard.id", shardID))
+	log.SetGlobal(fld.SelfNodeID(cfg.NodeID), fld.SelfShardID(shardID))
 
 	idx := 0
 	peers := make([]uint64, len(nodes)-1)
@@ -477,8 +477,8 @@ func Run(cfg *Config) (*Server, error) {
 		}
 	}
 
-	log.Info("Node is running", zap.String("network.name", cfg.NetworkName), zap.Int("port", port))
-	log.Info("Runtime directory", zap.String("path", dir))
+	log.Info("Node is running", fld.NetworkName(cfg.NetworkName), fld.Port(port))
+	log.Info("Runtime directory", fld.Path(dir))
 	return node, nil
 
 }

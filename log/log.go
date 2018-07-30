@@ -1,70 +1,56 @@
-// Please note: the logging levels are copied verbatim from zapcore, which is
-// under the MIT License.
-
-// Package log provides an interface to a global logger.
+// Package log provides support for structured logging.
 package log // import "chainspace.io/prototype/log"
 
 import (
+	"os"
+
 	"github.com/tav/golly/process"
-	"go.uber.org/zap"
 )
 
-var root *zap.Logger
-
-// A Level is a logging priority. Higher levels are more important.
-type Level int8
-
-// Logging levels.
-const (
-	// DebugLevel logs are typically voluminous, and are usually disabled in
-	// production.
-	DebugLevel Level = iota - 1
-	// InfoLevel is the default logging priority.
-	InfoLevel
-	// WarnLevel logs are more important than Info, but don't need individual
-	// human review.
-	WarnLevel
-	// ErrorLevel logs are high-priority. If an application is running smoothly,
-	// it shouldn't generate any error-level logs.
-	ErrorLevel
-	// DPanicLevel logs are particularly important errors. In development the
-	// logger panics after writing the message.
-	DPanicLevel
-	// PanicLevel logs a message, then panics.
-	PanicLevel
-	// FatalLevel logs a message, then calls os.Exit(1).
-	FatalLevel
+var (
+	root = &Logger{}
 )
 
-func Debug(msg string, fields ...zap.Field) {
-	root.Debug(msg, fields...)
+// Debug logs the given text and fields at DebugLevel using the root logger.
+func Debug(text string, fields ...Field) {
+	root.Debug(text, fields...)
 }
 
-func Error(msg string, fields ...zap.Field) {
-	root.Error(msg, fields...)
+// Error logs the given text and fields at ErrorLevel using the root logger.
+func Error(text string, fields ...Field) {
+	root.Error(text, fields...)
 }
 
-func Fatal(msg string, fields ...zap.Field) {
-	root.Fatal(msg, fields...)
+// Fatal logs the given text and fields at FatalLevel using the root logger.
+func Fatal(text string, fields ...Field) {
+	root.Fatal(text, fields...)
 }
 
-func Info(msg string, fields ...zap.Field) {
-	root.Info(msg, fields...)
+// Info logs the given text and fields at InfoLevel using the root logger.
+func Info(text string, fields ...Field) {
+	root.Info(text, fields...)
 }
 
-func SetGlobalFields(fields ...zap.Field) {
-	root = root.With(fields...)
+// SetGlobal sets the given fields on the root logger. SetGlobal is not
+// threadsafe, so should be set before any goroutines that make log calls.
+func SetGlobal(fields ...Field) {
+	root.fields = fields
 }
 
-func With(fields ...zap.Field) *zap.Logger {
+// With returns a new logger based off of the root logger that comes preset with
+// the given fields.
+func With(fields ...Field) *Logger {
 	return root.With(fields...)
 }
 
 func init() {
-	// Flush the logs before exiting the process.
 	process.SetExitHandler(func() {
-		if root != nil {
-			root.Sync()
+		os.Stderr.Sync()
+		fileMu.Lock()
+		if logFile != nil {
+			logFile.Sync()
+			logFile.Close()
 		}
+		fileMu.Unlock()
 	})
 }

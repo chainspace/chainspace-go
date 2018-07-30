@@ -8,9 +8,9 @@ import (
 
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/log"
+	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/node"
 	"github.com/tav/golly/process"
-	"go.uber.org/zap"
 )
 
 func cmdRun(args []string, usage string) {
@@ -23,27 +23,27 @@ func cmdRun(args []string, usage string) {
 	_, err := os.Stat(*configRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Fatal("Could not find the Chainspace root directory", zap.String("path", *configRoot))
+			log.Fatal("Could not find the Chainspace root directory", fld.Path(*configRoot))
 		}
-		log.Fatal("Unable to access the Chainspace root directory", zap.String("path", *configRoot), zap.Error(err))
+		log.Fatal("Unable to access the Chainspace root directory", fld.Path(*configRoot), fld.Err(err))
 	}
 
 	netPath := filepath.Join(*configRoot, networkName)
 	netCfg, err := config.LoadNetwork(filepath.Join(netPath, "network.yaml"))
 	if err != nil {
-		log.Fatal("Could not load network.yaml", zap.Error(err))
+		log.Fatal("Could not load network.yaml", fld.Err(err))
 	}
 
 	nodeDir := "node-" + strconv.FormatUint(nodeID, 10)
 	nodePath := filepath.Join(netPath, nodeDir)
 	nodeCfg, err := config.LoadNode(filepath.Join(nodePath, "node.yaml"))
 	if err != nil {
-		log.Fatal("Could not load node.yaml", zap.Error(err))
+		log.Fatal("Could not load node.yaml", fld.Err(err))
 	}
 
 	keys, err := config.LoadKeys(filepath.Join(nodePath, "keys.yaml"))
 	if err != nil {
-		log.Fatal("Could not load keys.yaml", zap.Error(err))
+		log.Fatal("Could not load keys.yaml", fld.Err(err))
 	}
 
 	root := *configRoot
@@ -64,14 +64,14 @@ func cmdRun(args []string, usage string) {
 	if *cpuProfile != "" {
 		profileFile, err = os.Create(*cpuProfile)
 		if err != nil {
-			log.Fatal("Could not create CPU profile file", zap.String("file.path", *cpuProfile), zap.Error(err))
+			log.Fatal("Could not create CPU profile file", fld.Path(*cpuProfile), fld.Err(err))
 		}
 		pprof.StartCPUProfile(profileFile)
 	}
 
 	s, err := node.Run(cfg)
 	if err != nil {
-		log.Fatal("Could not start node", zap.Uint64("node.id", nodeID), zap.Error(err))
+		log.Fatal("Could not start node", fld.NodeID(nodeID), fld.Err(err))
 	}
 
 	process.SetExitHandler(func() {

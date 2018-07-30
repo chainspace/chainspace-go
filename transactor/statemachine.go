@@ -2,7 +2,7 @@ package transactor // import "chainspace.io/prototype/transactor"
 
 import (
 	"chainspace.io/prototype/log"
-	"go.uber.org/zap"
+	"chainspace.io/prototype/log/fld"
 )
 
 type StateTable struct {
@@ -78,17 +78,17 @@ func (sm *StateMachine) applyTransition(transitionTo State) error {
 		}
 
 		log.Info("applying transition",
-			zap.Uint32("id", sm.txDetails.HashID),
-			zap.String("old_state", sm.state.String()),
-			zap.String("new_state", transitionTo.String()),
+			log.Uint32("id", sm.txDetails.HashID),
+			log.String("old_state", sm.state.String()),
+			log.String("new_state", transitionTo.String()),
 		)
 		nextstate, err := f(sm.txDetails)
 		if err != nil {
 			log.Error("unable to apply transition",
-				zap.Uint32("id", sm.txDetails.HashID),
-				zap.String("old_state", sm.state.String()),
-				zap.String("new_state", transitionTo.String()),
-				zap.Error(err),
+				log.Uint32("id", sm.txDetails.HashID),
+				log.String("old_state", sm.state.String()),
+				log.String("new_state", transitionTo.String()),
+				fld.Err(err),
 			)
 			return err
 		}
@@ -103,16 +103,16 @@ func (sm *StateMachine) moveState() error {
 		action, ok := sm.table.actions[sm.state]
 		if !ok {
 			log.Error("unable to find an action to map with the current state",
-				zap.String("state", sm.state.String()))
+				log.String("state", sm.state.String()))
 			return nil
 		}
 		log.Info("applying action",
-			zap.Uint32("id", sm.txDetails.HashID),
-			zap.String("state", sm.state.String()),
+			log.Uint32("id", sm.txDetails.HashID),
+			log.String("state", sm.state.String()),
 		)
 		newstate, err := action(sm.txDetails)
 		if err != nil {
-			log.Error("unable to execute action", zap.Error(err))
+			log.Error("unable to execute action", fld.Err(err))
 			return err
 		}
 		if newstate == sm.state {
@@ -126,7 +126,7 @@ func (sm *StateMachine) moveState() error {
 		if _, ok := sm.table.transitions[txtransition]; ok {
 			err = sm.applyTransition(newstate)
 			if err != nil {
-				log.Error("unable to apply transition", zap.Error(err))
+				log.Error("unable to apply transition", fld.Err(err))
 			}
 		} else {
 			// else save the new state directly
@@ -137,18 +137,18 @@ func (sm *StateMachine) moveState() error {
 
 func (sm *StateMachine) consumeEvent(e *Event) bool {
 	log.Info("processing new event",
-		zap.Uint32("id", sm.txDetails.HashID),
-		zap.String("state", sm.state.String()),
-		zap.Uint64("peer.id", e.peerID),
+		log.Uint32("id", sm.txDetails.HashID),
+		log.String("state", sm.state.String()),
+		fld.PeerID(e.peerID),
 	)
 	sm.table.onEvent(sm.txDetails, e)
 	if sm.state == StateSucceeded || sm.state == StateAborted {
-		log.Info("statemachine reach end", zap.String("final_state", sm.state.String()))
+		log.Info("statemachine reach end", log.String("final_state", sm.state.String()))
 		return true
 	}
 	err := sm.moveState()
 	if err != nil {
-		log.Error("something happend while moving states", zap.Error(err))
+		log.Error("something happend while moving states", fld.Err(err))
 	}
 
 	return true
@@ -159,7 +159,7 @@ func (sm *StateMachine) OnEvent(e *Event) {
 }
 
 func NewStateMachine(table *StateTable, txDetails *TxDetails, initialState State) *StateMachine {
-	log.Info("starting new statemachine", zap.Uint32("tx.id", txDetails.HashID))
+	log.Info("starting new statemachine", fld.TxID(txDetails.HashID))
 	sm := &StateMachine{
 		state:     initialState,
 		table:     table,

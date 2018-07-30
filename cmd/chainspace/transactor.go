@@ -11,12 +11,11 @@ import (
 
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/log"
+	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/restsrv"
 	"chainspace.io/prototype/transactor/client"
-
 	"github.com/tav/golly/optparse"
-	"go.uber.org/zap"
 )
 
 func getRequiredParams(
@@ -49,20 +48,20 @@ func cmdTransactor(args []string, usage string) {
 	_, err := os.Stat(*configRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Fatal("Could not find the Chainspace root directory", zap.String("dir", *configRoot))
+			log.Fatal("Could not find the Chainspace root directory", fld.Path(*configRoot))
 		}
-		log.Fatal("Unable to access the Chainspace root directory", zap.String("dir", *configRoot), zap.Error(err))
+		log.Fatal("Unable to access the Chainspace root directory", fld.Path(*configRoot), fld.Err(err))
 	}
 
 	netPath := filepath.Join(*configRoot, networkName)
 	netCfg, err := config.LoadNetwork(filepath.Join(netPath, "network.yaml"))
 	if err != nil {
-		log.Fatal("Could not load network.yaml", zap.Error(err))
+		log.Fatal("Could not load network.yaml", fld.Err(err))
 	}
 
 	topology, err := network.New(networkName, netCfg)
 	if err != nil {
-		log.Fatal("Could not initalize network", zap.Error(err))
+		log.Fatal("Could not initalize network", fld.Err(err))
 	}
 	topology.BootstrapMDNS()
 
@@ -81,18 +80,18 @@ func cmdTransactor(args []string, usage string) {
 		}
 		payload, err := ioutil.ReadFile(*payloadPath)
 		if err != nil {
-			log.Fatal("Unable to read payload file", zap.Error(err))
+			log.Fatal("Unable to read payload file", fld.Err(err))
 		}
 
 		tx := restsrv.Transaction{}
 		err = json.Unmarshal(payload, &tx)
 		if err != nil {
-			log.Fatal("Invalid payload format for transaction", zap.Error(err))
+			log.Fatal("Invalid payload format for transaction", fld.Err(err))
 		}
 
 		objects, err := transactorClient.SendTransaction(tx.ToTransactor())
 		if err != nil {
-			log.Fatal("unable to send transaction", zap.Error(err))
+			log.Fatal("unable to send transaction", fld.Err(err))
 		}
 		data := []restsrv.Object{}
 		for _, v := range objects {
@@ -106,7 +105,7 @@ func cmdTransactor(args []string, usage string) {
 		}
 		b, err := json.Marshal(data)
 		if err != nil {
-			log.Fatal("unable to marshal result", zap.Error(err))
+			log.Fatal("unable to marshal result", fld.Err(err))
 		}
 		fmt.Printf("%v\n", string(b))
 	case "query":
@@ -116,15 +115,15 @@ func cmdTransactor(args []string, usage string) {
 		keybytes := readkey(*key)
 		objs, err := transactorClient.Query(keybytes)
 		if err != nil {
-			log.Fatal("unable to query object", zap.Error(err))
+			log.Fatal("unable to query object", fld.Err(err))
 		}
 		obj, err := restsrv.BuildObjectResponse(objs)
 		if err != nil {
-			log.Fatal("error building result", zap.Error(err))
+			log.Fatal("error building result", fld.Err(err))
 		}
 		b, err := json.Marshal(obj)
 		if err != nil {
-			log.Fatal("unable to marshal result", zap.Error(err))
+			log.Fatal("unable to marshal result", fld.Err(err))
 		}
 		fmt.Printf("%v\n", string(b))
 	case "create":
@@ -134,11 +133,11 @@ func cmdTransactor(args []string, usage string) {
 		objbytes := readkey(*object)
 		ids, err := transactorClient.Create(objbytes)
 		if err != nil {
-			log.Fatal("unable to query object", zap.Error(err))
+			log.Fatal("unable to query object", fld.Err(err))
 		}
 		for _, v := range ids {
 			if string(v) != string(ids[0]) {
-				log.Fatal("error building result", zap.Error(errors.New("inconsistent data")))
+				log.Fatal("error building result", fld.Err(errors.New("inconsistent data")))
 				return
 			}
 		}
@@ -149,7 +148,7 @@ func cmdTransactor(args []string, usage string) {
 		}
 		b, err := json.Marshal(res)
 		if err != nil {
-			log.Fatal("unable to marshal result", zap.Error(err))
+			log.Fatal("unable to marshal result", fld.Err(err))
 		}
 		fmt.Printf("%v\n", string(b))
 	case "delete":
@@ -159,26 +158,26 @@ func cmdTransactor(args []string, usage string) {
 		keybytes := readkey(*key)
 		objs, err := transactorClient.Delete(keybytes)
 		if err != nil {
-			log.Fatal("unable to delete object", zap.Error(err))
+			log.Fatal("unable to delete object", fld.Err(err))
 		}
 		obj, err := restsrv.BuildObjectResponse(objs)
 		if err != nil {
-			log.Fatal("error building result", zap.Error(err))
+			log.Fatal("error building result", fld.Err(err))
 		}
 		b, err := json.Marshal(obj)
 		if err != nil {
-			log.Fatal("unable to marshal result", zap.Error(err))
+			log.Fatal("unable to marshal result", fld.Err(err))
 		}
 		fmt.Printf("%v\n", string(b))
 	default:
-		log.Fatal("invalid/unknown command", zap.String("cmd", cmd))
+		log.Fatal("invalid/unknown command", fld.TransactorCmd(cmd))
 	}
 }
 
 func readkey(s string) []byte {
 	bytes, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {
-		log.Fatal("unable to read key", zap.Error(err))
+		log.Fatal("unable to read key", fld.Err(err))
 	}
 	return bytes
 }

@@ -14,11 +14,11 @@ import (
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/log"
+	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
 	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
-	"go.uber.org/zap"
 )
 
 const (
@@ -58,7 +58,7 @@ type Service struct {
 }
 
 func (s *Service) DeliverStart(round uint64) {
-	log.Info("DELIVER START", zap.Uint64("round", round))
+	log.Info("DELIVER START", fld.Round(round))
 }
 
 func (s *Service) DeliverTransaction(txdata *broadcast.TransactionData) {
@@ -66,7 +66,7 @@ func (s *Service) DeliverTransaction(txdata *broadcast.TransactionData) {
 	tx := &SBACTransaction{}
 	err := proto.Unmarshal(txdata.Data, tx)
 	if err != nil {
-		log.Error("unable to unmarshal transaction data", zap.Error(err))
+		log.Error("unable to unmarshal transaction data", fld.Err(err))
 	}
 	e := &Event{
 		msg: &SBACMessage{
@@ -76,12 +76,12 @@ func (s *Service) DeliverTransaction(txdata *broadcast.TransactionData) {
 		},
 		peerID: 99,
 	}
-	log.Info("new transaction broadcasted from consensus", zap.Uint32("tx.id", ID(tx.ID)))
+	log.Info("new transaction broadcasted from consensus", fld.TxID(ID(tx.ID)))
 	s.pe.OnEvent(e)
 }
 
 func (s *Service) DeliverEnd(round uint64) {
-	log.Info("DELIVER END", zap.Uint64("round", round))
+	log.Info("DELIVER END", fld.Round(round))
 }
 
 func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message) (*service.Message, error) {
@@ -99,7 +99,7 @@ func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message)
 	case Opcode_SBAC:
 		return s.handleSBAC(ctx, m.Payload, peerID, m.ID)
 	default:
-		log.Error("transactor: unknown message opcode", zap.Uint32("opcode", m.Opcode), zap.Uint64("peer.id", peerID))
+		log.Error("transactor: unknown message opcode", log.Uint32("opcode", m.Opcode), fld.PeerID(peerID))
 		return nil, fmt.Errorf("transactor: unknown message opcode: %v", m.Opcode)
 	}
 }
@@ -107,11 +107,11 @@ func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message)
 func (s *Service) consumeEvents(e *Event) bool {
 	sm, ok := s.getSateMachine(e.msg.Tx.ID)
 	if ok {
-		log.Info("sending new event to statemachine", zap.Uint32("tx.id", ID(e.msg.Tx.ID)), zap.Uint64("peer.id", e.peerID), zap.Uint64("peer.shard", s.top.ShardForNode(e.peerID)))
+		log.Info("sending new event to statemachine", fld.TxID(ID(e.msg.Tx.ID)), fld.PeerID(e.peerID), fld.PeerShard(s.top.ShardForNode(e.peerID)))
 		sm.OnEvent(e)
 		return true
 	}
-	log.Info("statemachine not ready", zap.Uint32("tx.id", ID(e.msg.Tx.ID)))
+	log.Info("statemachine not ready", fld.TxID(ID(e.msg.Tx.ID)))
 	return false
 }
 
@@ -119,7 +119,7 @@ func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64,
 	req := &SBACMessage{}
 	err := proto.Unmarshal(payload, req)
 	if err != nil {
-		log.Error("transactor: sbac unmarshaling error", zap.Error(err))
+		log.Error("transactor: sbac unmarshaling error", fld.Err(err))
 		return nil, fmt.Errorf("transactor: sbac unmarshaling error: %v", err)
 	}
 	// if we received a COMMIT opcode, the statemachine may not exists
@@ -139,21 +139,21 @@ func (s *Service) checkTransaction(ctx context.Context, payload []byte) (*servic
 	req := &CheckTransactionRequest{}
 	err := proto.Unmarshal(payload, req)
 	if err != nil {
-		log.Error("transactor: checkTransaction unmarshaling error", zap.Error(err))
+		log.Error("transactor: checkTransaction unmarshaling error", fld.Err(err))
 		return nil, fmt.Errorf("transactor: add_transaction unmarshaling error: %v", err)
 	}
 
 	// run the checkers
 	ok, err := runCheckers(ctx, s.checkers, req.Tx)
 	if err != nil {
-		log.Error("transactor: errors happend while checkers", zap.Error(err))
+		log.Error("transactor: errors happend while checkers", fld.Err(err))
 		return nil, fmt.Errorf("transactor: errors happend while running the checkers: %v", err)
 	}
 
 	// create txID and signature then payload
 	ids, err := MakeIDs(req.Tx)
 	if err != nil {
-		log.Error("transactor: unable to generate IDs", zap.Error(err))
+		log.Error("transactor: unable to generate IDs", fld.Err(err))
 		return nil, err
 	}
 	res := &CheckTransactionResponse{
@@ -163,7 +163,7 @@ func (s *Service) checkTransaction(ctx context.Context, payload []byte) (*servic
 
 	b, err := proto.Marshal(res)
 	if err != nil {
-		log.Error("unable to marshal checkTransaction response", zap.Error(err))
+		log.Error("unable to marshal checkTransaction response", fld.Err(err))
 		return nil, fmt.Errorf("transactor: unable to marshal check_transaction response")
 	}
 
@@ -180,7 +180,7 @@ func (s *Service) verifySignatures(txID []byte, evidences map[uint64][]byte) boo
 	for nodeID, sig := range evidences {
 		key := keys[nodeID]
 		if !key.Verify(txID, sig) {
-			log.Info("invalid signature", zap.Uint64("peer.id", nodeID))
+			log.Info("invalid signature", fld.PeerID(nodeID))
 			ok = false
 		}
 	}
@@ -220,7 +220,7 @@ func (s *Service) gcStateMachines() {
 		s.txstatesmu.Lock()
 		for k, v := range s.txstates {
 			if v.State() == StateAborted || v.State() == StateSucceeded {
-				log.Info("removing statemachine", zap.String("finale_state", v.State().String()), zap.Uint32("tx.id", ID([]byte(k))))
+				log.Info("removing statemachine", log.String("finale_state", v.State().String()), fld.TxID(ID([]byte(k))))
 			}
 			delete(s.txstates, k)
 		}
@@ -232,13 +232,13 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 	req := &AddTransactionRequest{}
 	err := proto.Unmarshal(payload, req)
 	if err != nil {
-		log.Error("transactor: unable to unmarshal AddTransaction", zap.Error(err))
+		log.Error("transactor: unable to unmarshal AddTransaction", fld.Err(err))
 		return nil, fmt.Errorf("transactor: add_transaction unmarshaling error: %v", err)
 	}
 
 	ids, err := MakeIDs(req.Tx)
 	if err != nil {
-		log.Error("unable to create IDs", zap.Error(err))
+		log.Error("unable to create IDs", fld.Err(err))
 		return nil, err
 	}
 
@@ -254,7 +254,7 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 	}
 	rawtx, err := proto.Marshal(req.Tx)
 	if err != nil {
-		log.Error("unable to marshal transaction", zap.Error(err))
+		log.Error("unable to marshal transaction", fld.Err(err))
 		return nil, fmt.Errorf("transactor: unable to marshal tx: %v", err)
 	}
 	txdetails := NewTxDetails(ids.TxID, rawtx, req.Tx, req.Evidences)
@@ -380,10 +380,10 @@ func (s *Service) createObject(ctx context.Context, payload []byte) (*service.Me
 	ch := combihash.New()
 	ch.Write([]byte(req.Object))
 	key := ch.Digest()
-	log.Info("transactor: creating new object", zap.String("objet", string(req.Object)), zap.Uint32("object.id", ID(key)))
+	log.Info("transactor: creating new object", log.String("objet", string(req.Object)), log.Uint32("object.id", ID(key)))
 	o, err := CreateObject(s.store, key, req.Object)
 	if err != nil {
-		log.Info("transactor: unable to create object", zap.String("objet", string(req.Object)), zap.Uint32("object.id", ID(key)), zap.Error(err))
+		log.Info("transactor: unable to create object", log.String("objet", string(req.Object)), log.Uint32("object.id", ID(key)), fld.Err(err))
 		return nil, err
 	}
 
@@ -392,7 +392,7 @@ func (s *Service) createObject(ctx context.Context, payload []byte) (*service.Me
 	}
 	b, err := proto.Marshal(res)
 	if err != nil {
-		log.Error("unable to marshal NewObject reponse", zap.Error(err))
+		log.Error("unable to marshal NewObject reponse", fld.Err(err))
 		return nil, fmt.Errorf("transactor: unable to marshal new_object response")
 	}
 	return &service.Message{Opcode: uint32(Opcode_CREATE_OBJECT), Payload: b}, nil

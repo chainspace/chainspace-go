@@ -38,7 +38,7 @@ type Logger struct {
 func (l *Logger) log(lvl level, text string, fields []Field) {
 	entry := entry{fields, lvl, l.fields, text, time.Now().UTC()}
 	textLog(entry)
-	// addNetEntry(entry)
+	netLog(entry)
 }
 
 // Debug logs the given text and fields at DebugLevel.

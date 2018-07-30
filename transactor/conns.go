@@ -5,13 +5,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
-	"go.uber.org/zap"
-
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/log"
+	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
+	"github.com/gogo/protobuf/proto"
 )
 
 type ConnChan struct {
@@ -146,13 +145,13 @@ func (c *ConnsCache) readAck(conn *network.Conn, stop chan bool) {
 				err := proto.Unmarshal(rmsg.Payload, &msgack)
 				// TODO(): stream closed or sumthing
 				if err != nil {
-					log.Error("connscache: invalid proto", zap.Error(err))
+					log.Error("connscache: invalid proto", fld.Err(err))
 				}
 				c.msgAcksmu.Lock()
 				_, ok := c.msgAcks[msgack.LastID]
 				if !ok {
 					// unknow lastID
-					log.Info("unknown lastID", zap.Uint64("lastid, ", msgack.LastID))
+					log.Info("unknown lastID", log.Uint64("lastid", msgack.LastID))
 				} else {
 					delete(c.msgAcks, msgack.LastID)
 				}

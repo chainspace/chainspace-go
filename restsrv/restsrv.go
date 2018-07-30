@@ -11,12 +11,11 @@ import (
 
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/log"
+	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/transactor"
 	"chainspace.io/prototype/transactor/client"
-
 	"github.com/rs/cors"
-	"go.uber.org/zap"
 )
 
 type Config struct {
@@ -261,8 +260,8 @@ func New(cfg *Config) *Service {
 	}
 	s.srv = s.makeServ(cfg.Addr, cfg.Port)
 	go func() {
-		log.Info("http server started", zap.Int("port", cfg.Port))
-		log.Fatal("http server exited", zap.Error(s.srv.ListenAndServe()))
+		log.Info("http server started", fld.Port(cfg.Port))
+		log.Fatal("http server exited", fld.Err(s.srv.ListenAndServe()))
 	}()
 	return s
 }

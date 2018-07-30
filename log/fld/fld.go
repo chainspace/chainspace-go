@@ -4,7 +4,7 @@ package fld
 import (
 	"time"
 
-	"chainspace.io/prototype/xlog"
+	"chainspace.io/prototype/log"
 )
 
 // Address log field.
@@ -22,6 +22,11 @@ func ConnectionType(value int32) log.Field {
 	return log.Int32("type", value)
 }
 
+// Err log field.
+func Err(value error) log.Field {
+	return log.Err(value)
+}
+
 // InterpretedRound log field.
 func InterpretedRound(value uint64) log.Field {
 	return log.Uint64("interpreted.round", value)
@@ -30,11 +35,6 @@ func InterpretedRound(value uint64) log.Field {
 // LatestRound log field.
 func LatestRound(value uint64) log.Field {
 	return log.Uint64("latest.round", value)
-}
-
-// Limit log field.
-func Limit(value int) log.Field {
-	return log.Int("limit", value)
 }
 
 // NetworkName log field.
@@ -60,6 +60,11 @@ func ObjectID(value []byte) log.Field {
 // Path log field.
 func Path(value string) log.Field {
 	return log.String("path", value)
+}
+
+// PayloadLimit log field.
+func PayloadLimit(value int) log.Field {
+	return log.Int("payload.limit", value)
 }
 
 // PeerID log field.
@@ -130,4 +135,9 @@ func TimeTaken(value time.Duration) log.Field {
 // TransactorCmd log field.
 func TransactorCmd(value string) log.Field {
 	return log.String("cmd", value)
+}
+
+// TxID log field.
+func TxID(value uint32) log.Field {
+	return log.Uint32("tx.id", value)
 }
