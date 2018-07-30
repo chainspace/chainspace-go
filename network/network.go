@@ -167,7 +167,8 @@ func (t *Topology) Dial(ctx context.Context, nodeID uint64) (*Conn, error) {
 	if addr == "" {
 		return nil, fmt.Errorf("network: could not find address for node %d", nodeID)
 	}
-	conn, err := quic.DialAddrContext(ctx, addr, cfg.tls, nil)
+	qcfg := quic.Config{IdleTimeout: 5 * time.Hour, KeepAlive: true}
+	conn, err := quic.DialAddrContext(ctx, addr, cfg.tls, &qcfg)
 	if err != nil {
 		return nil, fmt.Errorf("network: could not connect to node %d: %s", nodeID, err)
 	}
