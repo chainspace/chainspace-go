@@ -55,6 +55,7 @@ type Config struct {
 // Service implements the broadcast and consensus system.
 type Service struct {
 	blockLimit     int
+	blocks         chan *blockData
 	cb             Callback
 	cond           *sync.Cond // protects interpreted, toDeliver
 	ctx            context.Context
@@ -76,7 +77,6 @@ type Service struct {
 	previous       []byte
 	readTimeout    time.Duration
 	received       *receivedMap
-	refs           chan *blockInfo
 	round          uint64
 	sent           map[uint64]uint64
 	signal         chan struct{}
@@ -282,9 +282,9 @@ func (s *Service) fillMissingBlocks(peerID uint64) {
 func (s *Service) genBlocks() {
 	var (
 		atLimit     bool
-		pendingRefs []*blockInfo
+		pendingRefs []*blockData
 		pendingTxs  []*TransactionData
-		refs        []*blockInfo
+		refs        []*blockData
 		txs         []*TransactionData
 	)
 	block := &Block{
@@ -301,7 +301,7 @@ func (s *Service) genBlocks() {
 	total := 0
 	for {
 		select {
-		case info := <-s.refs:
+		case info := <-s.blocks:
 			if atLimit {
 				pendingRefs = append(pendingRefs, info)
 			} else {
@@ -356,11 +356,8 @@ func (s *Service) genBlocks() {
 			s.previous = hash
 			hasher.Reset()
 			signal := s.signal
-			if err := s.setOwnBlock(round, hash, signed); err != nil {
+			if err := s.setOwnBlock(round, hash, signed, refs); err != nil {
 				log.Fatal("Could not write own block to the DB", fld.Round(round), log.Err(err))
-			}
-			if err := s.store.setCurrentRoundAndHash(round, hash); err != nil {
-				log.Fatal("Could not write current round and hash to the DB", log.Err(err))
 			}
 			s.mu.Lock()
 			s.round = round
@@ -381,7 +378,7 @@ func (s *Service) genBlocks() {
 			total = 0
 			if len(pendingTxs) > 0 {
 				var (
-					npendingRefs []*blockInfo
+					npendingRefs []*blockData
 					npendingTxs  []*TransactionData
 				)
 				for _, info := range pendingRefs {
@@ -649,10 +646,13 @@ func (s *Service) loadState() {
 	log.Debug("STARTUP STATE", fld.Round(round), fld.InterpretedRound(interpreted))
 	nodes := append([]uint64{s.nodeID}, s.peers...)
 	depgraph := &depgraph{
-		ctx:  s.ctx,
-		refs: s.refs,
+		cond:    sync.NewCond(&sync.Mutex{}),
+		ctx:     s.ctx,
+		icache:  map[byzco.BlockID]bool{},
+		pending: map[byzco.BlockID]*awaitBlock{},
+		out:     s.blocks,
+		store:   s.store,
 	}
-	depgraph.cond = sync.NewCond(&depgraph.mu)
 	s.dag = byzco.NewDAG(s.ctx, nodes, interpreted, s.dagCallback)
 	s.depgraph = depgraph
 	s.interpreted = interpreted
@@ -795,13 +795,21 @@ func (s *Service) processBlock(signed *SignedData) (uint64, error) {
 			Round:  ref.Round,
 		})
 	}
-	// TOOD(tav): Check and validate .Previous hash.
 	log.Debug("Received block", fld.NodeID(block.Node), fld.Round(block.Round))
 	id := byzco.BlockID{
 		Hash:   string(hash),
 		NodeID: block.Node,
 		Round:  block.Round,
 	}
+	s.depgraph.add(&blockData{
+		id:    id,
+		links: links,
+		prev:  block.Previous,
+		ref: &SignedData{
+			Data:      enc,
+			Signature: signed.Signature,
+		},
+	})
 	s.received.set(block.Node, block.Round)
 	return block.Round, s.setBlock(id, signed)
 }
@@ -823,7 +831,7 @@ func (s *Service) setBlock(id byzco.BlockID, block *SignedData) error {
 	return nil
 }
 
-func (s *Service) setOwnBlock(round uint64, hash []byte, block *SignedData) error {
+func (s *Service) setOwnBlock(round uint64, hash []byte, block *SignedData, refs []*blockData) error {
 	id := byzco.BlockID{
 		Hash:   string(hash),
 		NodeID: s.nodeID,
@@ -834,7 +842,7 @@ func (s *Service) setOwnBlock(round uint64, hash []byte, block *SignedData) erro
 		hash:  hash,
 	})
 	s.ownblocks.set(round, block)
-	return s.store.setOwnBlock(id, block)
+	return s.store.setOwnBlock(id, block, refs)
 }
 
 func (s *Service) writeReceivedMap() {
@@ -940,6 +948,7 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 	}
 	s := &Service{
 		blockLimit:     cfg.BlockLimit,
+		blocks:         make(chan *blockData, 10000),
 		cond:           sync.NewCond(&sync.Mutex{}),
 		ctx:            ctx,
 		interval:       cfg.RoundInterval,
@@ -954,7 +963,6 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		ownblocks:      ownblocks,
 		peers:          cfg.Peers,
 		readTimeout:    cfg.ReadTimeout,
-		refs:           make(chan *blockInfo, 10000),
 		store:          store,
 		top:            top,
 		txs:            make(chan *TransactionData, 10000),

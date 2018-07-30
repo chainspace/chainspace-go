@@ -10,9 +10,6 @@ import (
 type blockInfo struct {
 	block *SignedData
 	hash  []byte
-	id    byzco.BlockID
-	links []byzco.BlockID
-	ref   *SignedData
 }
 
 type blockInfoContainer struct {

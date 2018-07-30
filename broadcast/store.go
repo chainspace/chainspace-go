@@ -13,8 +13,10 @@ const (
 	blockPrefix byte = iota + 1
 	currentHashPrefix
 	currentRoundPrefix
+	includedPrefix
 	interpretedPrefix
 	lastInterpretedPrefix
+	notIncludedPrefix
 	ownBlockPrefix
 	receivedMapPrefix
 	roundAcknowledgedPrefix
@@ -211,6 +213,10 @@ func (s *store) getMissing(nodeID uint64, since uint64, limit int) ([]uint64, ui
 	return rounds, latest, err
 }
 
+func (s *store) getNotIncluded() ([]*blockData, error) {
+	return nil, nil
+}
+
 func (s *store) getOwnBlock(round uint64) (*SignedData, error) {
 	block := &SignedData{}
 	key := ownBlockKey(round)
@@ -323,27 +329,54 @@ func (s *store) getSentMap() (map[uint64]uint64, error) {
 	return data, err
 }
 
+func (s *store) isIncluded(id byzco.BlockID) (bool, error) {
+	key := includedKey(id)
+	key[0] = includedPrefix
+	var inc bool
+	err := s.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(key)
+		if err != nil {
+			if err == badger.ErrKeyNotFound {
+				return nil
+			}
+			return err
+		}
+		val, err := item.Value()
+		if err != nil {
+			return err
+		}
+		if val[0] == 1 {
+			inc = true
+		}
+		return nil
+	})
+	return inc, err
+}
+
 func (s *store) setBlock(id byzco.BlockID, block *SignedData) error {
 	key := blockKey(id)
 	val, err := proto.Marshal(block)
 	if err != nil {
 		return err
 	}
+	ikey := includedKey(id)
+	nkey := notIncludedKey(id)
 	return s.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(key, val)
-	})
-}
-
-func (s *store) setCurrentRoundAndHash(round uint64, hash []byte) error {
-	hkey := []byte{currentHashPrefix}
-	rkey := []byte{currentRoundPrefix}
-	val := make([]byte, 8)
-	binary.LittleEndian.PutUint64(val, round)
-	return s.db.Update(func(txn *badger.Txn) error {
-		if err := txn.Set(hkey, hash); err != nil {
+		// Since we go no error on getting the included key, the block has been
+		// set already.
+		if _, err := txn.Get(ikey); err == nil {
+			return nil
+		}
+		if err != badger.ErrKeyNotFound {
 			return err
 		}
-		return txn.Set(rkey, val)
+		if err = txn.Set(ikey, []byte{0}); err != nil {
+			return err
+		}
+		if err = txn.Set(nkey, []byte{}); err != nil {
+			return err
+		}
+		return txn.Set(key, val)
 	})
 }
 
@@ -386,18 +419,50 @@ func (s *store) setInterpreted(data *byzco.Interpreted) error {
 	})
 }
 
-func (s *store) setOwnBlock(id byzco.BlockID, block *SignedData) error {
-	bkey := ownBlockKey(id.Round)
-	rkey := blockKey(id)
+func (s *store) setOwnBlock(id byzco.BlockID, block *SignedData, refs []*blockData) error {
+	key := ownBlockKey(id.Round)
 	val, err := proto.Marshal(block)
 	if err != nil {
 		return err
+	}
+	bkey := blockKey(id)
+	hkey := []byte{currentHashPrefix}
+	rkey := []byte{currentRoundPrefix}
+	rval := make([]byte, 8)
+	binary.LittleEndian.PutUint64(rval, id.Round)
+	var (
+		delkeys [][]byte
+		refkeys [][]byte
+	)
+	if len(refs) > 0 {
+		delkeys = make([][]byte, len(refs))
+		refkeys = make([][]byte, len(refs))
+		for i, ref := range refs {
+			delkeys[i] = notIncludedKey(ref.id)
+			refkeys[i] = includedKey(ref.id)
+		}
 	}
 	return s.db.Update(func(txn *badger.Txn) error {
 		if err := txn.Set(bkey, val); err != nil {
 			return err
 		}
-		return txn.Set(rkey, val)
+		if err := txn.Set(hkey, []byte(id.Hash)); err != nil {
+			return err
+		}
+		if err := txn.Set(rkey, rval); err != nil {
+			return err
+		}
+		for _, refkey := range refkeys {
+			if err := txn.Set(refkey, []byte{1}); err != nil {
+				return err
+			}
+		}
+		for _, delkey := range delkeys {
+			if err := txn.Delete(delkey); err != nil {
+				return err
+			}
+		}
+		return txn.Set(key, val)
 	})
 }
 
@@ -456,9 +521,27 @@ func decodeBlockRound(d []byte) (uint64, error) {
 	return lexinum.Decode(d[rstart:rend])
 }
 
+func includedKey(id byzco.BlockID) []byte {
+	key := []byte{includedPrefix}
+	key = append(key, lexinum.Encode(id.NodeID)...)
+	key = append(key, 0x00)
+	key = append(key, lexinum.Encode(id.Round)...)
+	key = append(key, 0x00)
+	return append(key, id.Hash...)
+}
+
 func interpretedKey(round uint64) []byte {
 	key := []byte{interpretedPrefix}
 	return append(key, lexinum.Encode(round)...)
+}
+
+func notIncludedKey(id byzco.BlockID) []byte {
+	key := []byte{includedPrefix}
+	key = append(key, lexinum.Encode(id.NodeID)...)
+	key = append(key, 0x00)
+	key = append(key, lexinum.Encode(id.Round)...)
+	key = append(key, 0x00)
+	return append(key, id.Hash...)
 }
 
 func ownBlockKey(round uint64) []byte {
