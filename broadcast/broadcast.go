@@ -20,10 +20,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 )
 
-var (
-	genesis = []byte("genesis.block")
-)
-
 // Callback defines the interface for the callback set registered with the
 // broadcast service. The DeliverStart method is called as soon as a particular
 // round reaches consensus, followed by individual DeliverTransaction calls for
@@ -74,7 +70,8 @@ type Service struct {
 	nodeID         uint64
 	ownblocks      *ownblocks
 	peers          []uint64
-	previous       []byte
+	prevhash       []byte
+	prevref        *SignedData
 	readTimeout    time.Duration
 	received       *receivedMap
 	round          uint64
@@ -116,14 +113,15 @@ func (s *Service) deliver() {
 	}
 	s.cond.L.Unlock()
 	for {
-		select {
-		case <-s.ctx.Done():
-			return
-		default:
-		}
 		s.cond.L.Lock()
 		for len(s.toDeliver) == 0 {
 			s.cond.Wait()
+			select {
+			case <-s.ctx.Done():
+				s.cond.L.Unlock()
+				return
+			default:
+			}
 		}
 		data := s.toDeliver[0]
 		s.toDeliver = s.toDeliver[1:]
@@ -331,7 +329,7 @@ func (s *Service) genBlocks() {
 			for i, info := range refs {
 				blocks[i] = info.ref
 			}
-			block.Previous = s.previous
+			block.Previous = s.prevref
 			block.References = blocks
 			block.Round = round
 			block.Transactions = txs
@@ -353,11 +351,39 @@ func (s *Service) genBlocks() {
 				Data:      data,
 				Signature: s.key.Sign(refData),
 			}
-			s.previous = hash
+			blockRef := &SignedData{
+				Data:      refData,
+				Signature: signed.Signature,
+			}
 			hasher.Reset()
 			signal := s.signal
-			if err := s.setOwnBlock(round, hash, signed, refs); err != nil {
+			if err := s.setOwnBlock(round, hash, signed, blockRef, refs); err != nil {
 				log.Fatal("Could not write own block to the DB", fld.Round(round), log.Err(err))
+			}
+			self := byzco.BlockID{
+				Hash:   string(hash),
+				NodeID: s.nodeID,
+				Round:  round,
+			}
+			if false {
+				if round != 1 {
+					s.dag.AddEdge(byzco.BlockID{
+						Hash:   string(s.prevhash),
+						NodeID: s.nodeID,
+						Round:  round - 1,
+					}, self)
+				}
+				for _, ref := range refs {
+					for _, link := range ref.links {
+						s.dag.AddEdge(link, ref.id)
+					}
+					s.dag.AddEdge(ref.id, self)
+				}
+			}
+			s.prevhash = hash
+			s.prevref = &SignedData{
+				Data:      refData,
+				Signature: signed.Signature,
 			}
 			s.mu.Lock()
 			s.round = round
@@ -366,7 +392,7 @@ func (s *Service) genBlocks() {
 			close(signal)
 			// TODO(tav): Remove this once it's fully wired together.
 			s.dagCallback(&byzco.Interpreted{
-				Blocks: []byzco.BlockID{{Hash: string(hash), NodeID: s.nodeID, Round: round}},
+				Blocks: []byzco.BlockID{self},
 				Round:  round,
 			})
 			log.Debug("Created block", fld.Round(block.Round))
@@ -405,10 +431,12 @@ func (s *Service) genBlocks() {
 						}
 					}
 				}
+				pendingRefs = npendingRefs
 				pendingTxs = npendingTxs
 			}
 		case <-s.ctx.Done():
 			tick.Stop()
+			s.cond.Signal()
 			if err := s.store.db.Close(); err != nil {
 				log.Error("Could not close the broadcast DB successfully", log.Err(err))
 			}
@@ -608,12 +636,13 @@ func (s *Service) handleGetRounds(peerID uint64, msg *service.Message) (*service
 }
 
 func (s *Service) loadState() {
-	round, hash, err := s.store.getCurrentRoundAndHash()
+	round, prevhash, prevref, err := s.store.getLastRoundData()
 	if err != nil {
 		if err != badger.ErrKeyNotFound {
-			log.Fatal("Could not load latest round and hash from DB", log.Err(err))
+			log.Fatal("Could not load latest round data from DB", log.Err(err))
 		}
-		hash = genesis
+		prevhash = nil
+		prevref = nil
 		round = 0
 	}
 	interpreted, err := s.store.getLastInterpreted()
@@ -651,12 +680,14 @@ func (s *Service) loadState() {
 		icache:  map[byzco.BlockID]bool{},
 		pending: map[byzco.BlockID]*awaitBlock{},
 		out:     s.blocks,
+		self:    s.nodeID,
 		store:   s.store,
 	}
 	s.dag = byzco.NewDAG(s.ctx, nodes, interpreted, s.dagCallback)
 	s.depgraph = depgraph
 	s.interpreted = interpreted
-	s.previous = hash
+	s.prevhash = prevhash
+	s.prevref = prevref
 	s.received = &receivedMap{data: rmap}
 	s.round = round
 	s.sent = sent
@@ -777,6 +808,29 @@ func (s *Service) processBlock(signed *SignedData) (uint64, error) {
 		return 0, fmt.Errorf("broadcast: unable to verify signature for block %d from node %d", block.Round, block.Node)
 	}
 	var links []byzco.BlockID
+	prev := &BlockReference{}
+	if block.Round != 1 {
+		if block.Previous == nil {
+			return 0, fmt.Errorf("broadcast: nil previous block on block %d from node %d", block.Round, block.Node)
+		}
+		if !key.Verify(block.Previous.Data, block.Previous.Signature) {
+			return 0, fmt.Errorf("broadcast: unable to verify signature for previous block on block %d from node %d", block.Round, block.Node)
+		}
+		if err = proto.Unmarshal(block.Previous.Data, prev); err != nil {
+			return 0, err
+		}
+		if prev.Node != block.Node {
+			return 0, fmt.Errorf("broadcast: previous block node does not match on block %d from node %d", block.Round, block.Node)
+		}
+		if prev.Round+1 != block.Round {
+			return 0, fmt.Errorf("broadcast: previous block round is invalid on block %d from node %d", block.Round, block.Node)
+		}
+		links = append(links, byzco.BlockID{
+			Hash:   string(prev.Hash),
+			NodeID: prev.Node,
+			Round:  prev.Round,
+		})
+	}
 	for i, sref := range block.References {
 		ref := &BlockReference{}
 		if err := proto.Unmarshal(sref.Data, ref); err != nil {
@@ -788,6 +842,9 @@ func (s *Service) processBlock(signed *SignedData) (uint64, error) {
 		}
 		if !key.Verify(sref.Data, sref.Signature) {
 			return 0, fmt.Errorf("broadcast: unable to verify signature for block reference %d for block %d from node %d", i, block.Round, block.Node)
+		}
+		if ref.Node == block.Node {
+			return 0, fmt.Errorf("broadcast: block references includes a block from same node in block reference %d for block %d from node %d", i, block.Round, block.Node)
 		}
 		links = append(links, byzco.BlockID{
 			Hash:   string(ref.Hash),
@@ -804,7 +861,7 @@ func (s *Service) processBlock(signed *SignedData) (uint64, error) {
 	s.depgraph.add(&blockData{
 		id:    id,
 		links: links,
-		prev:  block.Previous,
+		prev:  prev.Hash,
 		ref: &SignedData{
 			Data:      enc,
 			Signature: signed.Signature,
@@ -831,7 +888,7 @@ func (s *Service) setBlock(id byzco.BlockID, block *SignedData) error {
 	return nil
 }
 
-func (s *Service) setOwnBlock(round uint64, hash []byte, block *SignedData, refs []*blockData) error {
+func (s *Service) setOwnBlock(round uint64, hash []byte, block *SignedData, blockRef *SignedData, refs []*blockData) error {
 	id := byzco.BlockID{
 		Hash:   string(hash),
 		NodeID: s.nodeID,
@@ -842,7 +899,7 @@ func (s *Service) setOwnBlock(round uint64, hash []byte, block *SignedData, refs
 		hash:  hash,
 	})
 	s.ownblocks.set(round, block)
-	return s.store.setOwnBlock(id, block, refs)
+	return s.store.setOwnBlock(id, block, blockRef, refs)
 }
 
 func (s *Service) writeReceivedMap() {

@@ -11,6 +11,7 @@ import (
 
 const (
 	blockPrefix byte = iota + 1
+	currentBlockRefPrefix
 	currentHashPrefix
 	currentRoundPrefix
 	includedPrefix
@@ -70,38 +71,6 @@ func (s *store) getBlocks(ids []byzco.BlockID) ([]*SignedData, error) {
 		return nil
 	})
 	return blocks, err
-}
-
-func (s *store) getCurrentRoundAndHash() (uint64, []byte, error) {
-	var (
-		round uint64
-		hash  []byte
-	)
-	hkey := []byte{currentHashPrefix}
-	rkey := []byte{currentRoundPrefix}
-	err := s.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(hkey)
-		if err != nil {
-			return err
-		}
-		val, err := item.Value()
-		if err != nil {
-			return err
-		}
-		hash = make([]byte, len(val))
-		copy(hash, val)
-		item, err = txn.Get(rkey)
-		if err != nil {
-			return err
-		}
-		val, err = item.Value()
-		if err != nil {
-			return err
-		}
-		round = binary.LittleEndian.Uint64(val)
-		return nil
-	})
-	return round, hash, err
 }
 
 func (s *store) getDeliverAcknowledged() (uint64, error) {
@@ -175,6 +144,47 @@ func (s *store) getLastInterpreted() (uint64, error) {
 		return nil
 	})
 	return round, err
+}
+
+func (s *store) getLastRoundData() (round uint64, hash []byte, blockRef *SignedData, err error) {
+	bkey := []byte{currentBlockRefPrefix}
+	hkey := []byte{currentHashPrefix}
+	rkey := []byte{currentRoundPrefix}
+	err = s.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(hkey)
+		if err != nil {
+			return err
+		}
+		val, err := item.Value()
+		if err != nil {
+			return err
+		}
+		hash = make([]byte, len(val))
+		copy(hash, val)
+		item, err = txn.Get(rkey)
+		if err != nil {
+			return err
+		}
+		val, err = item.Value()
+		if err != nil {
+			return err
+		}
+		round = binary.LittleEndian.Uint64(val)
+		item, err = txn.Get(bkey)
+		if err != nil {
+			return err
+		}
+		val, err = item.Value()
+		if err != nil {
+			return err
+		}
+		blockRef = &SignedData{}
+		if err = proto.Unmarshal(val, blockRef); err != nil {
+			return err
+		}
+		return nil
+	})
+	return round, hash, blockRef, err
 }
 
 func (s *store) getMissing(nodeID uint64, since uint64, limit int) ([]uint64, uint64, error) {
@@ -362,9 +372,9 @@ func (s *store) setBlock(id byzco.BlockID, block *SignedData) error {
 	ikey := includedKey(id)
 	nkey := notIncludedKey(id)
 	return s.db.Update(func(txn *badger.Txn) error {
-		// Since we go no error on getting the included key, the block has been
-		// set already.
 		if _, err := txn.Get(ikey); err == nil {
+			// Since we got no error on getting the included key, the block has
+			// been set already.
 			return nil
 		}
 		if err != badger.ErrKeyNotFound {
@@ -419,13 +429,18 @@ func (s *store) setInterpreted(data *byzco.Interpreted) error {
 	})
 }
 
-func (s *store) setOwnBlock(id byzco.BlockID, block *SignedData, refs []*blockData) error {
+func (s *store) setOwnBlock(id byzco.BlockID, block *SignedData, blockRef *SignedData, refs []*blockData) error {
 	key := ownBlockKey(id.Round)
 	val, err := proto.Marshal(block)
 	if err != nil {
 		return err
 	}
 	bkey := blockKey(id)
+	brkey := []byte{currentBlockRefPrefix}
+	brval, err := proto.Marshal(blockRef)
+	if err != nil {
+		return err
+	}
 	hkey := []byte{currentHashPrefix}
 	rkey := []byte{currentRoundPrefix}
 	rval := make([]byte, 8)
@@ -444,6 +459,9 @@ func (s *store) setOwnBlock(id byzco.BlockID, block *SignedData, refs []*blockDa
 	}
 	return s.db.Update(func(txn *badger.Txn) error {
 		if err := txn.Set(bkey, val); err != nil {
+			return err
+		}
+		if err := txn.Set(brkey, brval); err != nil {
 			return err
 		}
 		if err := txn.Set(hkey, []byte(id.Hash)); err != nil {

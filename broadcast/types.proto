@@ -16,7 +16,7 @@ message AckBroadcast { uint64 last = 1; }
 
 message Block {
   uint64 node = 1;
-  bytes previous = 2;
+  SignedData previous = 2;
   repeated SignedData references = 3;
   uint64 round = 4;
   repeated TransactionData transactions = 5;

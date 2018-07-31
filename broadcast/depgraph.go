@@ -1,7 +1,6 @@
 package broadcast
 
 import (
-	"bytes"
 	"context"
 	"sync"
 
@@ -26,17 +25,20 @@ type blockData struct {
 
 type depgraph struct {
 	await   map[byzco.BlockID][]byzco.BlockID
-	cond    *sync.Cond
+	cond    *sync.Cond // protects in
 	ctx     context.Context
 	icache  map[byzco.BlockID]bool
 	in      []*blockData
 	pending map[byzco.BlockID]*awaitBlock
 	out     chan *blockData
+	self    uint64
 	store   *store
 }
 
 func (d *depgraph) add(info *blockData) {
+	d.cond.L.Lock()
 	d.in = append(d.in, info)
+	d.cond.L.Unlock()
 	d.cond.Signal()
 }
 
@@ -91,6 +93,17 @@ func (d *depgraph) getBlockData(id byzco.BlockID) *blockData {
 		log.Fatal("Unable to encode block reference", fld.Err(err))
 	}
 	var links []byzco.BlockID
+	prev := &BlockReference{}
+	if block.Round != 1 {
+		if err = proto.Unmarshal(block.Previous.Data, prev); err != nil {
+			log.Fatal("Unable to decode block's previous reference", fld.Err(err))
+		}
+		links = append(links, byzco.BlockID{
+			Hash:   string(prev.Hash),
+			NodeID: prev.Node,
+			Round:  prev.Round,
+		})
+	}
 	for _, sref := range block.References {
 		ref := &BlockReference{}
 		if err := proto.Unmarshal(sref.Data, ref); err != nil {
@@ -107,7 +120,7 @@ func (d *depgraph) getBlockData(id byzco.BlockID) *blockData {
 		Data:      enc,
 		Signature: signed.Signature,
 	}
-	data.prev = block.Previous
+	data.prev = prev.Hash
 	return data
 }
 
@@ -131,7 +144,7 @@ func (d *depgraph) markIncluded(id byzco.BlockID) {
 func (d *depgraph) process() {
 	i := 0
 	for {
-		// Prune the included cache every 100 loop.
+		// Prune the included cache every 100 iterations.
 		i++
 		if i%100 == 0 {
 			if len(d.icache) > 1000 {
@@ -152,6 +165,7 @@ func (d *depgraph) process() {
 			d.cond.Wait()
 			select {
 			case <-d.ctx.Done():
+				d.cond.L.Unlock()
 				return
 			default:
 			}
@@ -173,7 +187,7 @@ func (d *depgraph) processBlock(block *blockData, seen map[byzco.BlockID]bool) b
 	}
 	var await []byzco.BlockID
 	// Validate the previous block except when it's the very first block.
-	if !(block.id.Round == 1 && bytes.Equal(block.prev, genesis)) {
+	if block.id.Round != 1 {
 		prev := byzco.BlockID{
 			Hash:   string(block.prev),
 			NodeID: block.id.NodeID,
