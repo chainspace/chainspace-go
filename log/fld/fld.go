@@ -2,6 +2,7 @@
 package fld
 
 import (
+	"fmt"
 	"time"
 
 	"chainspace.io/prototype/log"
@@ -25,6 +26,11 @@ func ConnectionType(value int32) log.Field {
 // Err log field.
 func Err(value error) log.Field {
 	return log.Err(value)
+}
+
+// FromState log field.
+func FromState(value fmt.Stringer) log.Field {
+	return log.String("status.from", value.String())
 }
 
 // InterpretedRound log field.
@@ -77,6 +83,11 @@ func PeerShard(value uint64) log.Field {
 	return log.Uint64("peer.shard", value)
 }
 
+// Perspective log field.
+func Perspective(value uint64) log.Field {
+	return log.Uint64("perspective", value)
+}
+
 // Port log field.
 func Port(value int) log.Field {
 	return log.Int("port", value)
@@ -127,9 +138,19 @@ func Size(value int) log.Field {
 	return log.Int("size", value)
 }
 
+// Status log field.
+func Status(value fmt.Stringer) log.Field {
+	return log.String("status", value.String())
+}
+
 // TimeTaken log field.
 func TimeTaken(value time.Duration) log.Field {
 	return log.Duration("time.taken", value)
+}
+
+// ToState log field.
+func ToState(value fmt.Stringer) log.Field {
+	return log.String("status.to", value.String())
 }
 
 // TransactorCmd log field.
