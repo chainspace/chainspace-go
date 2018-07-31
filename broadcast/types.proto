@@ -34,6 +34,7 @@ message GetRounds { repeated uint64 rounds = 1; }
 
 message ListBlocks { repeated SignedData blocks = 1; }
 
+// The data of a SignedData may either be an encoded Block or BlockReference.
 message SignedData {
   bytes data = 1;
   bytes signature = 2;
