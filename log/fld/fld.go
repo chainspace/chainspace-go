@@ -18,6 +18,11 @@ func BlockHash(value []byte) log.Field {
 	return log.Combihash("block.hash", value)
 }
 
+// BlockID log field.
+func BlockID(value fmt.Stringer) log.Field {
+	return log.String("block.id", value.String())
+}
+
 // ConnectionType log field.
 func ConnectionType(value int32) log.Field {
 	return log.Int32("type", value)
@@ -28,7 +33,12 @@ func Err(value error) log.Field {
 	return log.Err(value)
 }
 
-// FromState log field.
+// FromBlock log field.
+func FromBlock(value fmt.Stringer) log.Field {
+	return log.String("block.from", value.String())
+}
+
+// FromState log from.
 func FromState(value fmt.Stringer) log.Field {
 	return log.String("status.from", value.String())
 }
@@ -146,6 +156,11 @@ func Status(value fmt.Stringer) log.Field {
 // TimeTaken log field.
 func TimeTaken(value time.Duration) log.Field {
 	return log.Duration("time.taken", value)
+}
+
+// ToBlock log field.
+func ToBlock(value fmt.Stringer) log.Field {
+	return log.String("block.to", value.String())
 }
 
 // ToState log field.
