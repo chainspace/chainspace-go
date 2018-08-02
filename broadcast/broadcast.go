@@ -55,8 +55,8 @@ type Service struct {
 	cb             Callback
 	cond           *sync.Cond // protects interpreted, toDeliver
 	ctx            context.Context
-	dag            *byzco.DAG
 	depgraph       *depgraph
+	graph          *byzco.Graph
 	initialBackoff time.Duration
 	interpreted    uint64
 	interval       time.Duration
@@ -86,7 +86,7 @@ type Service struct {
 
 // NOTE(tav): toDeliver will keep growing indefinitely if a Callback is never
 // registered.
-func (s *Service) dagCallback(data *byzco.Interpreted) {
+func (s *Service) byzcoCallback(data *byzco.Interpreted) {
 	s.store.setInterpreted(data)
 	s.cond.L.Lock()
 	s.interpreted = data.Round
@@ -360,6 +360,7 @@ func (s *Service) genBlocks() {
 			if err := s.setOwnBlock(round, hash, signed, blockRef, refs); err != nil {
 				log.Fatal("Could not write own block to the DB", fld.Round(round), log.Err(err))
 			}
+			var links []byzco.BlockID
 			self := byzco.BlockID{
 				Hash:   string(hash),
 				NodeID: s.nodeID,
@@ -367,18 +368,17 @@ func (s *Service) genBlocks() {
 			}
 			if false {
 				if round != 1 {
-					s.dag.AddEdge(byzco.BlockID{
+					links = append(links, byzco.BlockID{
 						Hash:   string(s.prevhash),
 						NodeID: s.nodeID,
 						Round:  round - 1,
-					}, self)
+					})
 				}
 				for _, ref := range refs {
-					for _, link := range ref.links {
-						s.dag.AddEdge(link, ref.id)
-					}
-					s.dag.AddEdge(ref.id, self)
+					s.graph.Add(ref.id, ref.links)
+					links = append(links, ref.id)
 				}
+				s.graph.Add(self, links)
 			}
 			s.prevhash = hash
 			s.prevref = &SignedData{
@@ -391,7 +391,7 @@ func (s *Service) genBlocks() {
 			s.mu.Unlock()
 			close(signal)
 			// TODO(tav): Remove this once it's fully wired together.
-			s.dagCallback(&byzco.Interpreted{
+			s.byzcoCallback(&byzco.Interpreted{
 				Blocks: []byzco.BlockID{self},
 				Round:  round,
 			})
@@ -683,8 +683,8 @@ func (s *Service) loadState() {
 		self:    s.nodeID,
 		store:   s.store,
 	}
-	s.dag = byzco.NewDAG(s.ctx, nodes, interpreted, s.dagCallback)
 	s.depgraph = depgraph
+	s.graph = byzco.New(s.ctx, nodes, interpreted, s.byzcoCallback)
 	s.interpreted = interpreted
 	s.prevhash = prevhash
 	s.prevref = prevref
@@ -692,7 +692,7 @@ func (s *Service) loadState() {
 	s.round = round
 	s.sent = sent
 	s.signal = make(chan struct{})
-	s.replayDAGChanges()
+	s.replayGraphChanges()
 }
 
 func (s *Service) maintainBroadcast(peerID uint64) {
@@ -871,7 +871,7 @@ func (s *Service) processBlock(signed *SignedData) (uint64, error) {
 	return block.Round, s.setBlock(id, signed)
 }
 
-func (s *Service) replayDAGChanges() {
+func (s *Service) replayGraphChanges() {
 	for round := s.interpreted; round < s.round; round++ {
 		// block := s.getOwnBlock(round)
 	}

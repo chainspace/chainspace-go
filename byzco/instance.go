@@ -92,6 +92,7 @@ func (i *instance) run() {
 			i.cond.Wait()
 			select {
 			case <-i.c.ctx.Done():
+				i.mu.Unlock()
 				return
 			default:
 			}

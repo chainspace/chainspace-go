@@ -11,21 +11,21 @@ func TestInstances(t *testing.T) {
 	actions := map[status]handler{
 		initialState: func(i *instance) (status, error) {
 			i.log.Info("Entering initialState")
-			return fooState, nil
+			return inPrePrepare, nil
 		},
-		fooState: func(i *instance) (status, error) {
-			i.log.Info("Entering fooState")
-			return fooState, nil
+		inPrePrepare: func(i *instance) (status, error) {
+			i.log.Info("Entering inPrePrepare")
+			return committed, nil
 		},
 	}
 	transitions := map[transition]handler{
-		{initialState, fooState}: func(i *instance) (status, error) {
-			i.log.Info("Transitioning from initialState to fooState")
-			return fooState, nil
+		{initialState, inPrePrepare}: func(i *instance) (status, error) {
+			i.log.Info("Transitioning from initialState to inPrePrepare")
+			return inPrePrepare, nil
 		},
-		{fooState, completedState}: func(i *instance) (status, error) {
-			i.log.Info("Transitioning from fooState to completedState")
-			return completedState, nil
+		{inPrePrepare, committed}: func(i *instance) (status, error) {
+			i.log.Info("Transitioning from inPrePrepare to committed")
+			return committed, nil
 		},
 	}
 	log.ToConsole(log.DebugLevel)
@@ -41,7 +41,7 @@ func TestInstances(t *testing.T) {
 	}
 
 	i.handleEvent(&event{})
-	if i.status != completedState {
-		t.Fatalf("Unexpected end state: got %s, expected %s", i.status, completedState)
+	if i.status != committed {
+		t.Fatalf("Unexpected end state: got %s, expected %s", i.status, committed)
 	}
 }

@@ -8,7 +8,7 @@ import (
 
 func TestBasic(t *testing.T) {}
 
-func TestDAG(t *testing.T) {
+func TestGraph(t *testing.T) {
 	var (
 		lastRound uint64
 		mu        sync.Mutex
@@ -22,10 +22,10 @@ func TestDAG(t *testing.T) {
 			}
 		}
 	}
-	edges := map[BlockID][]BlockID{}
-	d := NewDAG(context.Background(), []uint64{1, 2, 3, 4}, 0, cb)
-	for from, to := range edges {
-		d.AddEdge(from, to)
+	blocks := map[BlockID][]BlockID{}
+	g := New(context.Background(), []uint64{1, 2, 3, 4}, 0, cb)
+	for from, to := range blocks {
+		g.Add(from, to)
 	}
 	mu.Lock()
 	defer mu.Unlock()
