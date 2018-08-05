@@ -18,6 +18,7 @@ import (
 	"chainspace.io/prototype/service"
 	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
+	"github.com/tav/golly/process"
 )
 
 // Callback defines the interface for the callback set registered with the
@@ -327,6 +328,9 @@ func (s *Service) genBlocks() {
 			round++
 			blocks := make([]*SignedData, len(refs))
 			for i, info := range refs {
+				if log.AtDebug() {
+					log.Debug("Including block", fld.BlockID(info.id))
+				}
 				blocks[i] = info.ref
 			}
 			block.Previous = s.prevref
@@ -400,15 +404,13 @@ func (s *Service) genBlocks() {
 				s.lru.prune(len(s.peers) * 100)
 				s.ownblocks.prune(100)
 			}
+			refs = nil
 			txs = nil
 			total = 0
-			if len(pendingTxs) > 0 {
-				var (
-					npendingRefs []*blockData
-					npendingTxs  []*TransactionData
-				)
+			if len(pendingRefs) > 0 {
+				var npendingRefs []*blockData
 				for _, info := range pendingRefs {
-					if len(npendingTxs) > 0 {
+					if len(npendingRefs) > 0 {
 						npendingRefs = append(npendingRefs, info)
 					} else {
 						total += info.ref.Size()
@@ -419,6 +421,10 @@ func (s *Service) genBlocks() {
 						}
 					}
 				}
+				pendingRefs = npendingRefs
+			}
+			if len(pendingTxs) > 0 {
+				var npendingTxs []*TransactionData
 				for _, tx := range pendingTxs {
 					if len(npendingTxs) > 0 {
 						npendingTxs = append(npendingTxs, tx)
@@ -431,15 +437,11 @@ func (s *Service) genBlocks() {
 						}
 					}
 				}
-				pendingRefs = npendingRefs
 				pendingTxs = npendingTxs
 			}
 		case <-s.ctx.Done():
 			tick.Stop()
 			s.cond.Signal()
-			if err := s.store.db.Close(); err != nil {
-				log.Error("Could not close the broadcast DB successfully", log.Err(err))
-			}
 			return
 		}
 	}
@@ -560,6 +562,7 @@ func (s *Service) handleBroadcastList(peerID uint64, msg *service.Message) (*ser
 	for _, block := range list.Blocks {
 		round, err := s.processBlock(block)
 		if err != nil {
+			log.Error("Could not process block received in broadcast", fld.PeerID(peerID), fld.Err(err))
 			return nil, err
 		}
 		last = round
@@ -675,10 +678,11 @@ func (s *Service) loadState() {
 	log.Debug("STARTUP STATE", fld.Round(round), fld.InterpretedRound(interpreted))
 	nodes := append([]uint64{s.nodeID}, s.peers...)
 	depgraph := &depgraph{
+		await:   map[byzco.BlockID][]byzco.BlockID{},
 		cond:    sync.NewCond(&sync.Mutex{}),
 		ctx:     s.ctx,
 		icache:  map[byzco.BlockID]bool{},
-		pending: map[byzco.BlockID]*awaitBlock{},
+		pending: map[byzco.BlockID]*blockData{},
 		out:     s.blocks,
 		self:    s.nodeID,
 		store:   s.store,
@@ -693,6 +697,7 @@ func (s *Service) loadState() {
 	s.sent = sent
 	s.signal = make(chan struct{})
 	s.replayGraphChanges()
+	go depgraph.process()
 }
 
 func (s *Service) maintainBroadcast(peerID uint64) {
@@ -858,20 +863,30 @@ func (s *Service) processBlock(signed *SignedData) (uint64, error) {
 		NodeID: block.Node,
 		Round:  block.Round,
 	}
+	if err := s.setBlock(id, signed); err != nil {
+		log.Fatal("Could not set received block", fld.BlockID(id), fld.Err(err))
+	}
 	s.depgraph.add(&blockData{
 		id:    id,
 		links: links,
-		prev:  prev.Hash,
 		ref: &SignedData{
 			Data:      enc,
 			Signature: signed.Signature,
 		},
 	})
 	s.received.set(block.Node, block.Round)
-	return block.Round, s.setBlock(id, signed)
+	return block.Round, nil
 }
 
 func (s *Service) replayGraphChanges() {
+	blocks, err := s.store.getNotIncluded()
+	if err != nil {
+		log.Fatal("Unable to load block data for unincluded blocks", fld.Err(err))
+	}
+	for _, block := range blocks {
+		log.Info("ADDING TO DEPGRAPH", fld.BlockID(block.id))
+		s.depgraph.add(block)
+	}
 	for round := s.interpreted; round < s.round; round++ {
 		// block := s.getOwnBlock(round)
 	}
@@ -1003,6 +1018,14 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		db:    db,
 		nodes: len(cfg.Peers) + 1,
 	}
+	process.SetExitHandler(func() {
+		store.mu.Lock()
+		store.closed = true
+		defer store.mu.Unlock()
+		if err := db.Close(); err != nil {
+			log.Error("Could not close the broadcast DB successfully", log.Err(err))
+		}
+	})
 	s := &Service{
 		blockLimit:     cfg.BlockLimit,
 		blocks:         make(chan *blockData, 10000),

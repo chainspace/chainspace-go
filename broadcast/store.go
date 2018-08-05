@@ -2,21 +2,26 @@ package broadcast
 
 import (
 	"encoding/binary"
+	"errors"
+	"sync"
 
 	"chainspace.io/prototype/byzco"
+	"chainspace.io/prototype/combihash"
 	"chainspace.io/prototype/lexinum"
+	"chainspace.io/prototype/log"
+	"chainspace.io/prototype/log/fld"
 	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
 )
 
 const (
 	blockPrefix byte = iota + 1
-	currentBlockRefPrefix
-	currentHashPrefix
-	currentRoundPrefix
 	includedPrefix
 	interpretedPrefix
+	lastBlockRefPrefix
+	lastHashPrefix
 	lastInterpretedPrefix
+	lastRoundPrefix
 	notIncludedPrefix
 	ownBlockPrefix
 	receivedMapPrefix
@@ -24,12 +29,21 @@ const (
 	sentMapPrefix
 )
 
+var errDBClosed = errors.New("broadcast: DB has been closed")
+
 type store struct {
-	db    *badger.DB
-	nodes int
+	closed bool
+	db     *badger.DB
+	mu     sync.RWMutex
+	nodes  int
 }
 
 func (s *store) getBlock(id byzco.BlockID) (*SignedData, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return nil, errDBClosed
+	}
 	block := &SignedData{}
 	key := blockKey(id)
 	err := s.db.View(func(txn *badger.Txn) error {
@@ -46,7 +60,28 @@ func (s *store) getBlock(id byzco.BlockID) (*SignedData, error) {
 	return block, err
 }
 
+func (s *store) getBlockData(id byzco.BlockID) (*blockData, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return nil, errDBClosed
+	}
+	signed, err := s.getBlock(id)
+	if err != nil {
+		return nil, err
+	}
+	if signed == nil {
+		return nil, nil
+	}
+	return getBlockData(signed), nil
+}
+
 func (s *store) getBlocks(ids []byzco.BlockID) ([]*SignedData, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return nil, errDBClosed
+	}
 	keys := make([][]byte, len(ids))
 	for i, id := range ids {
 		keys[i] = blockKey(id)
@@ -74,6 +109,11 @@ func (s *store) getBlocks(ids []byzco.BlockID) ([]*SignedData, error) {
 }
 
 func (s *store) getDeliverAcknowledged() (uint64, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return 0, errDBClosed
+	}
 	var round uint64
 	key := []byte{roundAcknowledgedPrefix}
 	err := s.db.View(func(txn *badger.Txn) error {
@@ -92,6 +132,11 @@ func (s *store) getDeliverAcknowledged() (uint64, error) {
 }
 
 func (s *store) getInterpreted(round uint64) ([]*SignedData, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return nil, errDBClosed
+	}
 	var blocks []*SignedData
 	key := interpretedKey(round)
 	err := s.db.View(func(txn *badger.Txn) error {
@@ -129,6 +174,11 @@ func (s *store) getInterpreted(round uint64) ([]*SignedData, error) {
 }
 
 func (s *store) getLastInterpreted() (uint64, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return 0, errDBClosed
+	}
 	var round uint64
 	key := []byte{lastInterpretedPrefix}
 	err := s.db.View(func(txn *badger.Txn) error {
@@ -147,9 +197,14 @@ func (s *store) getLastInterpreted() (uint64, error) {
 }
 
 func (s *store) getLastRoundData() (round uint64, hash []byte, blockRef *SignedData, err error) {
-	bkey := []byte{currentBlockRefPrefix}
-	hkey := []byte{currentHashPrefix}
-	rkey := []byte{currentRoundPrefix}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return 0, nil, nil, errDBClosed
+	}
+	bkey := []byte{lastBlockRefPrefix}
+	hkey := []byte{lastHashPrefix}
+	rkey := []byte{lastRoundPrefix}
 	err = s.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(hkey)
 		if err != nil {
@@ -188,6 +243,11 @@ func (s *store) getLastRoundData() (round uint64, hash []byte, blockRef *SignedD
 }
 
 func (s *store) getMissing(nodeID uint64, since uint64, limit int) ([]uint64, uint64, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return nil, 0, errDBClosed
+	}
 	var (
 		rounds []uint64
 	)
@@ -224,10 +284,52 @@ func (s *store) getMissing(nodeID uint64, since uint64, limit int) ([]uint64, ui
 }
 
 func (s *store) getNotIncluded() ([]*blockData, error) {
-	return nil, nil
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return nil, errDBClosed
+	}
+	var blocks []*SignedData
+	start := []byte{notIncludedPrefix}
+	err := s.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchSize = 100
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Seek(start); it.ValidForPrefix(start); it.Next() {
+			key := append([]byte{blockPrefix}, it.Item().Key()[1:]...)
+			item, err := txn.Get(key)
+			if err != nil {
+				return err
+			}
+			val, err := item.Value()
+			if err != nil {
+				return err
+			}
+			block := &SignedData{}
+			if err = proto.Unmarshal(val, block); err != nil {
+				return err
+			}
+			blocks = append(blocks, block)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	data := make([]*blockData, len(blocks))
+	for i, block := range blocks {
+		data[i] = getBlockData(block)
+	}
+	return data, nil
 }
 
 func (s *store) getOwnBlock(round uint64) (*SignedData, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return nil, errDBClosed
+	}
 	block := &SignedData{}
 	key := ownBlockKey(round)
 	err := s.db.View(func(txn *badger.Txn) error {
@@ -249,6 +351,11 @@ func (s *store) getOwnBlock(round uint64) (*SignedData, error) {
 
 // getRoundBlocks returns all seen blocks for a given round.
 func (s *store) getRoundBlocks(round uint64) (map[byzco.BlockID]*Block, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return nil, errDBClosed
+	}
 	data := map[byzco.BlockID]*Block{}
 	prefix := append([]byte{blockPrefix}, lexinum.Encode(round)...)
 	err := s.db.View(func(txn *badger.Txn) error {
@@ -289,6 +396,11 @@ func (s *store) getRoundBlocks(round uint64) (map[byzco.BlockID]*Block, error) {
 }
 
 func (s *store) getReceivedMap() (map[uint64]receivedInfo, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return nil, errDBClosed
+	}
 	data := map[uint64]receivedInfo{}
 	key := []byte{receivedMapPrefix}
 	err := s.db.View(func(txn *badger.Txn) error {
@@ -315,6 +427,11 @@ func (s *store) getReceivedMap() (map[uint64]receivedInfo, error) {
 }
 
 func (s *store) getSentMap() (map[uint64]uint64, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return nil, errDBClosed
+	}
 	data := map[uint64]uint64{}
 	key := []byte{sentMapPrefix}
 	err := s.db.View(func(txn *badger.Txn) error {
@@ -340,6 +457,11 @@ func (s *store) getSentMap() (map[uint64]uint64, error) {
 }
 
 func (s *store) isIncluded(id byzco.BlockID) (bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return false, errDBClosed
+	}
 	key := includedKey(id)
 	key[0] = includedPrefix
 	var inc bool
@@ -364,6 +486,11 @@ func (s *store) isIncluded(id byzco.BlockID) (bool, error) {
 }
 
 func (s *store) setBlock(id byzco.BlockID, block *SignedData) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return errDBClosed
+	}
 	key := blockKey(id)
 	val, err := proto.Marshal(block)
 	if err != nil {
@@ -371,10 +498,12 @@ func (s *store) setBlock(id byzco.BlockID, block *SignedData) error {
 	}
 	ikey := includedKey(id)
 	nkey := notIncludedKey(id)
-	return s.db.Update(func(txn *badger.Txn) error {
-		if _, err := txn.Get(ikey); err == nil {
+	err = s.db.Update(func(txn *badger.Txn) error {
+		_, err := txn.Get(ikey)
+		if err == nil {
 			// Since we got no error on getting the included key, the block has
 			// been set already.
+			log.Info("Block has seemingly already been set", fld.BlockID(id))
 			return nil
 		}
 		if err != badger.ErrKeyNotFound {
@@ -388,9 +517,15 @@ func (s *store) setBlock(id byzco.BlockID, block *SignedData) error {
 		}
 		return txn.Set(key, val)
 	})
+	return err
 }
 
 func (s *store) setDeliverAcknowledged(round uint64) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return errDBClosed
+	}
 	key := []byte{roundAcknowledgedPrefix}
 	val := make([]byte, 8)
 	binary.LittleEndian.PutUint64(val, round)
@@ -401,6 +536,11 @@ func (s *store) setDeliverAcknowledged(round uint64) error {
 }
 
 func (s *store) setInterpreted(data *byzco.Interpreted) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return errDBClosed
+	}
 	size := 8
 	keys := make([][]byte, len(data.Blocks))
 	for i, id := range data.Blocks {
@@ -430,19 +570,24 @@ func (s *store) setInterpreted(data *byzco.Interpreted) error {
 }
 
 func (s *store) setOwnBlock(id byzco.BlockID, block *SignedData, blockRef *SignedData, refs []*blockData) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return errDBClosed
+	}
 	key := ownBlockKey(id.Round)
 	val, err := proto.Marshal(block)
 	if err != nil {
 		return err
 	}
 	bkey := blockKey(id)
-	brkey := []byte{currentBlockRefPrefix}
+	brkey := []byte{lastBlockRefPrefix}
 	brval, err := proto.Marshal(blockRef)
 	if err != nil {
 		return err
 	}
-	hkey := []byte{currentHashPrefix}
-	rkey := []byte{currentRoundPrefix}
+	hkey := []byte{lastHashPrefix}
+	rkey := []byte{lastRoundPrefix}
 	rval := make([]byte, 8)
 	binary.LittleEndian.PutUint64(rval, id.Round)
 	var (
@@ -485,6 +630,11 @@ func (s *store) setOwnBlock(id byzco.BlockID, block *SignedData, blockRef *Signe
 }
 
 func (s *store) setReceivedMap(data map[uint64]receivedInfo) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return errDBClosed
+	}
 	enc := make([]byte, 8+(len(data)*24))
 	binary.LittleEndian.PutUint64(enc[:8], uint64(len(data)))
 	idx := 8
@@ -501,6 +651,11 @@ func (s *store) setReceivedMap(data map[uint64]receivedInfo) error {
 }
 
 func (s *store) setSentMap(data map[uint64]uint64) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return errDBClosed
+	}
 	enc := make([]byte, 8+(len(data)*16))
 	binary.LittleEndian.PutUint64(enc[:8], uint64(len(data)))
 	idx := 8
@@ -539,6 +694,63 @@ func decodeBlockRound(d []byte) (uint64, error) {
 	return lexinum.Decode(d[rstart:rend])
 }
 
+func getBlockData(signed *SignedData) *blockData {
+	block := &Block{}
+	if err := proto.Unmarshal(signed.Data, block); err != nil {
+		log.Fatal("Unable to decode signed block", fld.Err(err))
+	}
+	hasher := combihash.New()
+	if _, err := hasher.Write(signed.Data); err != nil {
+		log.Fatal("Unable to hash signed block data", fld.Err(err))
+	}
+	hash := hasher.Digest()
+	ref := &BlockReference{
+		Hash:  hash,
+		Node:  block.Node,
+		Round: block.Round,
+	}
+	id := byzco.BlockID{
+		Hash:   string(hash),
+		NodeID: block.Node,
+		Round:  block.Round,
+	}
+	enc, err := proto.Marshal(ref)
+	if err != nil {
+		log.Fatal("Unable to encode block reference", fld.Err(err))
+	}
+	var links []byzco.BlockID
+	ref = &BlockReference{}
+	if block.Round != 1 {
+		if err = proto.Unmarshal(block.Previous.Data, ref); err != nil {
+			log.Fatal("Unable to decode block's previous reference", fld.Err(err))
+		}
+		links = append(links, byzco.BlockID{
+			Hash:   string(ref.Hash),
+			NodeID: ref.Node,
+			Round:  ref.Round,
+		})
+	}
+	for _, sref := range block.References {
+		ref = &BlockReference{}
+		if err := proto.Unmarshal(sref.Data, ref); err != nil {
+			log.Fatal("Unable to decode block reference", fld.Err(err))
+		}
+		links = append(links, byzco.BlockID{
+			Hash:   string(ref.Hash),
+			NodeID: ref.Node,
+			Round:  ref.Round,
+		})
+	}
+	return &blockData{
+		id:    id,
+		links: links,
+		ref: &SignedData{
+			Data:      enc,
+			Signature: signed.Signature,
+		},
+	}
+}
+
 func includedKey(id byzco.BlockID) []byte {
 	key := []byte{includedPrefix}
 	key = append(key, lexinum.Encode(id.NodeID)...)
@@ -554,7 +766,7 @@ func interpretedKey(round uint64) []byte {
 }
 
 func notIncludedKey(id byzco.BlockID) []byte {
-	key := []byte{includedPrefix}
+	key := []byte{notIncludedPrefix}
 	key = append(key, lexinum.Encode(id.NodeID)...)
 	key = append(key, 0x00)
 	key = append(key, lexinum.Encode(id.Round)...)
