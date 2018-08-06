@@ -7,9 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strings"
 	"sync"
-	"time"
 
 	"github.com/lucas-clemente/quic-go/internal/handshake"
 	"github.com/lucas-clemente/quic-go/internal/protocol"
@@ -21,6 +19,7 @@ import (
 type client struct {
 	mutex sync.Mutex
 
+	pconn    net.PacketConn
 	conn     connection
 	hostname string
 
@@ -41,6 +40,7 @@ type client struct {
 	version        protocol.VersionNumber
 
 	handshakeChan chan struct{}
+	closeCallback func(protocol.ConnectionID)
 
 	session quicSession
 
@@ -73,6 +73,7 @@ func DialAddrContext(
 	tlsConf *tls.Config,
 	config *Config,
 ) (Session, error) {
+	config = populateClientConfig(config, false)
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
 		return nil, err
@@ -81,15 +82,7 @@ func DialAddrContext(
 	if err != nil {
 		return nil, err
 	}
-	c, err := newClient(udpConn, udpAddr, config, tlsConf, addr)
-	if err != nil {
-		return nil, err
-	}
-	go c.listen()
-	if err := c.dial(ctx); err != nil {
-		return nil, err
-	}
-	return c.session, nil
+	return DialContext(ctx, udpConn, udpAddr, addr, tlsConf, config)
 }
 
 // Dial establishes a new QUIC connection to a server using a net.PacketConn.
@@ -114,37 +107,44 @@ func DialContext(
 	tlsConf *tls.Config,
 	config *Config,
 ) (Session, error) {
-	c, err := newClient(pconn, remoteAddr, config, tlsConf, host)
+	config = populateClientConfig(config, true)
+	multiplexer := getClientMultiplexer()
+	manager, err := multiplexer.AddConn(pconn, config.ConnectionIDLength)
 	if err != nil {
 		return nil, err
 	}
-	getClientMultiplexer().Add(pconn, c.srcConnID, c)
+	c, err := newClient(pconn, remoteAddr, config, tlsConf, host, manager.Remove)
+	if err != nil {
+		return nil, err
+	}
+	if err := multiplexer.AddHandler(pconn, c.srcConnID, c); err != nil {
+		return nil, err
+	}
+	if config.RequestConnectionIDOmission {
+		if err := multiplexer.AddHandler(pconn, protocol.ConnectionID{}, c); err != nil {
+			return nil, err
+		}
+	}
 	if err := c.dial(ctx); err != nil {
 		return nil, err
 	}
 	return c.session, nil
 }
 
-func newClient(pconn net.PacketConn, remoteAddr net.Addr, config *Config, tlsConf *tls.Config, host string) (*client, error) {
-	clientConfig := populateClientConfig(config)
-	version := clientConfig.Versions[0]
-	srcConnID, err := generateConnectionID()
-	if err != nil {
-		return nil, err
-	}
-	destConnID := srcConnID
-	if version.UsesTLS() {
-		destConnID, err = generateConnectionID()
-		if err != nil {
-			return nil, err
-		}
-	}
-
+func newClient(
+	pconn net.PacketConn,
+	remoteAddr net.Addr,
+	config *Config,
+	tlsConf *tls.Config,
+	host string,
+	closeCallback func(protocol.ConnectionID),
+) (*client, error) {
 	var hostname string
 	if tlsConf != nil {
 		hostname = tlsConf.ServerName
 	}
 	if hostname == "" {
+		var err error
 		hostname, _, err = net.SplitHostPort(host)
 		if err != nil {
 			return nil, err
@@ -159,22 +159,27 @@ func newClient(pconn net.PacketConn, remoteAddr net.Addr, config *Config, tlsCon
 			}
 		}
 	}
-	return &client{
+	onClose := func(protocol.ConnectionID) {}
+	if closeCallback != nil {
+		onClose = closeCallback
+	}
+	c := &client{
+		pconn:         pconn,
 		conn:          &conn{pconn: pconn, currentAddr: remoteAddr},
-		srcConnID:     srcConnID,
-		destConnID:    destConnID,
 		hostname:      hostname,
 		tlsConf:       tlsConf,
-		config:        clientConfig,
-		version:       version,
+		config:        config,
+		version:       config.Versions[0],
 		handshakeChan: make(chan struct{}),
+		closeCallback: onClose,
 		logger:        utils.DefaultLogger.WithPrefix("client"),
-	}, nil
+	}
+	return c, c.generateConnectionIDs()
 }
 
 // populateClientConfig populates fields in the quic.Config with their default values, if none are set
 // it may be called with nil
-func populateClientConfig(config *Config) *Config {
+func populateClientConfig(config *Config, onPacketConn bool) *Config {
 	if config == nil {
 		config = &Config{}
 	}
@@ -212,18 +217,44 @@ func populateClientConfig(config *Config) *Config {
 	} else if maxIncomingUniStreams < 0 {
 		maxIncomingUniStreams = 0
 	}
+	connIDLen := config.ConnectionIDLength
+	if connIDLen == 0 && onPacketConn {
+		connIDLen = protocol.DefaultConnectionIDLength
+	}
 
 	return &Config{
 		Versions:                              versions,
 		HandshakeTimeout:                      handshakeTimeout,
 		IdleTimeout:                           idleTimeout,
 		RequestConnectionIDOmission:           config.RequestConnectionIDOmission,
+		ConnectionIDLength:                    connIDLen,
 		MaxReceiveStreamFlowControlWindow:     maxReceiveStreamFlowControlWindow,
 		MaxReceiveConnectionFlowControlWindow: maxReceiveConnectionFlowControlWindow,
 		MaxIncomingStreams:                    maxIncomingStreams,
 		MaxIncomingUniStreams:                 maxIncomingUniStreams,
 		KeepAlive:                             config.KeepAlive,
 	}
+}
+
+func (c *client) generateConnectionIDs() error {
+	connIDLen := protocol.ConnectionIDLenGQUIC
+	if c.version.UsesTLS() {
+		connIDLen = c.config.ConnectionIDLength
+	}
+	srcConnID, err := generateConnectionID(connIDLen)
+	if err != nil {
+		return err
+	}
+	destConnID := srcConnID
+	if c.version.UsesTLS() {
+		destConnID, err = protocol.GenerateDestinationConnectionID()
+		if err != nil {
+			return err
+		}
+	}
+	c.srcConnID = srcConnID
+	c.destConnID = destConnID
+	return nil
 }
 
 func (c *client) dial(ctx context.Context) error {
@@ -256,6 +287,7 @@ func (c *client) dialTLS(ctx context.Context) error {
 		OmitConnectionID:            c.config.RequestConnectionIDOmission,
 		MaxBidiStreams:              uint16(c.config.MaxIncomingStreams),
 		MaxUniStreams:               uint16(c.config.MaxIncomingUniStreams),
+		DisableMigration:            true,
 	}
 	csc := handshake.NewCryptoStreamConn(nil)
 	extHandler := handshake.NewExtensionHandlerClient(params, c.initialVersion, c.config.Versions, c.version, c.logger)
@@ -304,8 +336,8 @@ func (c *client) establishSecureConnection(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		// The session sending a PeerGoingAway error to the server.
-		c.session.Close(nil)
+		// The session will send a PeerGoingAway error to the server.
+		c.session.Close()
 		return ctx.Err()
 	case err := <-errorChan:
 		return err
@@ -313,58 +345,6 @@ func (c *client) establishSecureConnection(ctx context.Context) error {
 		// handshake successfully completed
 		return nil
 	}
-}
-
-// Listen listens on the underlying connection and passes packets on for handling.
-// It returns when the connection is closed.
-func (c *client) listen() {
-	var err error
-
-	for {
-		var n int
-		var addr net.Addr
-		data := *getPacketBuffer()
-		data = data[:protocol.MaxReceivePacketSize]
-		// The packet size should not exceed protocol.MaxReceivePacketSize bytes
-		// If it does, we only read a truncated packet, which will then end up undecryptable
-		n, addr, err = c.conn.Read(data)
-		if err != nil {
-			if !strings.HasSuffix(err.Error(), "use of closed network connection") {
-				c.mutex.Lock()
-				if c.session != nil {
-					c.session.Close(err)
-				}
-				c.mutex.Unlock()
-			}
-			break
-		}
-		c.handleRead(addr, data[:n])
-	}
-}
-
-func (c *client) handleRead(remoteAddr net.Addr, packet []byte) {
-	rcvTime := time.Now()
-
-	r := bytes.NewReader(packet)
-	iHdr, err := wire.ParseInvariantHeader(r)
-	// drop the packet if we can't parse the header
-	if err != nil {
-		c.logger.Errorf("error parsing invariant header: %s", err)
-		return
-	}
-	hdr, err := iHdr.Parse(r, protocol.PerspectiveServer, c.version)
-	if err != nil {
-		c.logger.Errorf("error parsing header: %s", err)
-		return
-	}
-	hdr.Raw = packet[:len(packet)-r.Len()]
-	packetData := packet[len(packet)-r.Len():]
-	c.handlePacket(&receivedPacket{
-		remoteAddr: remoteAddr,
-		header:     hdr,
-		data:       packetData,
-		rcvTime:    rcvTime,
-	})
 }
 
 func (c *client) handlePacket(p *receivedPacket) {
@@ -386,7 +366,7 @@ func (c *client) handlePacketImpl(p *receivedPacket) error {
 
 		// version negotiation packets have no payload
 		if err := c.handleVersionNegotiationPacket(p.header); err != nil {
-			c.session.Close(err)
+			c.session.destroy(err)
 		}
 		return nil
 	}
@@ -488,17 +468,13 @@ func (c *client) handleVersionNegotiationPacket(hdr *wire.Header) error {
 	// switch to negotiated version
 	c.initialVersion = c.version
 	c.version = newVersion
-	var err error
-	c.destConnID, err = generateConnectionID()
-	if err != nil {
+	c.generateConnectionIDs()
+	if err := getClientMultiplexer().AddHandler(c.pconn, c.srcConnID, c); err != nil {
 		return err
 	}
-	// in gQUIC, there's only one connection ID
-	if !c.version.UsesTLS() {
-		c.srcConnID = c.destConnID
-	}
+
 	c.logger.Infof("Switching to QUIC version %s. New connection ID: %s", newVersion, c.destConnID)
-	c.session.Close(errCloseSessionForNewVersion)
+	c.session.destroy(errCloseSessionForNewVersion)
 	return nil
 }
 
@@ -507,7 +483,7 @@ func (c *client) createNewGQUICSession() (err error) {
 	defer c.mutex.Unlock()
 	runner := &runner{
 		onHandshakeCompleteImpl: func(_ Session) { close(c.handshakeChan) },
-		removeConnectionIDImpl:  func(protocol.ConnectionID) {},
+		removeConnectionIDImpl:  c.closeCallback,
 	}
 	c.session, err = newClientSession(
 		c.conn,
@@ -532,7 +508,7 @@ func (c *client) createNewTLSSession(
 	defer c.mutex.Unlock()
 	runner := &runner{
 		onHandshakeCompleteImpl: func(_ Session) { close(c.handshakeChan) },
-		removeConnectionIDImpl:  func(protocol.ConnectionID) {},
+		removeConnectionIDImpl:  c.closeCallback,
 	}
 	c.session, err = newTLSClientSession(
 		c.conn,
@@ -550,13 +526,13 @@ func (c *client) createNewTLSSession(
 	return err
 }
 
-func (c *client) Close(err error) error {
+func (c *client) Close() error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	if c.session == nil {
 		return nil
 	}
-	return c.session.Close(err)
+	return c.session.Close()
 }
 
 func (c *client) GetVersion() protocol.VersionNumber {

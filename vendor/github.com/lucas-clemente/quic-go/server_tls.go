@@ -15,20 +15,6 @@ import (
 	"github.com/lucas-clemente/quic-go/qerr"
 )
 
-type nullAEAD struct {
-	aead crypto.AEAD
-}
-
-var _ quicAEAD = &nullAEAD{}
-
-func (n *nullAEAD) OpenHandshake(dst, src []byte, packetNumber protocol.PacketNumber, associatedData []byte) ([]byte, error) {
-	return n.aead.Open(dst, src, packetNumber, associatedData)
-}
-
-func (n *nullAEAD) Open1RTT(dst, src []byte, packetNumber protocol.PacketNumber, associatedData []byte) ([]byte, error) {
-	return nil, errors.New("no 1-RTT keys")
-}
-
 type tlsSession struct {
 	connID protocol.ConnectionID
 	sess   packetHandler
@@ -84,6 +70,7 @@ func newServerTLS(
 			IdleTimeout:                 config.IdleTimeout,
 			MaxBidiStreams:              uint16(config.MaxIncomingStreams),
 			MaxUniStreams:               uint16(config.MaxIncomingUniStreams),
+			DisableMigration:            true,
 		},
 		newSession: newTLSServerSession,
 		logger:     logger,
@@ -193,11 +180,15 @@ func (s *serverTLS) handleUnpackedInitial(remoteAddr net.Addr, hdr *wire.Header,
 			StreamID: version.CryptoStreamID(),
 			Data:     bc.GetDataForWriting(),
 		}
+		srcConnID, err := protocol.GenerateConnectionID(s.config.ConnectionIDLength)
+		if err != nil {
+			return nil, nil, err
+		}
 		replyHdr := &wire.Header{
 			IsLongHeader:     true,
 			Type:             protocol.PacketTypeRetry,
 			DestConnectionID: hdr.SrcConnectionID,
-			SrcConnectionID:  hdr.DestConnectionID,
+			SrcConnectionID:  srcConnID,
 			PayloadLen:       f.Length(version) + protocol.ByteCount(aead.Overhead()),
 			PacketNumber:     hdr.PacketNumber, // echo the client's packet number
 			PacketNumberLen:  hdr.PacketNumberLen,
@@ -223,7 +214,7 @@ func (s *serverTLS) handleUnpackedInitial(remoteAddr net.Addr, hdr *wire.Header,
 		return nil, nil, fmt.Errorf("Expected mint state to be %s, got %s", mint.StateServerWaitFlight2, tls.State())
 	}
 	params := <-paramsChan
-	connID, err := protocol.GenerateConnectionID()
+	connID, err := protocol.GenerateConnectionID(s.config.ConnectionIDLength)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"time"
 
@@ -19,15 +20,15 @@ import (
 // packetHandler handles packets
 type packetHandler interface {
 	handlePacket(*receivedPacket)
-	Close(error) error
 	GetVersion() protocol.VersionNumber
+	io.Closer
 }
 
 type packetHandlerManager interface {
 	Add(protocol.ConnectionID, packetHandler)
 	Get(protocol.ConnectionID) (packetHandler, bool)
 	Remove(protocol.ConnectionID)
-	Close(error)
+	io.Closer
 }
 
 type quicSession interface {
@@ -36,6 +37,7 @@ type quicSession interface {
 	getCryptoStream() cryptoStreamI
 	GetVersion() protocol.VersionNumber
 	run() error
+	destroy(error)
 	closeRemote(error)
 }
 
@@ -241,6 +243,10 @@ func populateServerConfig(config *Config) *Config {
 	} else if maxIncomingUniStreams < 0 {
 		maxIncomingUniStreams = 0
 	}
+	connIDLen := config.ConnectionIDLength
+	if connIDLen == 0 {
+		connIDLen = protocol.DefaultConnectionIDLength
+	}
 
 	return &Config{
 		Versions:                              versions,
@@ -252,6 +258,7 @@ func populateServerConfig(config *Config) *Config {
 		MaxReceiveConnectionFlowControlWindow: maxReceiveConnectionFlowControlWindow,
 		MaxIncomingStreams:                    maxIncomingStreams,
 		MaxIncomingUniStreams:                 maxIncomingUniStreams,
+		ConnectionIDLength:                    connIDLen,
 	}
 }
 
@@ -289,7 +296,7 @@ func (s *server) Accept() (Session, error) {
 
 // Close the server
 func (s *server) Close() error {
-	s.sessionHandler.Close(nil)
+	s.sessionHandler.Close()
 	err := s.conn.Close()
 	<-s.errorChan // wait for serve() to return
 	return err
@@ -304,7 +311,7 @@ func (s *server) handlePacket(remoteAddr net.Addr, packet []byte) error {
 	rcvTime := time.Now()
 
 	r := bytes.NewReader(packet)
-	iHdr, err := wire.ParseInvariantHeader(r)
+	iHdr, err := wire.ParseInvariantHeader(r, s.config.ConnectionIDLength)
 	if err != nil {
 		return qerr.Error(qerr.InvalidPacketHeader, err.Error())
 	}
