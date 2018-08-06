@@ -7,7 +7,6 @@ import (
 	"encoding/base32"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,7 +79,9 @@ func (s *Server) handleConnection(conn quic.Session) {
 	for {
 		stream, err := conn.AcceptStream()
 		if err != nil {
-			log.Error("Unable to open new stream from session", fld.Err(err))
+			if err := conn.Close(); err != nil {
+				log.Error("Unable to close connection from peer", fld.Err(err))
+			}
 			return
 		}
 		go s.handleStream(stream)
@@ -91,7 +92,7 @@ func (s *Server) handleStream(stream quic.Stream) {
 	c := network.NewConn(stream)
 	hello, err := c.ReadHello(s.maxPayload, s.readTimeout)
 	if err != nil {
-		if err != io.EOF {
+		if network.AbnormalError(err) {
 			log.Error("Unable to read hello message from stream", fld.Err(err))
 		}
 		return
@@ -126,7 +127,7 @@ func (s *Server) handleStream(stream quic.Stream) {
 	for {
 		msg, err := c.ReadMessage(s.maxPayload, s.readTimeout)
 		if err != nil {
-			if err != io.EOF {
+			if network.AbnormalError(err) {
 				log.Error("Could not decode message from an incoming stream", fld.Err(err))
 			}
 			return
@@ -139,7 +140,7 @@ func (s *Server) handleStream(stream quic.Stream) {
 		}
 		if resp != nil {
 			if err = c.WritePayload(resp, s.maxPayload, s.writeTimeout); err != nil {
-				if err != io.EOF {
+				if network.AbnormalError(err) {
 					log.Error("Unable to write response to peer", fld.PeerID(peerID), fld.Err(err))
 				}
 				return

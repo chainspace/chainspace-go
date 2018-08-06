@@ -15,6 +15,7 @@ import (
 	"chainspace.io/prototype/service"
 	"chainspace.io/prototype/transactor"
 	"github.com/gogo/protobuf/proto"
+	quic "github.com/lucas-clemente/quic-go"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -85,7 +86,7 @@ func (c *client) dialUntil(shardID uint64, nodes []uint64) error {
 	ctx := context.TODO()
 	retry := []uint64{}
 	for _, n := range nodes {
-		conn, err := c.top.Dial(ctx, n)
+		conn, err := c.top.Dial(ctx, n, &quic.Config{IdleTimeout: 5 * time.Hour, KeepAlive: true})
 		if err != nil {
 			log.Error("transactor client: unable to connect", fld.PeerShard(shardID), fld.PeerID(n), fld.Err(err))
 			retry = append(retry, n)

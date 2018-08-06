@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -11,6 +12,10 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/lucas-clemente/quic-go"
 )
+
+type timeoutError interface {
+	Timeout() bool
+}
 
 // Conn represents a connection to a Chainspace node.
 type Conn struct {
@@ -144,6 +149,18 @@ func (c *Conn) WriteRequest(msg *service.Message, limit int, timeout time.Durati
 	c.mu.Unlock()
 	msg.ID = id
 	return id, c.WritePayload(msg, limit, timeout)
+}
+
+// AbnormalError returns whether the given error was abnormal, i.e. not EOF or a
+// timeout error.
+func AbnormalError(err error) bool {
+	if err == io.EOF {
+		return false
+	}
+	if nerr, ok := err.(timeoutError); ok && nerr.Timeout() {
+		return false
+	}
+	return true
 }
 
 // NewConn instantiates a connection value with the given QUIC stream.

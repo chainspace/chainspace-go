@@ -18,6 +18,7 @@ import (
 	"chainspace.io/prototype/service"
 	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
+	"github.com/lucas-clemente/quic-go"
 	"github.com/tav/golly/process"
 )
 
@@ -73,6 +74,7 @@ type Service struct {
 	peers          []uint64
 	prevhash       []byte
 	prevref        *SignedData
+	qcfg           *quic.Config
 	readTimeout    time.Duration
 	received       *receivedMap
 	round          uint64
@@ -158,7 +160,7 @@ func (s *Service) fillMissingBlocks(peerID uint64) {
 	getRounds := &GetRounds{}
 	getRoundsReq := &service.Message{Opcode: uint32(OP_GET_ROUNDS)}
 	list := &ListBlocks{}
-	log := log.With(fld.PeerID(peerID))
+	l := log.With(fld.PeerID(peerID))
 	retry := false
 	for {
 		if retry {
@@ -174,22 +176,23 @@ func (s *Service) fillMissingBlocks(peerID uint64) {
 			return
 		default:
 		}
-		conn, err := s.top.Dial(s.ctx, peerID)
+		conn, err := s.top.Dial(s.ctx, peerID, s.qcfg)
 		if err == nil {
 			backoff = s.initialBackoff
 		} else {
-			log.Error("Couldn't dial node", fld.Err(err))
 			retry = true
 			continue
 		}
 		hello, err := service.SignHello(s.nodeID, peerID, s.key, service.CONNECTION_BROADCAST)
 		if err != nil {
-			log.Error("Couldn't create Hello payload for filling missing blocks", fld.Err(err))
+			l.Error("Couldn't create Hello payload for filling missing blocks", fld.Err(err))
 			retry = true
 			continue
 		}
 		if err = conn.WritePayload(hello, s.maxPayload, s.writeTimeout); err != nil {
-			log.Error("Couldn't send Hello", fld.Err(err))
+			if network.AbnormalError(err) {
+				l.Error("Couldn't send Hello", fld.Err(err))
+			}
 			retry = true
 			continue
 		}
@@ -206,9 +209,11 @@ func (s *Service) fillMissingBlocks(peerID uint64) {
 					continue
 				}
 				rounds, latest, err = s.store.getMissing(peerID, info.sequence, s.maxBlocks)
-				log.Debug("GOT MISSING", fld.Rounds(rounds), fld.LatestRound(latest))
+				if log.AtDebug() {
+					l.Debug("GOT MISSING", fld.Rounds(rounds), fld.LatestRound(latest))
+				}
 				if err != nil {
-					log.Fatal("Could not load missing rounds from DB", fld.Err(err))
+					l.Fatal("Could not load missing rounds from DB", fld.Err(err))
 				}
 				if len(rounds) == 0 {
 					if latest != info.sequence && latest != 0 {
@@ -220,27 +225,31 @@ func (s *Service) fillMissingBlocks(peerID uint64) {
 			getRounds.Rounds = rounds
 			getRoundsReq.Payload, err = proto.Marshal(getRounds)
 			if err != nil {
-				log.Fatal("Could not encode request for get rounds", fld.Err(err))
+				l.Fatal("Could not encode request for get rounds", fld.Err(err))
 			}
 			if err = conn.WritePayload(getRoundsReq, s.maxPayload, s.writeTimeout); err != nil {
-				log.Error("Could not write get rounds request", fld.Err(err))
+				if network.AbnormalError(err) {
+					l.Error("Could not write get rounds request", fld.Err(err))
+				}
 				retry = true
 				break
 			}
 			resp, err := conn.ReadMessage(s.maxPayload, s.readTimeout)
 			if err != nil {
-				log.Error("Could not read response to get rounds request", fld.Err(err))
+				if network.AbnormalError(err) {
+					l.Error("Could not read response to get rounds request", fld.Err(err))
+				}
 				retry = true
 				break
 			}
 			list.Blocks = nil
 			if err := proto.Unmarshal(resp.Payload, list); err != nil {
-				log.Error("Could not decode response to get rounds request", fld.Err(err))
+				l.Error("Could not decode response to get rounds request", fld.Err(err))
 				retry = true
 				break
 			}
 			if len(list.Blocks) == 0 {
-				log.Error("Received empty map of hashes")
+				l.Error("Received empty map of hashes")
 				retry = true
 				break
 			}
@@ -248,7 +257,7 @@ func (s *Service) fillMissingBlocks(peerID uint64) {
 			for _, block := range list.Blocks {
 				round, err := s.processBlock(block)
 				if err != nil {
-					log.Error("Could not process block received in response to get rounds request", fld.Err(err))
+					l.Error("Could not process block received in response to get rounds request", fld.Err(err))
 					continue
 				}
 				seen[round] = struct{}{}
@@ -399,7 +408,9 @@ func (s *Service) genBlocks() {
 				Blocks: []byzco.BlockID{self},
 				Round:  round,
 			})
-			log.Debug("Created block", fld.Round(block.Round))
+			if log.AtDebug() {
+				log.Debug("Created block", fld.Round(block.Round))
+			}
 			if round%100 == 0 {
 				s.lru.prune(len(s.peers) * 100)
 				s.ownblocks.prune(100)
@@ -675,7 +686,9 @@ func (s *Service) loadState() {
 			sent[peer] = 0
 		}
 	}
-	log.Debug("STARTUP STATE", fld.Round(round), fld.InterpretedRound(interpreted))
+	if log.AtDebug() {
+		log.Debug("STARTUP STATE", fld.Round(round), fld.InterpretedRound(interpreted))
+	}
 	nodes := append([]uint64{s.nodeID}, s.peers...)
 	depgraph := &depgraph{
 		await:   map[byzco.BlockID][]byzco.BlockID{},
@@ -720,11 +733,10 @@ func (s *Service) maintainBroadcast(peerID uint64) {
 			return
 		default:
 		}
-		conn, err := s.top.Dial(s.ctx, peerID)
+		conn, err := s.top.Dial(s.ctx, peerID, s.qcfg)
 		if err == nil {
 			backoff = s.initialBackoff
 		} else {
-			log.Error("Couldn't dial node", fld.PeerID(peerID), log.Err(err))
 			retry = true
 			continue
 		}
@@ -735,7 +747,9 @@ func (s *Service) maintainBroadcast(peerID uint64) {
 			continue
 		}
 		if err = conn.WritePayload(hello, s.maxPayload, s.writeTimeout); err != nil {
-			log.Error("Couldn't send Hello", fld.PeerID(peerID), log.Err(err))
+			if network.AbnormalError(err) {
+				log.Error("Couldn't send Hello", fld.PeerID(peerID), log.Err(err))
+			}
 			retry = true
 			continue
 		}
@@ -759,13 +773,17 @@ func (s *Service) maintainBroadcast(peerID uint64) {
 				log.Fatal("Could not encode list blocks for broadcast", log.Err(err))
 			}
 			if err = conn.WritePayload(msg, s.maxPayload, s.writeTimeout); err != nil {
-				log.Error("Could not write list blocks", fld.PeerID(peerID), log.Err(err))
+				if network.AbnormalError(err) {
+					log.Error("Could not write list blocks", fld.PeerID(peerID), log.Err(err))
+				}
 				retry = true
 				break
 			}
 			resp, err := conn.ReadMessage(s.maxPayload, s.readTimeout)
 			if err != nil {
-				log.Error("Could not read broadcast ack response", fld.PeerID(peerID), log.Err(err))
+				if network.AbnormalError(err) {
+					log.Error("Could not read broadcast ack response", fld.PeerID(peerID), log.Err(err))
+				}
 				retry = true
 				break
 			}
@@ -857,7 +875,9 @@ func (s *Service) processBlock(signed *SignedData) (uint64, error) {
 			Round:  ref.Round,
 		})
 	}
-	log.Debug("Received block", fld.NodeID(block.Node), fld.Round(block.Round))
+	if log.AtDebug() {
+		log.Debug("Received block", fld.NodeID(block.Node), fld.Round(block.Round))
+	}
 	id := byzco.BlockID{
 		Hash:   string(hash),
 		NodeID: block.Node,
@@ -1023,9 +1043,14 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		store.closed = true
 		defer store.mu.Unlock()
 		if err := db.Close(); err != nil {
-			log.Error("Could not close the broadcast DB successfully", log.Err(err))
+			log.Error("Could not close the broadcast DB successfully", fld.Err(err))
 		}
 	})
+	qcfg := &quic.Config{
+		HandshakeTimeout: cfg.WriteTimeout,
+		KeepAlive:        true,
+		IdleTimeout:      cfg.WriteTimeout,
+	}
 	s := &Service{
 		blockLimit:     cfg.BlockLimit,
 		blocks:         make(chan *blockData, 10000),
@@ -1042,6 +1067,7 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		nodeID:         cfg.NodeID,
 		ownblocks:      ownblocks,
 		peers:          cfg.Peers,
+		qcfg:           qcfg,
 		readTimeout:    cfg.ReadTimeout,
 		store:          store,
 		top:            top,

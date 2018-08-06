@@ -116,7 +116,13 @@ func (t *Topology) bootstrapMDNS(ctx context.Context) error {
 					oldAddr := t.contacts.get(nodeID)
 					if oldAddr != addr {
 						log.Debug("Found node address", fld.NodeID(nodeID), fld.Address(addr))
+						t.mu.Lock()
 						t.contacts.set(nodeID, addr)
+						if session, exists := t.cxns[nodeID]; exists {
+							delete(t.cxns, nodeID)
+							session.Close()
+						}
+						t.mu.Unlock()
 					}
 				}
 			case <-ctx.Done():
@@ -149,7 +155,7 @@ func (t *Topology) BootstrapURL(endpoint string) error {
 
 // Dial opens a connection to a node in the given network. It will block if
 // unable to find a routing address for the given node.
-func (t *Topology) Dial(ctx context.Context, nodeID uint64) (*Conn, error) {
+func (t *Topology) Dial(ctx context.Context, nodeID uint64, qcfg *quic.Config) (*Conn, error) {
 	t.mu.RLock()
 	cfg, cfgExists := t.nodes[nodeID]
 	conn, connExists := t.cxns[nodeID]
@@ -167,8 +173,7 @@ func (t *Topology) Dial(ctx context.Context, nodeID uint64) (*Conn, error) {
 	if addr == "" {
 		return nil, fmt.Errorf("network: could not find address for node %d", nodeID)
 	}
-	qcfg := quic.Config{IdleTimeout: 5 * time.Hour, KeepAlive: true}
-	conn, err := quic.DialAddrContext(ctx, addr, cfg.tls, &qcfg)
+	conn, err := quic.DialAddrContext(ctx, addr, cfg.tls, qcfg)
 	if err != nil {
 		return nil, fmt.Errorf("network: could not connect to node %d: %s", nodeID, err)
 	}

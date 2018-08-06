@@ -117,7 +117,7 @@ func (d *depgraph) process() {
 			processed = processed[1:]
 			var nawait []byzco.BlockID
 			for _, revdep := range d.await[next] {
-				if seen[next] {
+				if seen[revdep] {
 					nawait = append(nawait, revdep)
 				} else if d.processBlock(d.pending[revdep]) {
 					processed = append(processed, revdep)
@@ -153,6 +153,7 @@ func (d *depgraph) processBlock(block *blockData) bool {
 			continue
 		}
 		if !d.isIncluded(ref) {
+			log.Debug("Missing dependency", fld.BlockID(block.id), log.String("dep", ref.String()))
 			deps = append(deps, ref)
 		}
 	}

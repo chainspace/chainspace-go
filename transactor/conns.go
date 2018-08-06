@@ -11,6 +11,7 @@ import (
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
 	"github.com/gogo/protobuf/proto"
+	"github.com/lucas-clemente/quic-go"
 )
 
 type ConnChan struct {
@@ -61,7 +62,7 @@ func (c *ConnsCache) dial(nodeID uint64) (*ConnChan, error) {
 	if ok {
 		return cc, nil
 	}
-	conn, err := c.top.Dial(c.ctx, nodeID)
+	conn, err := c.top.Dial(c.ctx, nodeID, &quic.Config{IdleTimeout: 5 * time.Hour, KeepAlive: true})
 	if err != nil {
 		return nil, err
 	}

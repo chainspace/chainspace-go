@@ -63,7 +63,7 @@ func cmdInit(args []string, usage string) {
 	}
 
 	connections := &config.Connections{
-		ReadTimeout:  30 * time.Second,
+		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
 
