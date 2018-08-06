@@ -503,7 +503,9 @@ func (s *store) setBlock(id byzco.BlockID, block *SignedData) error {
 		if err == nil {
 			// Since we got no error on getting the included key, the block has
 			// been set already.
-			log.Info("Block has seemingly already been set", fld.BlockID(id))
+			if log.AtDebug() {
+				log.Debug("Block has seemingly already been set", fld.BlockID(id))
+			}
 			return nil
 		}
 		if err != badger.ErrKeyNotFound {

@@ -21,10 +21,18 @@ type depgraph struct {
 	ctx     context.Context
 	icache  map[byzco.BlockID]bool
 	in      []*blockData
+	mu      sync.RWMutex // protects icache, tcache
 	pending map[byzco.BlockID]*blockData
 	out     chan *blockData
 	self    uint64
 	store   *store
+	tcache  map[byzco.BlockID]bool
+}
+
+func (d *depgraph) actuallyIncluded(id byzco.BlockID) {
+	d.mu.Lock()
+	delete(d.tcache, id)
+	d.mu.Unlock()
 }
 
 func (d *depgraph) add(info *blockData) {
@@ -56,7 +64,12 @@ func (d *depgraph) addPending(block *blockData, deps []byzco.BlockID) {
 }
 
 func (d *depgraph) isIncluded(id byzco.BlockID) bool {
-	inc, exists := d.icache[id]
+	d.mu.RLock()
+	inc, exists := d.tcache[id]
+	if !exists {
+		inc, exists = d.icache[id]
+	}
+	d.mu.RUnlock()
 	if exists {
 		return inc
 	}
@@ -64,12 +77,17 @@ func (d *depgraph) isIncluded(id byzco.BlockID) bool {
 	if err != nil {
 		log.Fatal("Couldn't check if block has been included", fld.Err(err))
 	}
+	d.mu.Lock()
 	d.icache[id] = inc
+	d.mu.Unlock()
 	return inc
 }
 
 func (d *depgraph) markIncluded(id byzco.BlockID) {
+	d.mu.Lock()
 	d.icache[id] = true
+	d.tcache[id] = true
+	d.mu.Unlock()
 }
 
 func (d *depgraph) process() {
@@ -78,6 +96,7 @@ func (d *depgraph) process() {
 		// Prune the included cache every 100 iterations.
 		i++
 		if i%100 == 0 {
+			d.mu.Lock()
 			if len(d.icache) > 1000 {
 				ncache := map[byzco.BlockID]bool{}
 				j := 0
@@ -90,6 +109,7 @@ func (d *depgraph) process() {
 				}
 				d.icache = ncache
 			}
+			d.mu.Unlock()
 		}
 		d.cond.L.Lock()
 		for len(d.in) == 0 {
@@ -115,22 +135,17 @@ func (d *depgraph) process() {
 		for len(processed) > 0 {
 			next := processed[0]
 			processed = processed[1:]
-			var nawait []byzco.BlockID
 			for _, revdep := range d.await[next] {
 				if seen[revdep] {
-					nawait = append(nawait, revdep)
+					continue
 				} else if d.processBlock(d.pending[revdep]) {
 					processed = append(processed, revdep)
 					seen = map[byzco.BlockID]bool{}
 				} else {
-					nawait = append(nawait, revdep)
+					seen[revdep] = true
 				}
 			}
-			if len(nawait) > 0 {
-				d.await[next] = nawait
-			} else {
-				delete(d.await, next)
-			}
+			delete(d.await, next)
 			if first {
 				first = false
 			} else {

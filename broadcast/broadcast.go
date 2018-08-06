@@ -209,17 +209,17 @@ func (s *Service) fillMissingBlocks(peerID uint64) {
 					continue
 				}
 				rounds, latest, err = s.store.getMissing(peerID, info.sequence, s.maxBlocks)
-				if log.AtDebug() {
-					l.Debug("GOT MISSING", fld.Rounds(rounds), fld.LatestRound(latest))
-				}
 				if err != nil {
-					l.Fatal("Could not load missing rounds from DB", fld.Err(err))
+					l.Fatal("Could not load missing rounds info from DB", fld.Err(err))
 				}
 				if len(rounds) == 0 {
 					if latest != info.sequence && latest != 0 {
 						s.received.setSequence(peerID, latest)
 					}
 					continue
+				}
+				if log.AtDebug() {
+					l.Debug("Got missing rounds info from DB", fld.Rounds(rounds), fld.LatestRound(latest))
 				}
 			}
 			getRounds.Rounds = rounds
@@ -392,6 +392,9 @@ func (s *Service) genBlocks() {
 					links = append(links, ref.id)
 				}
 				s.graph.Add(self, links)
+			}
+			for _, ref := range refs {
+				s.depgraph.actuallyIncluded(ref.id)
 			}
 			s.prevhash = hash
 			s.prevref = &SignedData{
@@ -687,7 +690,7 @@ func (s *Service) loadState() {
 		}
 	}
 	if log.AtDebug() {
-		log.Debug("STARTUP STATE", fld.Round(round), fld.InterpretedRound(interpreted))
+		log.Debug("Startup state", fld.Round(round), fld.InterpretedRound(interpreted))
 	}
 	nodes := append([]uint64{s.nodeID}, s.peers...)
 	depgraph := &depgraph{
@@ -699,6 +702,7 @@ func (s *Service) loadState() {
 		out:     s.blocks,
 		self:    s.nodeID,
 		store:   s.store,
+		tcache:  map[byzco.BlockID]bool{},
 	}
 	s.depgraph = depgraph
 	s.graph = byzco.New(s.ctx, nodes, interpreted, s.byzcoCallback)
@@ -904,7 +908,9 @@ func (s *Service) replayGraphChanges() {
 		log.Fatal("Unable to load block data for unincluded blocks", fld.Err(err))
 	}
 	for _, block := range blocks {
-		log.Info("ADDING TO DEPGRAPH", fld.BlockID(block.id))
+		if log.AtDebug() {
+			log.Debug("Adding to depgraph", fld.BlockID(block.id))
+		}
 		s.depgraph.add(block)
 	}
 	for round := s.interpreted; round < s.round; round++ {
