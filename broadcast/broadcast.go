@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -370,32 +371,28 @@ func (s *Service) genBlocks() {
 			}
 			hasher.Reset()
 			signal := s.signal
-			if err := s.setOwnBlock(round, hash, signed, blockRef, refs); err != nil {
+			graph := &byzco.BlockGraph{
+				Block: byzco.BlockID{
+					Hash:   string(hash),
+					NodeID: s.nodeID,
+					Round:  round,
+				},
+			}
+			var deps []byzco.Dep
+			for _, ref := range refs {
+				deps = append(deps, byzco.Dep{
+					Block: ref.id,
+					Deps:  ref.links,
+				})
+			}
+			graph.Deps = deps
+			if err := s.setOwnBlock(signed, blockRef, graph); err != nil {
 				log.Fatal("Could not write own block to the DB", fld.Round(round), log.Err(err))
-			}
-			var links []byzco.BlockID
-			self := byzco.BlockID{
-				Hash:   string(hash),
-				NodeID: s.nodeID,
-				Round:  round,
-			}
-			if false {
-				if round != 1 {
-					links = append(links, byzco.BlockID{
-						Hash:   string(s.prevhash),
-						NodeID: s.nodeID,
-						Round:  round - 1,
-					})
-				}
-				for _, ref := range refs {
-					s.graph.Add(ref.id, ref.links)
-					links = append(links, ref.id)
-				}
-				s.graph.Add(self, links)
 			}
 			for _, ref := range refs {
 				s.depgraph.actuallyIncluded(ref.id)
 			}
+			s.graph.Add(graph)
 			s.prevhash = hash
 			s.prevref = &SignedData{
 				Data:      refData,
@@ -408,7 +405,7 @@ func (s *Service) genBlocks() {
 			close(signal)
 			// TODO(tav): Remove this once it's fully wired together.
 			s.byzcoCallback(&byzco.Interpreted{
-				Blocks: []byzco.BlockID{self},
+				Blocks: []byzco.BlockID{graph.Block},
 				Round:  round,
 			})
 			if log.AtDebug() {
@@ -461,7 +458,7 @@ func (s *Service) genBlocks() {
 	}
 }
 
-func (s *Service) getBlockInfo(nodeID uint64, round uint64, hash []byte) *blockInfo {
+func (s *Service) getBlock(nodeID uint64, round uint64, hash []byte) *SignedData {
 	id := byzco.BlockID{
 		Hash:   string(hash),
 		NodeID: nodeID,
@@ -476,15 +473,11 @@ func (s *Service) getBlockInfo(nodeID uint64, round uint64, hash []byte) *blockI
 		log.Error("Could not retrieve block", fld.NodeID(nodeID), fld.Round(round), log.Err(err))
 		return nil
 	}
-	info = &blockInfo{
-		block: block,
-		hash:  hash,
-	}
 	s.lru.set(byzco.BlockID{
 		Hash:   string(hash),
 		NodeID: nodeID,
 		Round:  round,
-	}, info)
+	}, block)
 	return info
 }
 
@@ -492,11 +485,11 @@ func (s *Service) getBlocks(ids []byzco.BlockID) []*SignedData {
 	var missing []byzco.BlockID
 	blocks := make([]*SignedData, len(ids))
 	for i, id := range ids {
-		info := s.lru.get(id)
-		if info == nil {
+		block := s.lru.get(id)
+		if block == nil {
 			missing = append(missing, id)
 		} else {
-			blocks[i] = info.block
+			blocks[i] = block
 		}
 	}
 	if len(missing) > 0 {
@@ -603,13 +596,13 @@ func (s *Service) handleGetBlocks(peerID uint64, msg *service.Message) (*service
 	}
 	blocks := make([]*SignedData, len(req.Blocks))
 	for i, ref := range req.Blocks {
-		info := s.getBlockInfo(ref.Node, ref.Round, ref.Hash)
-		if info == nil {
+		block := s.getBlock(ref.Node, ref.Round, ref.Hash)
+		if block == nil {
 			blocks[i] = nil
 			log.Error("Got request for unknown block", fld.PeerID(peerID), fld.Round(ref.Round))
 			continue
 		}
-		blocks[i] = info.block
+		blocks[i] = block
 	}
 	data, err := proto.Marshal(&ListBlocks{
 		Blocks: blocks,
@@ -662,11 +655,12 @@ func (s *Service) loadState() {
 		prevref = nil
 		round = 0
 	}
-	interpreted, err := s.store.getLastInterpreted()
+	interpreted, consumed, err := s.store.getLastInterpreted()
 	if err != nil {
 		if err != badger.ErrKeyNotFound {
 			log.Fatal("Could not load last interpreted from DB", log.Err(err))
 		}
+		consumed = 0
 		interpreted = 0
 	}
 	rmap, err := s.store.getReceivedMap()
@@ -693,6 +687,15 @@ func (s *Service) loadState() {
 		log.Debug("Startup state", fld.Round(round), fld.InterpretedRound(interpreted))
 	}
 	nodes := append([]uint64{s.nodeID}, s.peers...)
+	sort.Slice(nodes, func(i, j int) bool {
+		return nodes[i] < nodes[j]
+	})
+	gcfg := &byzco.Config{
+		LastConsumed:    consumed,
+		LastInterpreted: interpreted,
+		Nodes:           nodes,
+		SelfID:          s.nodeID,
+	}
 	depgraph := &depgraph{
 		await:   map[byzco.BlockID][]byzco.BlockID{},
 		cond:    sync.NewCond(&sync.Mutex{}),
@@ -705,7 +708,7 @@ func (s *Service) loadState() {
 		tcache:  map[byzco.BlockID]bool{},
 	}
 	s.depgraph = depgraph
-	s.graph = byzco.New(s.ctx, nodes, interpreted, s.byzcoCallback)
+	s.graph = byzco.New(s.ctx, gcfg, s.byzcoCallback)
 	s.interpreted = interpreted
 	s.prevhash = prevhash
 	s.prevref = prevref
@@ -713,7 +716,7 @@ func (s *Service) loadState() {
 	s.round = round
 	s.sent = sent
 	s.signal = make(chan struct{})
-	s.replayGraphChanges()
+	s.replayGraphChanges(consumed)
 	go depgraph.process()
 }
 
@@ -902,7 +905,7 @@ func (s *Service) processBlock(signed *SignedData) (uint64, error) {
 	return block.Round, nil
 }
 
-func (s *Service) replayGraphChanges() {
+func (s *Service) replayGraphChanges(from uint64) {
 	blocks, err := s.store.getNotIncluded()
 	if err != nil {
 		log.Fatal("Unable to load block data for unincluded blocks", fld.Err(err))
@@ -913,8 +916,18 @@ func (s *Service) replayGraphChanges() {
 		}
 		s.depgraph.add(block)
 	}
-	for round := s.interpreted; round < s.round; round++ {
-		// block := s.getOwnBlock(round)
+	for {
+		blocks, err := s.store.getBlockGraphs(s.nodeID, from, 100)
+		if err != nil {
+			log.Fatal("Unable to load block graphs for uninterpreted blocks", fld.Err(err))
+		}
+		for _, block := range blocks {
+			s.graph.Add(block)
+		}
+		if len(blocks) < 100 {
+			break
+		}
+		from += 100
 	}
 }
 
@@ -922,25 +935,14 @@ func (s *Service) setBlock(id byzco.BlockID, block *SignedData) error {
 	if err := s.store.setBlock(id, block); err != nil {
 		return err
 	}
-	s.lru.set(id, &blockInfo{
-		block: block,
-		hash:  []byte(id.Hash),
-	})
+	s.lru.set(id, block)
 	return nil
 }
 
-func (s *Service) setOwnBlock(round uint64, hash []byte, block *SignedData, blockRef *SignedData, refs []*blockData) error {
-	id := byzco.BlockID{
-		Hash:   string(hash),
-		NodeID: s.nodeID,
-		Round:  round,
-	}
-	s.lru.set(id, &blockInfo{
-		block: block,
-		hash:  hash,
-	})
-	s.ownblocks.set(round, block)
-	return s.store.setOwnBlock(id, block, blockRef, refs)
+func (s *Service) setOwnBlock(block *SignedData, blockRef *SignedData, graph *byzco.BlockGraph) error {
+	s.lru.set(graph.Block, block)
+	s.ownblocks.set(graph.Block.Round, block)
+	return s.store.setOwnBlock(block, blockRef, graph)
 }
 
 func (s *Service) writeReceivedMap() {
@@ -1035,14 +1037,14 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		return nil, err
 	}
 	lru := &lru{
-		data: map[byzco.BlockID]*blockInfoContainer{},
+		data: map[byzco.BlockID]*lruData{},
 	}
 	ownblocks := &ownblocks{
 		data: map[uint64]*SignedData{},
 	}
 	store := &store{
-		db:    db,
-		nodes: len(cfg.Peers) + 1,
+		db:        db,
+		nodeCount: len(cfg.Peers) + 1,
 	}
 	process.SetExitHandler(func() {
 		store.mu.Lock()

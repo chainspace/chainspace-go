@@ -16,6 +16,7 @@ import (
 
 const (
 	blockPrefix byte = iota + 1
+	blockGraphPrefix
 	includedPrefix
 	interpretedPrefix
 	lastBlockRefPrefix
@@ -32,10 +33,10 @@ const (
 var errDBClosed = errors.New("broadcast: DB has been closed")
 
 type store struct {
-	closed bool
-	db     *badger.DB
-	mu     sync.RWMutex
-	nodes  int
+	closed    bool
+	db        *badger.DB
+	mu        sync.RWMutex
+	nodeCount int
 }
 
 func (s *store) getBlock(id byzco.BlockID) (*SignedData, error) {
@@ -74,6 +75,71 @@ func (s *store) getBlockData(id byzco.BlockID) (*blockData, error) {
 		return nil, nil
 	}
 	return getBlockData(signed), nil
+}
+
+func (s *store) getBlockGraphs(nodeID uint64, from uint64, limit int) ([]*byzco.BlockGraph, error) {
+	var blocks []*byzco.BlockGraph
+	prefix := append([]byte{blockGraphPrefix}, lexinum.Encode(nodeID)...)
+	prefix = append(prefix, 0x00)
+	start := make([]byte, len(prefix))
+	copy(start, prefix)
+	start = append(start, lexinum.Encode(from)...)
+	err := s.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchSize = 20
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Seek(start); it.ValidForPrefix(prefix); it.Next() {
+			item := it.Item()
+			id, err := decodeBlockID(item.Key()[1:])
+			if err != nil {
+				return err
+			}
+			block := &byzco.BlockGraph{
+				Block: id,
+			}
+			val, err := item.Value()
+			if err != nil {
+				return err
+			}
+			size := int(binary.LittleEndian.Uint32(val))
+			deps := make([]byzco.Dep, size)
+			idx := 4
+			for i := 0; i < size; i++ {
+				ksize := int(binary.LittleEndian.Uint16(val[idx:]))
+				idx += 2
+				id, err := decodeBlockID(val[idx : idx+ksize])
+				if err != nil {
+					return err
+				}
+				idx += ksize
+				lsize := int(binary.LittleEndian.Uint32(val[idx:]))
+				idx += 4
+				links := make([]byzco.BlockID, lsize)
+				for j := 0; j < lsize; j++ {
+					ksize := int(binary.LittleEndian.Uint16(val[idx:]))
+					idx += 2
+					link, err := decodeBlockID(val[idx : idx+ksize])
+					if err != nil {
+						return err
+					}
+					idx += ksize
+					links[j] = link
+				}
+				deps[i] = byzco.Dep{
+					Block: id,
+					Deps:  links,
+				}
+			}
+			block.Deps = deps
+			blocks = append(blocks, block)
+			if len(blocks) == limit {
+				break
+			}
+		}
+		return nil
+	})
+	return blocks, err
 }
 
 func (s *store) getBlocks(ids []byzco.BlockID) ([]*SignedData, error) {
@@ -173,15 +239,14 @@ func (s *store) getInterpreted(round uint64) ([]*SignedData, error) {
 	return blocks, err
 }
 
-func (s *store) getLastInterpreted() (uint64, error) {
+func (s *store) getLastInterpreted() (round uint64, consumed uint64, err error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.closed {
-		return 0, errDBClosed
+		return 0, 0, errDBClosed
 	}
-	var round uint64
 	key := []byte{lastInterpretedPrefix}
-	err := s.db.View(func(txn *badger.Txn) error {
+	err = s.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(key)
 		if err != nil {
 			return err
@@ -190,10 +255,11 @@ func (s *store) getLastInterpreted() (uint64, error) {
 		if err != nil {
 			return err
 		}
-		round = binary.LittleEndian.Uint64(val)
+		round = binary.LittleEndian.Uint64(val[:8])
+		consumed = binary.LittleEndian.Uint64(val[8:16])
 		return nil
 	})
-	return round, err
+	return round, consumed, err
 }
 
 func (s *store) getLastRoundData() (round uint64, hash []byte, blockRef *SignedData, err error) {
@@ -361,7 +427,7 @@ func (s *store) getRoundBlocks(round uint64) (map[byzco.BlockID]*Block, error) {
 	err := s.db.View(func(txn *badger.Txn) error {
 		_ = prefix
 		opts := badger.DefaultIteratorOptions
-		opts.PrefetchSize = s.nodes
+		opts.PrefetchSize = s.nodeCount
 		it := txn.NewIterator(opts)
 		defer it.Close()
 		signed := &SignedData{}
@@ -560,9 +626,10 @@ func (s *store) setInterpreted(data *byzco.Interpreted) error {
 		idx += 2 + len(key)
 	}
 	lkey := []byte{lastInterpretedPrefix}
-	lval := make([]byte, 8)
-	rkey := interpretedKey(data.Round)
+	lval := make([]byte, 16)
 	binary.LittleEndian.PutUint64(lval, data.Round)
+	binary.LittleEndian.PutUint64(lval[8:], data.Consumed)
+	rkey := interpretedKey(data.Round)
 	return s.db.Update(func(txn *badger.Txn) error {
 		if err := txn.Set(rkey, enc); err != nil {
 			return err
@@ -571,37 +638,39 @@ func (s *store) setInterpreted(data *byzco.Interpreted) error {
 	})
 }
 
-func (s *store) setOwnBlock(id byzco.BlockID, block *SignedData, blockRef *SignedData, refs []*blockData) error {
+func (s *store) setOwnBlock(block *SignedData, blockRef *SignedData, graph *byzco.BlockGraph) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.closed {
 		return errDBClosed
 	}
-	key := ownBlockKey(id.Round)
+	key := ownBlockKey(graph.Block.Round)
 	val, err := proto.Marshal(block)
 	if err != nil {
 		return err
 	}
-	bkey := blockKey(id)
+	bkey := blockKey(graph.Block)
 	brkey := []byte{lastBlockRefPrefix}
 	brval, err := proto.Marshal(blockRef)
 	if err != nil {
 		return err
 	}
+	gkey := blockGraphKey(graph.Block)
+	gval := encodeBlockGraph(graph)
 	hkey := []byte{lastHashPrefix}
 	rkey := []byte{lastRoundPrefix}
 	rval := make([]byte, 8)
-	binary.LittleEndian.PutUint64(rval, id.Round)
+	binary.LittleEndian.PutUint64(rval, graph.Block.Round)
 	var (
 		delkeys [][]byte
 		refkeys [][]byte
 	)
-	if len(refs) > 0 {
-		delkeys = make([][]byte, len(refs))
-		refkeys = make([][]byte, len(refs))
-		for i, ref := range refs {
-			delkeys[i] = notIncludedKey(ref.id)
-			refkeys[i] = includedKey(ref.id)
+	if len(graph.Deps) > 0 {
+		delkeys = make([][]byte, len(graph.Deps))
+		refkeys = make([][]byte, len(graph.Deps))
+		for i, ref := range graph.Deps {
+			delkeys[i] = notIncludedKey(ref.Block)
+			refkeys[i] = includedKey(ref.Block)
 		}
 	}
 	return s.db.Update(func(txn *badger.Txn) error {
@@ -611,7 +680,10 @@ func (s *store) setOwnBlock(id byzco.BlockID, block *SignedData, blockRef *Signe
 		if err := txn.Set(brkey, brval); err != nil {
 			return err
 		}
-		if err := txn.Set(hkey, []byte(id.Hash)); err != nil {
+		if err := txn.Set(gkey, gval); err != nil {
+			return err
+		}
+		if err := txn.Set(hkey, []byte(graph.Block.Hash)); err != nil {
 			return err
 		}
 		if err := txn.Set(rkey, rval); err != nil {
@@ -672,6 +744,15 @@ func (s *store) setSentMap(data map[uint64]uint64) error {
 	})
 }
 
+func blockGraphKey(id byzco.BlockID) []byte {
+	key := []byte{blockGraphPrefix}
+	key = append(key, lexinum.Encode(id.NodeID)...)
+	key = append(key, 0x00)
+	key = append(key, lexinum.Encode(id.Round)...)
+	key = append(key, 0x00)
+	return append(key, id.Hash...)
+}
+
 func blockKey(id byzco.BlockID) []byte {
 	key := []byte{blockPrefix}
 	key = append(key, lexinum.Encode(id.NodeID)...)
@@ -679,6 +760,43 @@ func blockKey(id byzco.BlockID) []byte {
 	key = append(key, lexinum.Encode(id.Round)...)
 	key = append(key, 0x00)
 	return append(key, id.Hash...)
+}
+
+func decodeBlockID(d []byte) (byzco.BlockID, error) {
+	var (
+		err    error
+		hash   string
+		nodeID uint64
+		round  uint64
+		rstart int
+		stage  int
+	)
+outer:
+	for i, char := range d {
+		if char == 0x00 {
+			switch stage {
+			case 0:
+				nodeID, err = lexinum.Decode(d[:i])
+				if err != nil {
+					return byzco.BlockID{}, err
+				}
+				rstart = i + 1
+				stage++
+			case 1:
+				round, err = lexinum.Decode(d[rstart:i])
+				if err != nil {
+					return byzco.BlockID{}, err
+				}
+				hash = string(d[i+1 : len(d)-1])
+				break outer
+			}
+		}
+	}
+	return byzco.BlockID{
+		Hash:   hash,
+		NodeID: nodeID,
+		Round:  round,
+	}, nil
 }
 
 func decodeBlockRound(d []byte) (uint64, error) {
@@ -694,6 +812,41 @@ func decodeBlockRound(d []byte) (uint64, error) {
 		}
 	}
 	return lexinum.Decode(d[rstart:rend])
+}
+
+func encodeBlockGraph(block *byzco.BlockGraph) []byte {
+	kbuf := make([]byte, 2)
+	sbuf := make([]byte, 4)
+	out := make([]byte, 4)
+	size := len(block.Deps)
+	binary.LittleEndian.PutUint32(out, uint32(size))
+	for i := 0; i < size; i++ {
+		dep := block.Deps[i]
+		id := encodeBlockID(dep.Block)
+		binary.LittleEndian.PutUint16(kbuf, uint16(len(id)))
+		out = append(out, kbuf...)
+		out = append(out, id...)
+		lsize := len(dep.Deps)
+		binary.LittleEndian.PutUint32(sbuf, uint32(lsize))
+		out = append(out, sbuf...)
+		for j := 0; j < lsize; j++ {
+			id := encodeBlockID(dep.Deps[j])
+			binary.LittleEndian.PutUint16(kbuf, uint16(len(id)))
+			out = append(out, kbuf...)
+			out = append(out, id...)
+		}
+	}
+	return out
+}
+
+func encodeBlockID(id byzco.BlockID) []byte {
+	var out []byte
+	out = append(out, lexinum.Encode(id.NodeID)...)
+	out = append(out, 0x00)
+	out = append(out, lexinum.Encode(id.Round)...)
+	out = append(out, 0x00)
+	return append(out, id.Hash...)
+
 }
 
 func getBlockData(signed *SignedData) *blockData {

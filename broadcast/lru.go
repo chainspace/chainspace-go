@@ -7,23 +7,13 @@ import (
 	"chainspace.io/prototype/byzco"
 )
 
-type blockInfo struct {
-	block *SignedData
-	hash  []byte
-}
-
-type blockInfoContainer struct {
-	info     *blockInfo
-	lastSeen uint64
-}
-
 type lru struct {
-	data   map[byzco.BlockID]*blockInfoContainer
+	data   map[byzco.BlockID]*lruData
 	mu     sync.Mutex
 	seenID uint64
 }
 
-func (l *lru) get(key byzco.BlockID) *blockInfo {
+func (l *lru) get(key byzco.BlockID) *SignedData {
 	l.mu.Lock()
 	c, exists := l.data[key]
 	if !exists {
@@ -33,13 +23,13 @@ func (l *lru) get(key byzco.BlockID) *blockInfo {
 	l.seenID++
 	c.lastSeen = l.seenID
 	l.mu.Unlock()
-	return c.info
+	return c.block
 }
 
-func (l *lru) set(key byzco.BlockID, value *blockInfo) {
+func (l *lru) set(key byzco.BlockID, value *SignedData) {
 	l.mu.Lock()
 	l.seenID++
-	c := &blockInfoContainer{value, l.seenID}
+	c := &lruData{value, l.seenID}
 	l.data[key] = c
 	l.mu.Unlock()
 }
@@ -47,7 +37,7 @@ func (l *lru) set(key byzco.BlockID, value *blockInfo) {
 func (l *lru) prune(size int) {
 	type kv struct {
 		key   byzco.BlockID
-		value *blockInfoContainer
+		value *lruData
 	}
 	var xs []kv
 	l.mu.Lock()
@@ -62,10 +52,15 @@ func (l *lru) prune(size int) {
 		return xs[i].value.lastSeen > xs[j].value.lastSeen
 	})
 	xs = xs[:size]
-	data := map[byzco.BlockID]*blockInfoContainer{}
+	data := map[byzco.BlockID]*lruData{}
 	for _, kv := range xs {
 		data[kv.key] = kv.value
 	}
 	l.data = data
 	l.mu.Unlock()
+}
+
+type lruData struct {
+	block    *SignedData
+	lastSeen uint64
 }

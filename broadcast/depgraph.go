@@ -178,9 +178,9 @@ func (d *depgraph) processBlock(block *blockData) bool {
 		d.addPending(block, deps)
 		return false
 	}
-	// Queue the block for inclusion and mark it as included.
-	d.out <- block
+	// Mark the block as included and queue it for actual inclusion.
 	d.markIncluded(block.id)
+	d.out <- block
 	return true
 }
 
