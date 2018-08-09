@@ -18,12 +18,14 @@ func main() {
 	cmds := map[string]func([]string, string){
 		"genkeys":    cmdGenKeys,
 		"init":       cmdInit,
+		"interpret":  cmdInterpret,
 		"run":        cmdRun,
 		"transactor": cmdTransactor,
 	}
 	info := map[string]string{
 		"genkeys":    "Generate new keys for a node",
 		"init":       "Initialise a new Chainspace network",
+		"interpret":  "Interpret a node's block graph",
 		"run":        "Run a node in a Chainspace network",
 		"transactor": "Send transactions in a chainspace network",
 	}
