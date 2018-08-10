@@ -102,9 +102,19 @@ func (s *store) getBlockGraphs(nodeID uint64, from uint64, limit int) ([]*byzco.
 			if err != nil {
 				return err
 			}
-			size := int(binary.LittleEndian.Uint32(val))
+			ksize := int(binary.LittleEndian.Uint16(val))
+			idx := 2
+			if ksize > 0 {
+				id, err := decodeBlockID(val[idx : idx+ksize])
+				if err != nil {
+					return err
+				}
+				block.Prev = id
+				idx += ksize
+			}
+			size := int(binary.LittleEndian.Uint32(val[idx:]))
+			idx += 4
 			deps := make([]byzco.Dep, size)
-			idx := 4
 			for i := 0; i < size; i++ {
 				ksize := int(binary.LittleEndian.Uint16(val[idx:]))
 				idx += 2
@@ -113,6 +123,16 @@ func (s *store) getBlockGraphs(nodeID uint64, from uint64, limit int) ([]*byzco.
 					return err
 				}
 				idx += ksize
+				ksize = int(binary.LittleEndian.Uint16(val[idx:]))
+				idx += 2
+				var prev byzco.BlockID
+				if ksize > 0 {
+					prev, err = decodeBlockID(val[idx : idx+ksize])
+					if err != nil {
+						return err
+					}
+					idx += ksize
+				}
 				lsize := int(binary.LittleEndian.Uint32(val[idx:]))
 				idx += 4
 				links := make([]byzco.BlockID, lsize)
@@ -129,6 +149,7 @@ func (s *store) getBlockGraphs(nodeID uint64, from uint64, limit int) ([]*byzco.
 				deps[i] = byzco.Dep{
 					Block: id,
 					Deps:  links,
+					Prev:  prev,
 				}
 			}
 			block.Deps = deps
@@ -443,9 +464,9 @@ func (s *store) getRoundBlocks(round uint64) (map[byzco.BlockID]*Block, error) {
 				return err
 			}
 			ref := byzco.BlockID{
-				Hash:   string(key[41:]),
-				NodeID: nodeID,
-				Round:  round,
+				Hash:  string(key[41:]),
+				Node:  nodeID,
+				Round: round,
 			}
 			if err := proto.Unmarshal(val, signed); err != nil {
 				return err
@@ -746,7 +767,7 @@ func (s *store) setSentMap(data map[uint64]uint64) error {
 
 func blockGraphKey(id byzco.BlockID) []byte {
 	key := []byte{blockGraphPrefix}
-	key = append(key, lexinum.Encode(id.NodeID)...)
+	key = append(key, lexinum.Encode(id.Node)...)
 	key = append(key, 0x00)
 	key = append(key, lexinum.Encode(id.Round)...)
 	key = append(key, 0x00)
@@ -755,7 +776,7 @@ func blockGraphKey(id byzco.BlockID) []byte {
 
 func blockKey(id byzco.BlockID) []byte {
 	key := []byte{blockPrefix}
-	key = append(key, lexinum.Encode(id.NodeID)...)
+	key = append(key, lexinum.Encode(id.Node)...)
 	key = append(key, 0x00)
 	key = append(key, lexinum.Encode(id.Round)...)
 	key = append(key, 0x00)
@@ -793,9 +814,9 @@ outer:
 		}
 	}
 	return byzco.BlockID{
-		Hash:   hash,
-		NodeID: nodeID,
-		Round:  round,
+		Hash:  hash,
+		Node:  nodeID,
+		Round: round,
 	}, nil
 }
 
@@ -817,15 +838,32 @@ func decodeBlockRound(d []byte) (uint64, error) {
 func encodeBlockGraph(block *byzco.BlockGraph) []byte {
 	kbuf := make([]byte, 2)
 	sbuf := make([]byte, 4)
-	out := make([]byte, 4)
+	var out []byte
+	if block.Prev.Valid() {
+		id := encodeBlockID(block.Prev)
+		binary.LittleEndian.PutUint16(kbuf, uint16(len(id)))
+		out = append(out, kbuf...)
+		out = append(out, id...)
+	} else {
+		out = append(out, 0x00, 0x00)
+	}
 	size := len(block.Deps)
-	binary.LittleEndian.PutUint32(out, uint32(size))
+	binary.LittleEndian.PutUint32(sbuf, uint32(size))
+	out = append(out, sbuf...)
 	for i := 0; i < size; i++ {
 		dep := block.Deps[i]
 		id := encodeBlockID(dep.Block)
 		binary.LittleEndian.PutUint16(kbuf, uint16(len(id)))
 		out = append(out, kbuf...)
 		out = append(out, id...)
+		if dep.Prev.Valid() {
+			id := encodeBlockID(dep.Prev)
+			binary.LittleEndian.PutUint16(kbuf, uint16(len(id)))
+			out = append(out, kbuf...)
+			out = append(out, id...)
+		} else {
+			out = append(out, 0x00, 0x00)
+		}
 		lsize := len(dep.Deps)
 		binary.LittleEndian.PutUint32(sbuf, uint32(lsize))
 		out = append(out, sbuf...)
@@ -841,7 +879,7 @@ func encodeBlockGraph(block *byzco.BlockGraph) []byte {
 
 func encodeBlockID(id byzco.BlockID) []byte {
 	var out []byte
-	out = append(out, lexinum.Encode(id.NodeID)...)
+	out = append(out, lexinum.Encode(id.Node)...)
 	out = append(out, 0x00)
 	out = append(out, lexinum.Encode(id.Round)...)
 	out = append(out, 0x00)
@@ -865,40 +903,42 @@ func getBlockData(signed *SignedData) *blockData {
 		Round: block.Round,
 	}
 	id := byzco.BlockID{
-		Hash:   string(hash),
-		NodeID: block.Node,
-		Round:  block.Round,
+		Hash:  string(hash),
+		Node:  block.Node,
+		Round: block.Round,
 	}
 	enc, err := proto.Marshal(ref)
 	if err != nil {
 		log.Fatal("Unable to encode block reference", fld.Err(err))
 	}
-	var links []byzco.BlockID
+	var prev byzco.BlockID
 	ref = &BlockReference{}
 	if block.Round != 1 {
 		if err = proto.Unmarshal(block.Previous.Data, ref); err != nil {
 			log.Fatal("Unable to decode block's previous reference", fld.Err(err))
 		}
-		links = append(links, byzco.BlockID{
-			Hash:   string(ref.Hash),
-			NodeID: ref.Node,
-			Round:  ref.Round,
-		})
+		prev = byzco.BlockID{
+			Hash:  string(ref.Hash),
+			Node:  ref.Node,
+			Round: ref.Round,
+		}
 	}
+	var deps []byzco.BlockID
 	for _, sref := range block.References {
 		ref = &BlockReference{}
 		if err := proto.Unmarshal(sref.Data, ref); err != nil {
 			log.Fatal("Unable to decode block reference", fld.Err(err))
 		}
-		links = append(links, byzco.BlockID{
-			Hash:   string(ref.Hash),
-			NodeID: ref.Node,
-			Round:  ref.Round,
+		deps = append(deps, byzco.BlockID{
+			Hash:  string(ref.Hash),
+			Node:  ref.Node,
+			Round: ref.Round,
 		})
 	}
 	return &blockData{
-		id:    id,
-		links: links,
+		deps: deps,
+		id:   id,
+		prev: prev,
 		ref: &SignedData{
 			Data:      enc,
 			Signature: signed.Signature,
@@ -908,7 +948,7 @@ func getBlockData(signed *SignedData) *blockData {
 
 func includedKey(id byzco.BlockID) []byte {
 	key := []byte{includedPrefix}
-	key = append(key, lexinum.Encode(id.NodeID)...)
+	key = append(key, lexinum.Encode(id.Node)...)
 	key = append(key, 0x00)
 	key = append(key, lexinum.Encode(id.Round)...)
 	key = append(key, 0x00)
@@ -922,7 +962,7 @@ func interpretedKey(round uint64) []byte {
 
 func notIncludedKey(id byzco.BlockID) []byte {
 	key := []byte{notIncludedPrefix}
-	key = append(key, lexinum.Encode(id.NodeID)...)
+	key = append(key, lexinum.Encode(id.Node)...)
 	key = append(key, 0x00)
 	key = append(key, lexinum.Encode(id.Round)...)
 	key = append(key, 0x00)

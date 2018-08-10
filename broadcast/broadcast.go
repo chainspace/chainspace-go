@@ -373,16 +373,24 @@ func (s *Service) genBlocks() {
 			signal := s.signal
 			graph := &byzco.BlockGraph{
 				Block: byzco.BlockID{
-					Hash:   string(hash),
-					NodeID: s.nodeID,
-					Round:  round,
+					Hash:  string(hash),
+					Node:  s.nodeID,
+					Round: round,
 				},
+			}
+			if round != 1 {
+				graph.Prev = byzco.BlockID{
+					Hash:  string(s.prevhash),
+					Node:  s.nodeID,
+					Round: round - 1,
+				}
 			}
 			var deps []byzco.Dep
 			for _, ref := range refs {
 				deps = append(deps, byzco.Dep{
 					Block: ref.id,
-					Deps:  ref.links,
+					Deps:  ref.deps,
+					Prev:  ref.prev,
 				})
 			}
 			graph.Deps = deps
@@ -460,9 +468,9 @@ func (s *Service) genBlocks() {
 
 func (s *Service) getBlock(nodeID uint64, round uint64, hash []byte) *SignedData {
 	id := byzco.BlockID{
-		Hash:   string(hash),
-		NodeID: nodeID,
-		Round:  round,
+		Hash:  string(hash),
+		Node:  nodeID,
+		Round: round,
 	}
 	info := s.lru.get(id)
 	if info != nil {
@@ -474,9 +482,9 @@ func (s *Service) getBlock(nodeID uint64, round uint64, hash []byte) *SignedData
 		return nil
 	}
 	s.lru.set(byzco.BlockID{
-		Hash:   string(hash),
-		NodeID: nodeID,
-		Round:  round,
+		Hash:  string(hash),
+		Node:  nodeID,
+		Round: round,
 	}, block)
 	return info
 }
@@ -837,7 +845,7 @@ func (s *Service) processBlock(signed *SignedData) (uint64, error) {
 	if !key.Verify(enc, signed.Signature) {
 		return 0, fmt.Errorf("broadcast: unable to verify signature for block %d from node %d", block.Round, block.Node)
 	}
-	var links []byzco.BlockID
+	var prevID byzco.BlockID
 	prev := &BlockReference{}
 	if block.Round != 1 {
 		if block.Previous == nil {
@@ -855,12 +863,13 @@ func (s *Service) processBlock(signed *SignedData) (uint64, error) {
 		if prev.Round+1 != block.Round {
 			return 0, fmt.Errorf("broadcast: previous block round is invalid on block %d from node %d", block.Round, block.Node)
 		}
-		links = append(links, byzco.BlockID{
-			Hash:   string(prev.Hash),
-			NodeID: prev.Node,
-			Round:  prev.Round,
-		})
+		prevID = byzco.BlockID{
+			Hash:  string(prev.Hash),
+			Node:  prev.Node,
+			Round: prev.Round,
+		}
 	}
+	var deps []byzco.BlockID
 	for i, sref := range block.References {
 		ref := &BlockReference{}
 		if err := proto.Unmarshal(sref.Data, ref); err != nil {
@@ -876,26 +885,27 @@ func (s *Service) processBlock(signed *SignedData) (uint64, error) {
 		if ref.Node == block.Node {
 			return 0, fmt.Errorf("broadcast: block references includes a block from same node in block reference %d for block %d from node %d", i, block.Round, block.Node)
 		}
-		links = append(links, byzco.BlockID{
-			Hash:   string(ref.Hash),
-			NodeID: ref.Node,
-			Round:  ref.Round,
+		deps = append(deps, byzco.BlockID{
+			Hash:  string(ref.Hash),
+			Node:  ref.Node,
+			Round: ref.Round,
 		})
 	}
 	if log.AtDebug() {
 		log.Debug("Received block", fld.NodeID(block.Node), fld.Round(block.Round))
 	}
 	id := byzco.BlockID{
-		Hash:   string(hash),
-		NodeID: block.Node,
-		Round:  block.Round,
+		Hash:  string(hash),
+		Node:  block.Node,
+		Round: block.Round,
 	}
 	if err := s.setBlock(id, signed); err != nil {
 		log.Fatal("Could not set received block", fld.BlockID(id), fld.Err(err))
 	}
 	s.depgraph.add(&blockData{
-		id:    id,
-		links: links,
+		deps: deps,
+		id:   id,
+		prev: prevID,
 		ref: &SignedData{
 			Data:      enc,
 			Signature: signed.Signature,

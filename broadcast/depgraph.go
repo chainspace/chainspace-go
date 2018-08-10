@@ -10,9 +10,10 @@ import (
 )
 
 type blockData struct {
-	id    byzco.BlockID
-	links []byzco.BlockID
-	ref   *SignedData
+	deps []byzco.BlockID
+	id   byzco.BlockID
+	prev byzco.BlockID
+	ref  *SignedData
 }
 
 type depgraph struct {
@@ -44,8 +45,8 @@ func (d *depgraph) add(info *blockData) {
 
 func (d *depgraph) addPending(block *blockData, deps []byzco.BlockID) {
 	d.pending[block.id] = block
-	for _, ref := range deps {
-		await, exists := d.await[ref]
+	for _, dep := range deps {
+		await, exists := d.await[dep]
 		if exists {
 			exists = false
 			for _, id := range await {
@@ -55,10 +56,10 @@ func (d *depgraph) addPending(block *blockData, deps []byzco.BlockID) {
 				}
 			}
 			if !exists {
-				d.await[ref] = append(await, block.id)
+				d.await[dep] = append(await, block.id)
 			}
 		} else {
-			d.await[ref] = []byzco.BlockID{block.id}
+			d.await[dep] = []byzco.BlockID{block.id}
 		}
 	}
 }
@@ -163,13 +164,19 @@ func (d *depgraph) processBlock(block *blockData) bool {
 	}
 	// Check if all the referenced blocks have been included already.
 	var deps []byzco.BlockID
-	for _, ref := range block.links {
-		if ref.NodeID == d.self {
+	if block.prev.Valid() {
+		if !d.isIncluded(block.prev) {
+			log.Debug("Missing dependency", fld.BlockID(block.id), log.String("dep", block.prev.String()))
+			deps = append(deps, block.prev)
+		}
+	}
+	for _, dep := range block.deps {
+		if dep.Node == d.self {
 			continue
 		}
-		if !d.isIncluded(ref) {
-			log.Debug("Missing dependency", fld.BlockID(block.id), log.String("dep", ref.String()))
-			deps = append(deps, ref)
+		if !d.isIncluded(dep) {
+			log.Debug("Missing dependency", fld.BlockID(block.id), log.String("dep", dep.String()))
+			deps = append(deps, dep)
 		}
 	}
 	// Mark the block as pending if any of the referenced blocks, including the
