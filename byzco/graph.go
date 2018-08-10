@@ -10,10 +10,8 @@ import (
 )
 
 type blockInfo struct {
-	block BlockID
-	links []BlockID
-	min   uint64
-	max   uint64
+	data BlockGraph
+	max  uint64
 }
 
 // Config represents the configuration of a byzco Graph.
@@ -27,8 +25,7 @@ type Config struct {
 // Graph represents the graph that is generated from the nodes in a shard
 // broadcasting to each other.
 type Graph struct {
-	blocks   []blockInfo
-	c        *controller
+	blocks   []BlockGraph
 	cb       func(*Interpreted)
 	consumed uint64
 	ctx      context.Context
@@ -43,12 +40,12 @@ type Graph struct {
 }
 
 func (g *Graph) interpret(round uint64) {
-	c := &controller{graph: g, round: round}
-	c.run()
-	g.mu.Lock()
-	g.c = c
-	g.round = round
-	g.mu.Unlock()
+	// c := &controller{graph: g, round: round}
+	// c.run()
+	// g.mu.Lock()
+	// g.c = c
+	// g.round = round
+	// g.mu.Unlock()
 }
 
 func (g *Graph) prune() {
@@ -56,17 +53,17 @@ func (g *Graph) prune() {
 	for {
 		select {
 		case <-ticker.C:
-			data := map[BlockID]blockInfo{}
-			g.mu.Lock()
-			round := g.round
-			for block, info := range g.data {
-				if info.max < round {
-					continue
-				}
-				data[block] = info
-			}
-			g.data = data
-			g.mu.Unlock()
+			// data := map[BlockID]blockInfo{}
+			// g.mu.Lock()
+			// round := g.round
+			// for block, info := range g.data {
+			// 	if info.max < round {
+			// 		continue
+			// 	}
+			// 	data[block] = info
+			// }
+			// g.data = data
+			// g.mu.Unlock()
 		case <-g.ctx.Done():
 			return
 		}
@@ -79,7 +76,7 @@ func (g *Graph) resolve(round uint64, hashes map[uint64]string) {
 		if hash == "-" {
 			continue
 		}
-		blocks = append(blocks, BlockID{Hash: hash, NodeID: node, Round: round})
+		blocks = append(blocks, BlockID{Hash: hash, Node: node, Round: round})
 	}
 	g.cb(&Interpreted{
 		Blocks: blocks,

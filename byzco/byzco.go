@@ -19,14 +19,14 @@ type BlockGraph struct {
 // BlockID represents a specific block from a node in a way that can be used as
 // a map key.
 type BlockID struct {
-	Hash   string
-	NodeID uint64
-	Round  uint64
+	Hash  string
+	Node  uint64
+	Round uint64
 }
 
 func (b BlockID) String() string {
 	var v []byte
-	v = strconv.AppendUint(v, b.NodeID, 10)
+	v = strconv.AppendUint(v, b.Node, 10)
 	v = append(v, ' ', '|', ' ')
 	v = strconv.AppendUint(v, b.Round, 10)
 	v = append(v, ' ', '|', ' ')

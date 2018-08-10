@@ -1,72 +1,67 @@
 package byzco
 
 import (
-	"sync"
-
 	"chainspace.io/prototype/log"
-	"chainspace.io/prototype/log/fld"
 )
 
-// instance determines the block for a given node.
 type instance struct {
-	cond        *sync.Cond
-	events      []interface{}
-	hash        string
-	log         *log.Logger
-	mu          sync.Mutex
-	node        uint64
-	perspective uint64
-	round       uint64
-	status      status
+	hash   string
+	log    *log.Logger
+	node   uint64
+	round  uint64
+	states map[BlockID]*state
 }
 
-func (i *instance) addEvent(e interface{}) {
-	i.mu.Lock()
-	i.events = append(i.events, e)
-	i.mu.Unlock()
-	i.cond.Signal()
-}
+func (i *instance) process(e entry) {
 
-func (i *instance) release() {
-	// <-i.c.ctx.Done()
-	// i.cond.Signal()
-}
-
-func (i *instance) run() {
-	for {
-		i.mu.Lock()
-		for len(i.events) == 0 {
-			i.cond.Wait()
-			// select {
-			// case <-i.c.ctx.Done():
-			// 	i.mu.Unlock()
-			// 	return
-			// default:
-			// }
+	var s *state
+	if e.prev.Valid() {
+		s = i.states[e.prev].clone()
+	} else {
+		s = &state{
+			data:     map[stateData]interface{}{},
+			delay:    map[uint64]uint64{},
+			final:    map[noderound]string{},
+			timeouts: map[uint64][]timeout{},
 		}
-		e := i.events[0]
-		i.events = i.events[1:]
-		i.mu.Unlock()
-		_ = e
-		// i.handleEvent(e)
-		// if i.status == committed {
-		// 	i.c.callback(i.perspective, i.node, i.hash)
-		// 	break
-		// }
 	}
+
+	node, round, hash := e.block.Node, e.block.Round, e.block.Hash
+	msgs := []message{preprepare{
+		hash:  hash,
+		node:  node,
+		round: round,
+		view:  0,
+	}}
+	out := []message{msgs[0]}
+
+	for _, dep := range e.deps {
+		s.delay[dep.Node] = diff(round, dep.Round)
+	}
+
+	tval := uint64(1)
+	for _, val := range s.delay {
+		if val > tval {
+			tval = val
+		}
+	}
+	s.timeout = tval * 10
+
+	for _, tmout := range s.timeouts[round] {
+		_, exists := s.data[final{node: tmout.node, round: tmout.round}]
+		if exists {
+			continue
+		}
+	}
+
+	s.out = out
+	i.states[e.block] = s
+
 }
 
-func newInstance(c *controller, perspective uint64, node uint64, round uint64) *instance {
-	i := &instance{
-		// c:           c,
-		log:         log.With(fld.Round(round), fld.Perspective(perspective), fld.NodeID(node)),
-		node:        node,
-		perspective: perspective,
-		round:       round,
-		// status:      initialState,
+func diff(a uint64, b uint64) uint64 {
+	if a >= b {
+		return a - b
 	}
-	i.cond = sync.NewCond(&i.mu)
-	go i.release()
-	go i.run()
-	return i
+	return b - a
 }
