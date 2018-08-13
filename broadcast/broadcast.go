@@ -699,7 +699,6 @@ func (s *Service) loadState() {
 		return nodes[i] < nodes[j]
 	})
 	gcfg := &byzco.Config{
-		LastConsumed:    consumed,
 		LastInterpreted: interpreted,
 		Nodes:           nodes,
 		SelfID:          s.nodeID,
@@ -927,18 +926,19 @@ func (s *Service) replayGraphChanges(from uint64) {
 		}
 		s.depgraph.add(block)
 	}
+	const batchSize = 100
 	for {
-		blocks, err := s.store.getBlockGraphs(s.nodeID, from, 100)
+		blocks, err := s.store.getBlockGraphs(s.nodeID, from, batchSize)
 		if err != nil {
 			log.Fatal("Unable to load block graphs for uninterpreted blocks", fld.Err(err))
 		}
 		for _, block := range blocks {
 			s.graph.Add(block)
 		}
-		if len(blocks) < 100 {
+		if len(blocks) < batchSize {
 			break
 		}
-		from += 100
+		from += batchSize
 	}
 }
 
