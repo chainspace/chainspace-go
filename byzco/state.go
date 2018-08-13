@@ -101,6 +101,7 @@ func (p preprepare) kind() messageKind {
 }
 
 type state struct {
+	bitsets  map[uint64]*bitset
 	data     map[stateData]interface{}
 	delay    map[uint64]uint64
 	final    map[noderound]string
@@ -113,21 +114,32 @@ func (s *state) clone() *state {
 	n := &state{
 		timeout: s.timeout,
 	}
-	data := map[stateData]interface{}{}
-	for k, v := range s.data {
-		data[k] = v
+	if s.bitsets != nil {
+		bitsets := map[uint64]*bitset{}
+		for k, v := range s.bitsets {
+			bitsets[k] = v.clone()
+		}
+		n.bitsets = bitsets
 	}
-	n.data = data
+	if s.data != nil {
+		data := map[stateData]interface{}{}
+		for k, v := range s.data {
+			data[k] = v
+		}
+		n.data = data
+	}
 	delay := map[uint64]uint64{}
 	for k, v := range s.delay {
 		delay[k] = v
 	}
 	n.delay = delay
-	final := map[noderound]string{}
-	for k, v := range s.final {
-		final[k] = v
+	if s.final != nil {
+		final := map[noderound]string{}
+		for k, v := range s.final {
+			final[k] = v
+		}
+		n.final = final
 	}
-	n.final = final
 	out := make([]message, len(s.out))
 	copy(out, s.out)
 	n.out = out

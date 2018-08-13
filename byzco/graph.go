@@ -3,7 +3,6 @@ package byzco
 import (
 	"context"
 	"sync"
-	"time"
 
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/log/fld"
@@ -14,9 +13,13 @@ type blockInfo struct {
 	max  uint64
 }
 
+type minmax struct {
+	min uint64
+	max uint64
+}
+
 // Config represents the configuration of a byzco Graph.
 type Config struct {
-	LastConsumed    uint64
 	LastInterpreted uint64
 	Nodes           []uint64
 	SelfID          uint64
@@ -26,31 +29,46 @@ type Config struct {
 // Graph represents the graph that is generated from the nodes in a shard
 // broadcasting to each other.
 type Graph struct {
-	blocks     []BlockGraph
+	blocks     []*blockInfo
 	cb         func(*Interpreted)
-	cond       *sync.Cond
-	consumed   uint64
+	cond       *sync.Cond // protects entries
 	ctx        context.Context
-	data       map[BlockID]blockInfo
 	entries    []*entry
-	mu         sync.RWMutex
+	minmax     map[BlockID]minmax
+	mu         sync.RWMutex // protects blocks, min, round
+	nodeCount  int
 	nodes      []uint64
 	quorumf1   int
 	quorum2f1  int
+	resolved   map[uint64]map[uint64]string
 	round      uint64
-	rounds     map[uint64]map[BlockID]struct{}
 	self       uint64
 	states     map[BlockID]*state
 	totalNodes uint64
 }
 
-func (g *Graph) interpret(round uint64) {
-	// c := &controller{graph: g, round: round}
-	// c.run()
-	// g.mu.Lock()
-	// g.c = c
-	// g.round = round
-	// g.mu.Unlock()
+func (g *Graph) deliver(node uint64, round uint64, hash string) {
+	hashes, exists := g.resolved[round]
+	if !exists {
+		hashes = map[uint64]string{
+			node: hash,
+		}
+		g.resolved[round] = hashes
+	}
+	if len(hashes) != g.nodeCount {
+		return
+	}
+	var blocks []BlockID
+	for node, hash := range hashes {
+		if hash == "-" {
+			continue
+		}
+		blocks = append(blocks, BlockID{Hash: hash, Node: node, Round: round})
+	}
+	g.cb(&Interpreted{
+		Blocks: blocks,
+		Round:  round,
+	})
 }
 
 func (g *Graph) process(e *entry) {
@@ -60,9 +78,6 @@ func (g *Graph) process(e *entry) {
 		s = g.states[e.prev].clone()
 	} else {
 		s = &state{
-			data:     map[stateData]interface{}{},
-			delay:    map[uint64]uint64{},
-			final:    map[noderound]string{},
 			timeouts: map[uint64][]timeout{},
 		}
 	}
@@ -76,8 +91,13 @@ func (g *Graph) process(e *entry) {
 	}}
 	out := []message{msgs[0]}
 
-	for _, dep := range e.deps {
-		s.delay[dep.Node] = diff(round, dep.Round)
+	if len(e.deps) > 0 {
+		if s.delay == nil {
+			s.delay = map[uint64]uint64{}
+		}
+		for _, dep := range e.deps {
+			s.delay[dep.Node] = diff(round, dep.Round)
+		}
 	}
 
 	tval := uint64(1)
@@ -100,46 +120,9 @@ func (g *Graph) process(e *entry) {
 
 }
 
-func (g *Graph) prune() {
-	ticker := time.NewTicker(10 * time.Second)
-	for {
-		select {
-		case <-ticker.C:
-			// data := map[BlockID]blockInfo{}
-			// g.mu.Lock()
-			// round := g.round
-			// for block, info := range g.data {
-			// 	if info.max < round {
-			// 		continue
-			// 	}
-			// 	data[block] = info
-			// }
-			// g.data = data
-			// g.mu.Unlock()
-		case <-g.ctx.Done():
-			return
-		}
-	}
-}
-
 func (g *Graph) release() {
 	<-g.ctx.Done()
 	g.cond.Signal()
-}
-
-func (g *Graph) resolve(round uint64, hashes map[uint64]string) {
-	var blocks []BlockID
-	for node, hash := range hashes {
-		if hash == "-" {
-			continue
-		}
-		blocks = append(blocks, BlockID{Hash: hash, Node: node, Round: round})
-	}
-	g.cb(&Interpreted{
-		Blocks: blocks,
-		Round:  round,
-	})
-	g.interpret(round + 1)
 }
 
 func (g *Graph) run() {
@@ -163,9 +146,45 @@ func (g *Graph) run() {
 // Add updates the graph and notifies the appropriate controllers.
 func (g *Graph) Add(data *BlockGraph) {
 	log.Info("Adding block to graph", fld.BlockID(data.Block))
-	for _, dep := range data.Deps {
+	g.mu.RLock()
+	min := data.Block.Round
+	max := min
+	entries := make([]*entry, len(data.Deps)+1)
+	for i, dep := range data.Deps {
 		log.Info("Dep:", fld.BlockID(dep.Block))
+		e := &entry{
+			block: dep.Block,
+			prev:  dep.Prev,
+		}
+		e.deps = make([]BlockID, len(dep.Deps)+1)
+		e.deps[0] = dep.Prev
+		copy(e.deps[1:], dep.Deps)
+		entries[i] = e
+		round := dep.Block.Round
+		if round < min {
+			min = round
+		} else if round > max {
+			max = round
+		}
+		for _, link := range dep.Deps {
+			dm, exists := g.minmax[link]
+			if exists {
+				if min > dm.max {
+					min = dm.max
+				} else if max < g.round {
+					max = g.round
+				}
+			} else {
+				if min > g.round {
+					min = g.round
+				} else if max < g.round {
+					max = g.round
+				}
+
+			}
+		}
 	}
+	g.mu.RUnlock()
 	self := &entry{
 		block: data.Block,
 		prev:  data.Prev,
@@ -175,20 +194,9 @@ func (g *Graph) Add(data *BlockGraph) {
 	for i, dep := range data.Deps {
 		self.deps[i+1] = dep.Block
 	}
-	deps := make([]*entry, len(data.Deps))
-	for i, dep := range data.Deps {
-		e := &entry{
-			block: dep.Block,
-			prev:  dep.Prev,
-		}
-		e.deps = make([]BlockID, len(dep.Deps)+1)
-		e.deps[0] = dep.Prev
-		copy(e.deps[1:], dep.Deps)
-		deps[i] = e
-	}
+	entries[len(entries)-1] = self
 	g.cond.L.Lock()
-	g.entries = append(g.entries, deps...)
-	g.entries = append(g.entries, self)
+	g.entries = append(g.entries, entries...)
 	g.cond.L.Unlock()
 	// min := block.Round
 	// max := block.Round
@@ -199,39 +207,26 @@ func (g *Graph) Add(data *BlockGraph) {
 	// 		max = link.Round
 	// 	}
 	// }
-	// info := blockInfo{
-	// 	links: links,
-	// 	min:   min,
-	// 	max:   max,
-	// }
-	// g.mu.Lock()
-	// g.data[block] = info
-	// c := g.c
-	// g.mu.Unlock()
-	// if min >= c.round {
-	// 	e := event{block, links}
-	// 	for _, instance := range c.instances[block.NodeID] {
-	// 		instance.addEvent(e)
-	// 	}
-	// }
 }
 
 // New instantiates a Graph for use by the broadcast/consensus mechanism.
 func New(ctx context.Context, cfg *Config, cb func(*Interpreted)) *Graph {
 	f := (len(cfg.Nodes) - 1) / 3
 	g := &Graph{
+		blocks:     []*blockInfo{},
 		cb:         cb,
 		cond:       sync.NewCond(&sync.Mutex{}),
-		consumed:   cfg.LastConsumed,
 		ctx:        ctx,
-		data:       map[BlockID]blockInfo{},
 		entries:    []*entry{},
+		minmax:     map[BlockID]minmax{},
+		nodeCount:  len(cfg.Nodes),
 		nodes:      cfg.Nodes,
 		quorumf1:   f + 1,
 		quorum2f1:  (2 * f) + 1,
+		resolved:   map[uint64]map[uint64]string{},
+		round:      cfg.LastInterpreted + 1,
 		self:       cfg.SelfID,
 		totalNodes: cfg.TotalNodes,
 	}
-	g.interpret(cfg.LastInterpreted + 1)
 	return g
 }
