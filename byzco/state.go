@@ -169,6 +169,13 @@ func (v viewchange) kind() messageKind {
 	return viewchangeMsg
 }
 
+func diff(a uint64, b uint64) uint64 {
+	if a >= b {
+		return a - b
+	}
+	return b - a
+}
+
 // type message struct {
 // 	typ                   status
 // 	view                  int
