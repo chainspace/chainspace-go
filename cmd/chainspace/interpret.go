@@ -68,7 +68,7 @@ func cmdInterpret(args []string, usage string) {
 	cb := func(res *byzco.Interpreted) {
 		blocks := make([]string, len(res.Blocks))
 		sort.Slice(res.Blocks, func(i, j int) bool {
-			return res.Blocks[i].NodeID < res.Blocks[j].NodeID
+			return res.Blocks[i].Node < res.Blocks[j].Node
 		})
 		for i, block := range res.Blocks {
 			blocks[i] = block.String()
