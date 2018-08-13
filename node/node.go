@@ -57,7 +57,7 @@ type Config struct {
 
 // Server represents a running Chainspace node.
 type Server struct {
-	broadcaster     *broadcast.Service
+	Broadcast       *broadcast.Service
 	cancel          context.CancelFunc
 	ctx             context.Context
 	id              uint64
@@ -103,7 +103,7 @@ func (s *Server) handleStream(stream quic.Stream) {
 	)
 	switch hello.Type {
 	case service.CONNECTION_BROADCAST:
-		svc = s.broadcaster
+		svc = s.Broadcast
 		peerID, err = s.verifyPeerID(hello)
 		if err != nil {
 			log.Error("Unable to verify peer ID from the hello message", fld.Err(err))
@@ -232,18 +232,6 @@ func (s *Server) verifyPeerID(hello *service.Hello) (uint64, error) {
 	}
 	s.mu.RUnlock()
 	return info.Client, nil
-}
-
-// AddTransaction adds the provided raw transaction data to the node's
-// blockchain.
-// func (s *Server) AddTransaction(txdata *TransactionData) {
-// 	s.transactor.AddTransaction(txdata)
-// }
-
-// AddTransactionData is a temporary method for testing. It adds the given
-// transaction to the node's current block.
-func (s *Server) AddTransactionData(txdata *broadcast.TransactionData) {
-	s.broadcaster.AddTransaction(txdata)
 }
 
 // Shutdown closes all underlying resources associated with the node.
@@ -439,7 +427,7 @@ func Run(cfg *Config) (*Server, error) {
 	}
 
 	node := &Server{
-		broadcaster:     broadcaster,
+		Broadcast:       broadcaster,
 		cancel:          cancel,
 		ctx:             ctx,
 		id:              cfg.NodeID,
