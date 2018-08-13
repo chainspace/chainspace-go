@@ -78,6 +78,11 @@ func (s *store) getBlockData(id byzco.BlockID) (*blockData, error) {
 }
 
 func (s *store) getBlockGraphs(nodeID uint64, from uint64, limit int) ([]*byzco.BlockGraph, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return nil, errDBClosed
+	}
 	var blocks []*byzco.BlockGraph
 	prefix := append([]byte{blockGraphPrefix}, lexinum.Encode(nodeID)...)
 	prefix = append(prefix, 0x00)
