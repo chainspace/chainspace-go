@@ -225,6 +225,11 @@ func (t *Topology) ShardForNode(nodeID uint64) uint64 {
 	return ((nodeID - 1) % t.shardCount) + 1
 }
 
+// TotalNodes returns the total number of nodes in the network.
+func (t *Topology) TotalNodes() uint64 {
+	return t.shardCount * t.shardSize
+}
+
 // New parses the given network configuration and creates a network topology for
 // connecting to nodes.
 func New(name string, cfg *config.Network) (*Topology, error) {

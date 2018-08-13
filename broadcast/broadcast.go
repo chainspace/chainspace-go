@@ -703,6 +703,7 @@ func (s *Service) loadState() {
 		LastInterpreted: interpreted,
 		Nodes:           nodes,
 		SelfID:          s.nodeID,
+		TotalNodes:      s.top.TotalNodes(),
 	}
 	depgraph := &depgraph{
 		await:   map[byzco.BlockID][]byzco.BlockID{},
