@@ -3,6 +3,7 @@ package transactor // import "chainspace.io/prototype/transactor"
 import (
 	"context"
 	"encoding/base32"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"path"
@@ -250,7 +251,8 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 
 	objects := map[string]*ObjectList{}
 	for _, v := range ids.TraceObjectPairs {
-		objects[string(v.Trace.ID)] = &ObjectList{v.OutputObjects}
+		trID := base64.StdEncoding.EncodeToString(v.Trace.ID)
+		objects[trID] = &ObjectList{v.OutputObjects}
 	}
 	rawtx, err := proto.Marshal(req.Tx)
 	if err != nil {
@@ -285,7 +287,7 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 
 	b, err = proto.Marshal(res)
 	if err != nil {
-		return nil, fmt.Errorf("transactor: unable to marshal add_transaction response")
+		return nil, fmt.Errorf("transactor: unable to marshal add_transaction response, %v", err)
 	}
 	log.Info("transactor: transaction added successfully")
 
