@@ -23,8 +23,8 @@ type auth struct {
 }
 
 type nodeConfig struct {
-	NodeID string `json:"node_id"`
-	Port   string `json:"port"`
+	NodeID int64  `json:"node_id"`
+	Port   int    `json:"port"`
 	Addr   string `json:"addr"`
 }
 
@@ -71,7 +71,9 @@ func handleContactsSet(rw http.ResponseWriter, r *http.Request) {
 		}
 		err = nil
 		req.Config.Addr = r.RemoteAddr
-		e.Conf = append(e.Conf, req.Config)
+		if !updateIfExists(&e, req.Config) {
+			e.Conf = append(e.Conf, req.Config)
+		}
 		_, err = datastore.Put(tctx, key, &e)
 		return err
 	}, nil)
@@ -81,6 +83,17 @@ func handleContactsSet(rw http.ResponseWriter, r *http.Request) {
 	}
 	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(http.StatusNoContent)
+}
+
+func updateIfExists(e *Entity, nc nodeConfig) bool {
+	for i, _ := range e.Conf {
+		if e.Conf[i].NodeID == nc.NodeID {
+			e.Conf[i].Addr = nc.Addr
+			e.Conf[i].Port = nc.Port
+			return true
+		}
+	}
+	return false
 }
 
 func handleContactsList(rw http.ResponseWriter, r *http.Request) {

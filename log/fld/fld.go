@@ -177,3 +177,8 @@ func TransactorCmd(value string) log.Field {
 func TxID(value uint32) log.Field {
 	return log.Uint32("tx.id", value)
 }
+
+// URL log field.
+func URL(value fmt.Stringer) log.Field {
+	return log.String("url", value.String())
+}

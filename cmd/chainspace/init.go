@@ -1,9 +1,14 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
+	"math/rand"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"chainspace.io/prototype/log/fld"
@@ -13,11 +18,13 @@ import (
 )
 
 func cmdInit(args []string, usage string) {
-
 	opts := newOpts("init NETWORK_NAME [OPTIONS]", usage)
+
 	configRoot := opts.Flags("--config-root").Label("PATH").String("Path to the Chainspace root directory [~/.chainspace]", defaultRootDir())
 	shardCount := opts.Flags("--shard-count").Label("N").Int("Number of shards in the network [3]")
 	shardSize := opts.Flags("--shard-size").Label("N").Int("Number of nodes in each shard [4]")
+	registryURL := opts.Flags("--registry-url").Label("URL").String("address of the registry to bootrasp / announce on the network", "")
+
 	params := opts.Parse(args)
 
 	if err := ensureDir(*configRoot); err != nil {
@@ -53,8 +60,22 @@ func cmdInit(args []string, usage string) {
 		SeedNodes:  peers,
 	}
 
-	bootstrap := &config.Bootstrap{
-		MDNS: true,
+	bootstrap := &config.Bootstrap{}
+	announceURL := ""
+	token := ""
+	if len(*registryURL) > 0 {
+		u, err := url.Parse(*registryURL)
+		if err != nil || (!strings.HasPrefix(*registryURL, "https://") && !strings.HasPrefix(*registryURL, "http://")) {
+			log.Fatal("the given url is not a valid http(s) url", log.String("url", *registryURL))
+		}
+		token = randSeq(10)
+		u2 := *u
+		u.Path = path.Join(u.Path, "contacts.list")
+		bootstrap.URL = u.String()
+		u2.Path = path.Join(u2.Path, "contacts.set")
+		announceURL = u2.String()
+	} else {
+		bootstrap.MDNS = true
 	}
 
 	broadcast := &config.Broadcast{
@@ -107,13 +128,19 @@ func cmdInit(args []string, usage string) {
 		}
 		// Create node.yaml
 		cfg := &config.Node{
-			Announce:    []string{"mdns"},
 			Bootstrap:   bootstrap,
 			Broadcast:   broadcast,
 			Connections: connections,
 			Logging:     logging,
 			Storage:     storage,
 			HTTP:        httpcfg,
+			Token:       token,
+		}
+
+		if len(announceURL) > 0 {
+			cfg.Announce = []string{announceURL}
+		} else {
+			cfg.Announce = []string{"mdns"}
 		}
 
 		if err := writeYAML(filepath.Join(nodeDir, "node.yaml"), cfg); err != nil {
@@ -143,4 +170,14 @@ func cmdInit(args []string, usage string) {
 		log.Fatal("Could not write to network.yaml", fld.Err(err))
 	}
 
+}
+
+var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func randSeq(n int) string {
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return base64.StdEncoding.EncodeToString([]byte(string(b)))
 }

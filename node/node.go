@@ -312,9 +312,7 @@ func Run(cfg *Config) (*Server, error) {
 
 	// Bootstrap using a URL endpoint.
 	if cfg.Node.Bootstrap.URL != "" {
-		if err = top.BootstrapURL(cfg.Node.Bootstrap.URL); err != nil {
-			return nil, err
-		}
+		top.BootstrapURL(cfg.Node.Bootstrap.URL, cfg.Node.Token)
 	}
 
 	// Get a port to listen on.
@@ -477,6 +475,9 @@ func Run(cfg *Config) (*Server, error) {
 				return nil, err
 			}
 		} else if strings.HasPrefix(meth, "https://") || strings.HasPrefix(meth, "http://") {
+			if err := announceRegistry(meth, cfg.Network.ID, cfg.Node.Token, cfg.NodeID, port); err != nil {
+				return nil, err
+			}
 			// Announce to the given URL endpoint.
 		} else {
 			return nil, fmt.Errorf("node: announcement endpoint %q does not start with http:// or https://", meth)

@@ -105,6 +105,7 @@ type Node struct {
 	HTTP              HTTP
 	Logging           *Logging
 	Storage           *Storage
+	Token             string `yaml:"token,omitempty"`
 }
 
 // HTTP represents the configuration for the rest http api exposed by a node

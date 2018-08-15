@@ -6,8 +6,11 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base32"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,6 +23,10 @@ import (
 	"github.com/grandcat/zeroconf"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/minio/highwayhash"
+)
+
+const (
+	bootstrapURLPath = "/contacts.list"
 )
 
 // Error values.
@@ -148,9 +155,64 @@ func (t *Topology) BootstrapStatic(addresses map[uint64]string) error {
 
 // BootstrapURL will use the given URL endpoint to discover the initial
 // addresses of nodes in the network.
-func (t *Topology) BootstrapURL(endpoint string) error {
+func (t *Topology) BootstrapURL(endpoint string, token string) {
 	log.Debug("Bootstrapping network via URL", fld.NetworkName(t.name))
-	return errors.New("network: bootstrapping from a URL is not supported yet")
+	auth := fmt.Sprintf(`{"auth": {"network_id": "%v", "token": "%v"}}`, t.id, token)
+	go func() {
+		for {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			if err := t.bootstrapURL(ctx, endpoint, auth); err != nil {
+				log.Error("Unable to start bootstrapping with registry", log.Err(err))
+			}
+			select {
+			case <-ctx.Done():
+				cancel()
+			}
+		}
+	}()
+}
+
+func (t *Topology) bootstrapURL(ctx context.Context, endpoint string, payload string) error {
+	client := http.Client{}
+	buf := bytes.NewBufferString(payload)
+	req, err := http.NewRequest(http.MethodPost, endpoint, buf)
+	req = req.WithContext(ctx)
+	req.Header.Add("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("error calling registry: %v", err)
+	}
+	b, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("unable reading response from registry: %v", err)
+	}
+	resp.Body.Close()
+	res := []struct {
+		NodeID uint64 `json:"node_id"`
+		Port   int    `json:"port"`
+		Addr   string `json:"addr"`
+	}{}
+	err = json.Unmarshal(b, &res)
+	if err != nil {
+		return fmt.Errorf("unable to unmarshal registry response, %v", err)
+	}
+
+	for _, v := range res {
+		oldAddr := t.contacts.get(v.NodeID)
+		addr := v.Addr + ":" + fmt.Sprintf("%v", v.Port)
+		if oldAddr != addr {
+			log.Debug("Found node address", fld.NodeID(v.NodeID), fld.Address(addr))
+			t.mu.Lock()
+			t.contacts.set(v.NodeID, addr)
+			if session, exists := t.cxns[v.NodeID]; exists {
+				delete(t.cxns, v.NodeID)
+				session.Close()
+			}
+			t.mu.Unlock()
+		}
+	}
+
+	return nil
 }
 
 // Dial opens a connection to a node in the given network. It will block if
