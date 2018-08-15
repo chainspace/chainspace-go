@@ -27,6 +27,14 @@ func (b *bitset) commitCount() int {
 	return c
 }
 
+func (b *bitset) hasCommit(v uint64) bool {
+	return b.cms[int(v>>6)]&(1<<(v&63)) != 0
+}
+
+func (b *bitset) hasPrepare(v uint64) bool {
+	return b.prs[int(v>>6)]&(1<<(v&63)) != 0
+}
+
 func (b *bitset) prepareCount() int {
 	c := 0
 	for _, word := range b.prs {
@@ -43,8 +51,8 @@ func (b *bitset) setPrepare(v uint64) {
 	b.prs[int(v>>6)] |= 1 << (v & 63)
 }
 
-func newBitset(size uint64) *bitset {
-	words := int((size + 63) >> 6)
+func newBitset(size int) *bitset {
+	words := (size + 63) >> 6
 	return &bitset{
 		cms: make([]uint64, words),
 		prs: make([]uint64, words),
