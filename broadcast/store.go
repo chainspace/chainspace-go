@@ -3,6 +3,7 @@ package broadcast
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"sync"
 
 	"chainspace.io/prototype/byzco"
@@ -183,6 +184,10 @@ func (s *store) getBlocks(ids []byzco.BlockID) ([]*SignedData, error) {
 		for i, key := range keys {
 			item, err := txn.Get(key)
 			if err != nil {
+				if log.AtError() {
+					log.Error("Couldn't fetch block", fld.BlockID(ids[i]),
+						log.String("fullhash", fmt.Sprintf("%X", ids[i].Hash)), fld.Err(err))
+				}
 				return err
 			}
 			val, err := item.Value()
@@ -609,6 +614,10 @@ func (s *store) setBlock(id byzco.BlockID, block *SignedData) error {
 		if err = txn.Set(nkey, []byte{}); err != nil {
 			return err
 		}
+		if log.AtDebug() {
+			log.Debug("Writing block to DB", fld.BlockID(id),
+				log.String("fullhash", fmt.Sprintf("%X", id.Hash)))
+		}
 		return txn.Set(key, val)
 	})
 	return err
@@ -725,6 +734,10 @@ func (s *store) setOwnBlock(block *SignedData, blockRef *SignedData, graph *byzc
 				return err
 			}
 		}
+		if log.AtDebug() {
+			log.Debug("Writing own block to DB", fld.BlockID(graph.Block),
+				log.String("fullhash", fmt.Sprintf("%X", graph.Block.Hash)))
+		}
 		return txn.Set(key, val)
 	})
 }
@@ -813,7 +826,7 @@ outer:
 				if err != nil {
 					return byzco.BlockID{}, err
 				}
-				hash = string(d[i+1 : len(d)-1])
+				hash = string(d[i+1 : len(d)])
 				break outer
 			}
 		}

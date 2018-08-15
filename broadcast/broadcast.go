@@ -91,6 +91,14 @@ type Service struct {
 // NOTE(tav): toDeliver will keep growing indefinitely if a Callback is never
 // registered.
 func (s *Service) byzcoCallback(data *byzco.Interpreted) {
+	if log.AtInfo() {
+		blocks := make([]string, len(data.Blocks))
+		for i, block := range data.Blocks {
+			blocks[i] = block.String()
+		}
+		log.Info("Got interpreted consensus blocks", fld.Round(data.Round),
+			log.Uint64("consumed", data.Consumed), log.Strings("blocks", blocks), log.Int("block.count", len(data.Blocks)))
+	}
 	s.store.setInterpreted(data)
 	s.cond.L.Lock()
 	s.interpreted = data.Round
@@ -136,18 +144,15 @@ func (s *Service) deliver() {
 }
 
 func (s *Service) deliverRound(round uint64, blocks []*SignedData) {
-	var txlist transactionList
+	s.cb.DeliverStart(round)
 	for _, block := range blocks {
 		txs, err := block.Transactions()
 		if err != nil {
 			log.Fatal("Unable to decode transactions", fld.Round(round), fld.BlockHash(block.Digest()))
 		}
-		txlist = append(txlist, txs...)
-	}
-	txlist.Sort()
-	s.cb.DeliverStart(round)
-	for _, tx := range txlist {
-		s.cb.DeliverTransaction(tx)
+		for _, tx := range txs {
+			s.cb.DeliverTransaction(tx)
+		}
 	}
 	s.cb.DeliverEnd(round)
 }
@@ -411,17 +416,12 @@ func (s *Service) genBlocks() {
 			s.signal = make(chan struct{})
 			s.mu.Unlock()
 			close(signal)
-			// TODO(tav): Remove this once it's fully wired together.
-			s.byzcoCallback(&byzco.Interpreted{
-				Blocks: []byzco.BlockID{graph.Block},
-				Round:  round,
-			})
 			if log.AtDebug() {
 				log.Debug("Created block", fld.Round(block.Round))
 			}
-			if round%100 == 0 {
-				s.lru.prune(len(s.peers) * 100)
-				s.ownblocks.prune(100)
+			if round%10 == 0 {
+				s.lru.prune(len(s.peers) * 10)
+				s.ownblocks.prune(10)
 			}
 			refs = nil
 			txs = nil
@@ -501,6 +501,13 @@ func (s *Service) getBlocks(ids []byzco.BlockID) []*SignedData {
 		}
 	}
 	if len(missing) > 0 {
+		if log.AtDebug() {
+			xs := make([]string, len(missing))
+			for i, id := range missing {
+				xs[i] = id.String()
+			}
+			log.Debug("Getting missing blocks from store", log.Strings("blocks", xs))
+		}
 		res, err := s.store.getBlocks(missing)
 		if err != nil {
 			log.Fatal("Unable to retrieve blocks", log.Err(err))
@@ -1059,8 +1066,12 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 	}
 	process.SetExitHandler(func() {
 		store.mu.Lock()
-		store.closed = true
 		defer store.mu.Unlock()
+		if store.closed {
+			return
+		}
+		log.Info("Closing DB")
+		store.closed = true
 		if err := db.Close(); err != nil {
 			log.Error("Could not close the broadcast DB successfully", fld.Err(err))
 		}
@@ -1072,7 +1083,7 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 	}
 	s := &Service{
 		blockLimit:     cfg.BlockLimit,
-		blocks:         make(chan *blockData, 10000),
+		blocks:         make(chan *blockData, 100000),
 		cond:           sync.NewCond(&sync.Mutex{}),
 		ctx:            ctx,
 		interval:       cfg.RoundInterval,
@@ -1090,7 +1101,7 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		readTimeout:    cfg.ReadTimeout,
 		store:          store,
 		top:            top,
-		txs:            make(chan *TransactionData, 10000),
+		txs:            make(chan *TransactionData, 100000),
 		writeTimeout:   cfg.WriteTimeout,
 	}
 	s.loadState()
