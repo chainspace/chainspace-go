@@ -15,10 +15,20 @@ import (
 
 func cmdRun(args []string, usage string) {
 	opts := newOpts("run NETWORK_NAME NODE_ID [OPTIONS]", usage)
-	configRoot := opts.Flags("-c", "--config-root").Label("PATH").String("path to the chainspace root directory [~/.chainspace]", defaultRootDir())
+	configRoot := opts.Flags("--config-root").Label("PATH").String("path to the chainspace root directory [~/.chainspace]", defaultRootDir())
+	consoleLog := opts.Flags("--console-log").Label("LEVEL").String("set the minimum console log level")
 	cpuProfile := opts.Flags("--cpu-profile").Label("PATH").String("write a CPU profile to the given file before exiting")
-	runtimeRoot := opts.Flags("-r", "--runtime-root").Label("PATH").String("path to the runtime root directory [~/.chainspace]", defaultRootDir())
+	runtimeRoot := opts.Flags("--runtime-root").Label("PATH").String("path to the runtime root directory [~/.chainspace]", defaultRootDir())
 	networkName, nodeID := getNetworkNameAndNodeID(opts, args)
+
+	switch *consoleLog {
+	case "error":
+		log.ToConsole(log.ErrorLevel)
+	case "fatal":
+		log.ToConsole(log.FatalLevel)
+	case "info":
+		log.ToConsole(log.InfoLevel)
+	}
 
 	_, err := os.Stat(*configRoot)
 	if err != nil {

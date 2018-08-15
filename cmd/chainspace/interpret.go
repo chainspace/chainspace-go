@@ -20,8 +20,9 @@ import (
 
 func cmdInterpret(args []string, usage string) {
 	opts := newOpts("interpret NETWORK_NAME NODE_ID [OPTIONS]", usage)
-	configRoot := opts.Flags("-c", "--config-root").Label("PATH").String("path to the chainspace root directory [~/.chainspace]", defaultRootDir())
-	runtimeRoot := opts.Flags("-r", "--runtime-root").Label("PATH").String("path to the runtime root directory [~/.chainspace]", defaultRootDir())
+	configRoot := opts.Flags("--config-root").Label("PATH").String("path to the chainspace root directory [~/.chainspace]", defaultRootDir())
+	consoleLog := opts.Flags("--console-log").Label("LEVEL").String("set the minimum console log level")
+	runtimeRoot := opts.Flags("--runtime-root").Label("PATH").String("path to the runtime root directory [~/.chainspace]", defaultRootDir())
 	networkName, nodeID := getNetworkNameAndNodeID(opts, args)
 
 	_, err := os.Stat(*configRoot)
@@ -90,6 +91,15 @@ func cmdInterpret(args []string, usage string) {
 			}
 		}
 		mu.Unlock()
+	}
+
+	switch *consoleLog {
+	case "error":
+		log.ToConsole(log.ErrorLevel)
+	case "fatal":
+		log.ToConsole(log.FatalLevel)
+	case "info":
+		log.ToConsole(log.InfoLevel)
 	}
 
 	graph := byzco.New(context.Background(), cfg, cb)
