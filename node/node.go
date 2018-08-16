@@ -402,41 +402,45 @@ func Run(cfg *Config) (*Server, error) {
 		return nil, fmt.Errorf("node: unable to instantiate the broadcast service: %s", err)
 	}
 
-	tcfg := &transactor.Config{
-		Broadcaster: broadcaster,
-		Checkers: []transactor.Checker{
-			&transactor.DummyCheckerOK{}, &transactor.DummyCheckerKO{}},
-		Directory:  dir,
-		Key:        key,
-		MaxPayload: maxPayload,
-		NodeID:     cfg.NodeID,
-		ShardCount: uint64(cfg.Network.Shard.Count),
-		ShardSize:  uint64(cfg.Network.Shard.Size),
-		SigningKey: cfg.Keys.SigningKey,
-		Top:        top,
-	}
+	var (
+		rstsrv *restsrv.Service
+		txtor  *transactor.Service
+	)
 
-	txtor, err := transactor.New(tcfg)
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("node: unable to instantiate the transactor service: %s", err)
-	}
-
-	var rstsrv *restsrv.Service
-	if cfg.Node.HTTP.Enabled {
-		var rport int
-		if cfg.Node.HTTP.Port != nil {
-			rport = *cfg.Node.HTTP.Port
-		} else {
-			rport, _ = freeport.TCP("")
-		}
-		restsrvcfg := &restsrv.Config{
-			Addr:       "",
-			Port:       rport,
+	if !cfg.Node.DisableTransactor {
+		tcfg := &transactor.Config{
+			Broadcaster: broadcaster,
+			Checkers: []transactor.Checker{
+				&transactor.DummyCheckerOK{}, &transactor.DummyCheckerKO{}},
+			Directory:  dir,
+			Key:        key,
+			MaxPayload: maxPayload,
+			NodeID:     cfg.NodeID,
+			ShardCount: uint64(cfg.Network.Shard.Count),
+			ShardSize:  uint64(cfg.Network.Shard.Size),
+			SigningKey: cfg.Keys.SigningKey,
 			Top:        top,
-			MaxPayload: config.ByteSize(maxPayload),
 		}
-		rstsrv = restsrv.New(restsrvcfg)
+		txtor, err = transactor.New(tcfg)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("node: unable to instantiate the transactor service: %s", err)
+		}
+		if cfg.Node.HTTP.Enabled {
+			var rport int
+			if cfg.Node.HTTP.Port != nil {
+				rport = *cfg.Node.HTTP.Port
+			} else {
+				rport, _ = freeport.TCP("")
+			}
+			restsrvcfg := &restsrv.Config{
+				Addr:       "",
+				Port:       rport,
+				Top:        top,
+				MaxPayload: config.ByteSize(maxPayload),
+			}
+			rstsrv = restsrv.New(restsrvcfg)
+		}
 	}
 
 	node := &Server{

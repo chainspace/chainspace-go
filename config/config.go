@@ -97,13 +97,14 @@ func (n *Network) Hash() ([]byte, error) {
 // Node represents the configuration of an individual node in a Chainspace
 // network.
 type Node struct {
-	Announce    []string `yaml:"announce,omitempty"`
-	Bootstrap   *Bootstrap
-	Broadcast   *Broadcast
-	Connections *Connections `yaml:"connections"`
-	HTTP        HTTP
-	Logging     *Logging
-	Storage     *Storage
+	Announce          []string `yaml:"announce,omitempty"`
+	Bootstrap         *Bootstrap
+	Broadcast         *Broadcast
+	Connections       *Connections `yaml:"connections"`
+	DisableTransactor bool         `yaml:"disable.transactor,omitempty"`
+	HTTP              HTTP
+	Logging           *Logging
+	Storage           *Storage
 }
 
 // HTTP represents the configuration for the rest http api exposed by a node
