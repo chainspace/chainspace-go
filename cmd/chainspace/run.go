@@ -18,17 +18,9 @@ func cmdRun(args []string, usage string) {
 	configRoot := opts.Flags("--config-root").Label("PATH").String("path to the chainspace root directory [~/.chainspace]", defaultRootDir())
 	consoleLog := opts.Flags("--console-log").Label("LEVEL").String("set the minimum console log level")
 	cpuProfile := opts.Flags("--cpu-profile").Label("PATH").String("write a CPU profile to the given file before exiting")
+	fileLog := opts.Flags("--file-log").Label("LEVEL").String("set the minimum file log level")
 	runtimeRoot := opts.Flags("--runtime-root").Label("PATH").String("path to the runtime root directory [~/.chainspace]", defaultRootDir())
 	networkName, nodeID := getNetworkNameAndNodeID(opts, args)
-
-	switch *consoleLog {
-	case "error":
-		log.ToConsole(log.ErrorLevel)
-	case "fatal":
-		log.ToConsole(log.FatalLevel)
-	case "info":
-		log.ToConsole(log.InfoLevel)
-	}
 
 	_, err := os.Stat(*configRoot)
 	if err != nil {
@@ -77,6 +69,38 @@ func cmdRun(args []string, usage string) {
 			log.Fatal("Could not create CPU profile file", fld.Path(*cpuProfile), fld.Err(err))
 		}
 		pprof.StartCPUProfile(profileFile)
+	}
+
+	if *consoleLog != "" {
+		switch *consoleLog {
+		case "debug":
+			log.ToConsole(log.DebugLevel)
+		case "error":
+			log.ToConsole(log.ErrorLevel)
+		case "fatal":
+			log.ToConsole(log.FatalLevel)
+		case "info":
+			log.ToConsole(log.InfoLevel)
+		default:
+			log.Fatal("Unknown --console-log level: " + *consoleLog)
+		}
+	} else {
+		log.ToConsole(nodeCfg.Logging.ConsoleLevel)
+	}
+
+	if *fileLog != "" {
+		switch *fileLog {
+		case "debug":
+			nodeCfg.Logging.FileLevel = log.DebugLevel
+		case "error":
+			nodeCfg.Logging.FileLevel = log.ErrorLevel
+		case "fatal":
+			nodeCfg.Logging.FileLevel = log.FatalLevel
+		case "info":
+			nodeCfg.Logging.FileLevel = log.InfoLevel
+		default:
+			log.Fatal("Unknown --file-log level: " + *fileLog)
+		}
 	}
 
 	s, err := node.Run(cfg)

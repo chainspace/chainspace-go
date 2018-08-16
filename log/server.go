@@ -31,12 +31,12 @@ func (s *Server) handle(c net.Conn) {
 			total += n
 		}
 		size := int(binary.LittleEndian.Uint32(buf4))
-		if size > cap(pbuf) {
-			pbuf = make([]byte, size)
+		if size > cap(buf) {
+			buf = make([]byte, size)
 		}
 		total = 0
 		for total < size {
-			n, err := r.Read(pbuf[total:])
+			n, err := r.Read(buf[total:size])
 			if err != nil {
 				Error("Couldn't read from connection", Err(err))
 				return
@@ -53,12 +53,12 @@ func (s *Server) handle(c net.Conn) {
 			total += n
 		}
 		size = int(binary.LittleEndian.Uint32(buf4))
-		if size > cap(buf) {
-			buf = make([]byte, size)
+		if size > cap(pbuf) {
+			pbuf = make([]byte, size)
 		}
 		total = 0
 		for total < size {
-			n, err := r.Read(buf[total:])
+			n, err := r.Read(pbuf[total:size])
 			if err != nil {
 				Error("Couldn't read from connection", Err(err))
 				return

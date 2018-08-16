@@ -15,7 +15,7 @@ import (
 func cmdInit(args []string, usage string) {
 
 	opts := newOpts("init NETWORK_NAME [OPTIONS]", usage)
-	configRoot := opts.Flags("-c", "--config-root").Label("PATH").String("Path to the Chainspace root directory [~/.chainspace]", defaultRootDir())
+	configRoot := opts.Flags("--config-root").Label("PATH").String("Path to the Chainspace root directory [~/.chainspace]", defaultRootDir())
 	shardCount := opts.Flags("--shard-count").Label("N").Int("Number of shards in the network [3]")
 	shardSize := opts.Flags("--shard-size").Label("N").Int("Number of nodes in each shard [4]")
 	params := opts.Parse(args)
@@ -68,7 +68,9 @@ func cmdInit(args []string, usage string) {
 	}
 
 	logging := &config.Logging{
-		ConsoleOutput: true,
+		ConsoleLevel: log.DebugLevel,
+		FileLevel:    log.DebugLevel,
+		FilePath:     "log/chainspace.log",
 	}
 
 	storage := &config.Storage{

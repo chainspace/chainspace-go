@@ -77,6 +77,7 @@ func writeNetEntries(addr string) {
 			c = nil
 			continue
 		}
+		e.level = 0
 	}
 }
 
@@ -145,7 +146,7 @@ func writeUint64(buf []byte, val int) []byte {
 
 // ToServer starts logging to the given server. It starts dropping backfilled
 // entries beyond the given limit.
-func ToServer(addr string, lvl level, limit int) {
+func ToServer(addr string, lvl Level, limit int) {
 	pending = make(chan entry, limit)
 	netLevel = lvl
 	updateMinLevels()

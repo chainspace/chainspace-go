@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"time"
 
+	"chainspace.io/prototype/log"
 	"gopkg.in/yaml.v2"
 )
 
@@ -58,7 +59,12 @@ type Keys struct {
 
 // Logging represents the logging configuration for individual nodes.
 type Logging struct {
-	ConsoleOutput bool `yaml:"console.output"`
+	ConsoleLevel log.Level `yaml:"console.level,omitempty"`
+	FileLevel    log.Level `yaml:"file.level,omitempty"`
+	FilePath     string    `yaml:"file.path,omitempty"`
+	ServerHost   string    `yaml:"server.host,omitempty"`
+	ServerLevel  log.Level `yaml:"server.level,omitempty"`
+	ServerToken  string    `yaml:"server.token,omitempty"`
 }
 
 // Network represents the configuration of a Chainspace network as a whole.

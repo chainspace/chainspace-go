@@ -239,6 +239,20 @@ func (s *Server) Shutdown() {
 	s.cancel()
 }
 
+func createDir(path string) error {
+	_, err := os.Stat(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		log.Info("Creating directory", fld.Path(path))
+		if err = os.MkdirAll(path, dirPerms); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Run initialises a node with the given config.
 func Run(cfg *Config) (*Server, error) {
 	var err error
@@ -253,23 +267,22 @@ func Run(cfg *Config) (*Server, error) {
 			return nil, err
 		}
 	}
-	_, err = os.Stat(dir)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return nil, err
-		}
-		log.Info("Creating directory", fld.Path(dir))
-		if err = os.MkdirAll(dir, dirPerms); err != nil {
-			return nil, err
-		}
-	}
 
+	if err := createDir(dir); err != nil {
+		return nil, err
+	}
 	if err := process.Init(dir, "chainspace"); err != nil {
 		return nil, err
 	}
 
-	if err := log.ToFile(filepath.Join(dir, "server.log"), log.DebugLevel); err != nil {
-		log.Fatal("Could not initialise the file logger", fld.Err(err))
+	if cfg.Node.Logging.FileLevel >= log.DebugLevel && cfg.Node.Logging.FilePath != "" {
+		logfile := filepath.Join(dir, cfg.Node.Logging.FilePath)
+		if err := createDir(filepath.Dir(logfile)); err != nil {
+			return nil, err
+		}
+		if err := log.ToFile(logfile, cfg.Node.Logging.FileLevel); err != nil {
+			log.Fatal("Could not initialise the file logger", fld.Err(err))
+		}
 	}
 
 	// Initialise the topology.

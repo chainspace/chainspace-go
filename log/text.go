@@ -400,7 +400,7 @@ func writeTextString(b *buffer, s string) {
 
 // ToConsole sets the log level of the console logger. By default it will be
 // logging at DebugLevel until this function is used to change the setting.
-func ToConsole(lvl level) {
+func ToConsole(lvl Level) {
 	log.SetFlags(0)
 	log.SetOutput(&intercept{})
 	log.SetPrefix("")
@@ -409,7 +409,7 @@ func ToConsole(lvl level) {
 }
 
 // ToFile starts logging at the given file path.
-func ToFile(path string, lvl level) error {
+func ToFile(path string, lvl Level) error {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 	if err != nil {
 		return err

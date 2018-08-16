@@ -94,12 +94,16 @@ func cmdInterpret(args []string, usage string) {
 	}
 
 	switch *consoleLog {
+	case "debug":
+		log.ToConsole(log.DebugLevel)
 	case "error":
 		log.ToConsole(log.ErrorLevel)
 	case "fatal":
 		log.ToConsole(log.FatalLevel)
 	case "info":
 		log.ToConsole(log.InfoLevel)
+	default:
+		log.Fatal("Unknown --console-log level: " + *consoleLog)
 	}
 
 	graph := byzco.New(context.Background(), cfg, cb)

@@ -3,11 +3,12 @@ package log
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 // Logging levels.
 const (
-	DebugLevel level = iota + 1
+	DebugLevel Level = iota + 1
 	InfoLevel
 	ErrorLevel
 	FatalLevel
@@ -34,9 +35,28 @@ var (
 	level2string = [...]string{"", rpad("DEBUG"), rpad("INFO"), rpad("ERROR"), rpad("FATAL")}
 )
 
-type level int8
+// Level represents a logging level.
+type Level int8
 
-func (l level) String() string {
+// MarshalYAML implements the YAML encoding interface.
+func (l Level) MarshalYAML() (interface{}, error) {
+	switch l {
+	case 0:
+		return "", nil
+	case DebugLevel:
+		return "debug", nil
+	case ErrorLevel:
+		return "error", nil
+	case FatalLevel:
+		return "fatal", nil
+	case InfoLevel:
+		return "info", nil
+	default:
+		panic(fmt.Errorf("log: unknown level: %d", l))
+	}
+}
+
+func (l Level) String() string {
 	switch l {
 	case DebugLevel:
 		return "DEBUG"
@@ -48,6 +68,32 @@ func (l level) String() string {
 		return "INFO"
 	default:
 		panic(fmt.Errorf("log: unknown level: %d", l))
+	}
+}
+
+// UnmarshalYAML implements the YAML decoding interface.
+func (l *Level) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	raw := ""
+	if err := unmarshal(&raw); err != nil {
+		return err
+	}
+	switch strings.ToLower(raw) {
+	case "":
+		return nil
+	case "debug":
+		*l = DebugLevel
+		return nil
+	case "error":
+		*l = ErrorLevel
+		return nil
+	case "fatal":
+		*l = FatalLevel
+		return nil
+	case "info":
+		*l = InfoLevel
+		return nil
+	default:
+		return fmt.Errorf("log: unable to decode Level value: %q", raw)
 	}
 }
 

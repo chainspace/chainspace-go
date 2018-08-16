@@ -24,7 +24,7 @@ func (b *buffer) release() {
 
 type entry struct {
 	fields    []Field
-	level     level
+	level     Level
 	parfields []Field
 	text      string
 	time      time.Time
@@ -35,7 +35,7 @@ type Logger struct {
 	fields []Field
 }
 
-func (l *Logger) log(lvl level, text string, fields []Field) {
+func (l *Logger) log(lvl Level, text string, fields []Field) {
 	entry := entry{fields, lvl, l.fields, text, time.Now().UTC()}
 	textLog(entry)
 	netLog(entry)
