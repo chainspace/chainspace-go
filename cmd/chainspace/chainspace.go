@@ -17,6 +17,7 @@ func main() {
 	log.ToConsole(log.DebugLevel)
 	cmds := map[string]func([]string, string){
 		"genkeys":    cmdGenKeys,
+		"genload":    cmdGenLoad,
 		"init":       cmdInit,
 		"interpret":  cmdInterpret,
 		"run":        cmdRun,
@@ -24,6 +25,7 @@ func main() {
 	}
 	info := map[string]string{
 		"genkeys":    "Generate new keys for a node",
+		"genload":    "Run a node with transaction load",
 		"init":       "Initialise a new Chainspace network",
 		"interpret":  "Interpret a node's block graph",
 		"run":        "Run a node in a Chainspace network",
