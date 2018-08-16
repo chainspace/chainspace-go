@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/pprof"
 	"strconv"
 
@@ -19,6 +20,7 @@ func cmdRun(args []string, usage string) {
 	consoleLog := opts.Flags("--console-log").Label("LEVEL").String("set the minimum console log level")
 	cpuProfile := opts.Flags("--cpu-profile").Label("PATH").String("write a CPU profile to the given file before exiting")
 	fileLog := opts.Flags("--file-log").Label("LEVEL").String("set the minimum file log level")
+	memProfile := opts.Flags("--mem-profile").Label("PATH").String("write the memory profile to the given file before exiting")
 	runtimeRoot := opts.Flags("--runtime-root").Label("PATH").String("path to the runtime root directory [~/.chainspace]", defaultRootDir())
 	networkName, nodeID := getNetworkNameAndNodeID(opts, args)
 
@@ -62,9 +64,8 @@ func cmdRun(args []string, usage string) {
 		Node:        nodeCfg,
 	}
 
-	var profileFile *os.File
 	if *cpuProfile != "" {
-		profileFile, err = os.Create(*cpuProfile)
+		profileFile, err := os.Create(*cpuProfile)
 		if err != nil {
 			log.Fatal("Could not create CPU profile file", fld.Path(*cpuProfile), fld.Err(err))
 		}
@@ -109,6 +110,17 @@ func cmdRun(args []string, usage string) {
 	}
 
 	process.SetExitHandler(func() {
+		if *memProfile != "" {
+			f, err := os.Create(*memProfile)
+			if err != nil {
+				log.Fatal("Could not create memory profile file", fld.Path(*memProfile), fld.Err(err))
+			}
+			runtime.GC()
+			if err := pprof.WriteHeapProfile(f); err != nil {
+				log.Fatal("Could not write memory profile", fld.Err(err))
+			}
+			f.Close()
+		}
 		s.Shutdown()
 		if *cpuProfile != "" {
 			pprof.StopCPUProfile()

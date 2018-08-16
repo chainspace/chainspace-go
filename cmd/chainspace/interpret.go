@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
+	"runtime/pprof"
 	"sort"
 	"strconv"
 	"sync"
@@ -22,6 +24,8 @@ func cmdInterpret(args []string, usage string) {
 	opts := newOpts("interpret NETWORK_NAME NODE_ID [OPTIONS]", usage)
 	configRoot := opts.Flags("--config-root").Label("PATH").String("path to the chainspace root directory [~/.chainspace]", defaultRootDir())
 	consoleLog := opts.Flags("--console-log").Label("LEVEL").String("set the minimum console log level")
+	cpuProfile := opts.Flags("--cpu-profile").Label("PATH").String("write a CPU profile to the given file before exiting")
+	memProfile := opts.Flags("--mem-profile").Label("PATH").String("write the memory profile to the given file before exiting")
 	runtimeRoot := opts.Flags("--runtime-root").Label("PATH").String("path to the runtime root directory [~/.chainspace]", defaultRootDir())
 	networkName, nodeID := getNetworkNameAndNodeID(opts, args)
 
@@ -57,14 +61,31 @@ func cmdInterpret(args []string, usage string) {
 		log.Fatal("Could not create the interpreted.state file", fld.Err(err))
 	}
 
+	if *cpuProfile != "" {
+		profileFile, err := os.Create(*cpuProfile)
+		if err != nil {
+			log.Fatal("Could not create CPU profile file", fld.Path(*cpuProfile), fld.Err(err))
+		}
+		pprof.StartCPUProfile(profileFile)
+	}
+
+	if *consoleLog != "" {
+		switch *consoleLog {
+		case "debug":
+			log.ToConsole(log.DebugLevel)
+		case "error":
+			log.ToConsole(log.ErrorLevel)
+		case "fatal":
+			log.ToConsole(log.FatalLevel)
+		case "info":
+			log.ToConsole(log.InfoLevel)
+		default:
+			log.Fatal("Unknown --console-log level: " + *consoleLog)
+		}
+	}
+
 	closed := false
 	mu := sync.Mutex{}
-	process.SetExitHandler(func() {
-		mu.Lock()
-		out.Close()
-		closed = true
-		mu.Unlock()
-	})
 
 	cb := func(res *byzco.Interpreted) {
 		blocks := make([]string, len(res.Blocks))
@@ -93,18 +114,26 @@ func cmdInterpret(args []string, usage string) {
 		mu.Unlock()
 	}
 
-	switch *consoleLog {
-	case "debug":
-		log.ToConsole(log.DebugLevel)
-	case "error":
-		log.ToConsole(log.ErrorLevel)
-	case "fatal":
-		log.ToConsole(log.FatalLevel)
-	case "info":
-		log.ToConsole(log.InfoLevel)
-	default:
-		log.Fatal("Unknown --console-log level: " + *consoleLog)
-	}
+	process.SetExitHandler(func() {
+		if *memProfile != "" {
+			f, err := os.Create(*memProfile)
+			if err != nil {
+				log.Fatal("Could not create memory profile file", fld.Path(*memProfile), fld.Err(err))
+			}
+			runtime.GC()
+			if err := pprof.WriteHeapProfile(f); err != nil {
+				log.Fatal("Could not write memory profile", fld.Err(err))
+			}
+			f.Close()
+		}
+		if *cpuProfile != "" {
+			pprof.StopCPUProfile()
+		}
+		mu.Lock()
+		out.Close()
+		closed = true
+		mu.Unlock()
+	})
 
 	graph := byzco.New(context.Background(), cfg, cb)
 	err = broadcast.Replay(dir, nodeID, graph, 0, 10)
