@@ -296,6 +296,9 @@ func (s *Service) fillMissingBlocks(peerID uint64) {
 func (s *Service) genBlocks() {
 	var (
 		atLimit     bool
+		branch      int
+		inBlock     *blockData
+		inTx        *TransactionData
 		pendingRefs []*blockData
 		pendingTxs  []*TransactionData
 		refs        []*blockData
@@ -314,32 +317,55 @@ func (s *Service) genBlocks() {
 	tick := time.NewTicker(s.interval)
 	total := 0
 	for {
-		select {
-		case info := <-s.blocks:
+		if atLimit {
+			select {
+			case <-tick.C:
+				branch = 3
+			case <-s.ctx.Done():
+				tick.Stop()
+				s.cond.Signal()
+				return
+			}
+		} else {
+			select {
+			case inBlock = <-s.blocks:
+				branch = 1
+			case inTx = <-s.txs:
+				branch = 2
+			case <-tick.C:
+				branch = 3
+			case <-s.ctx.Done():
+				tick.Stop()
+				s.cond.Signal()
+				return
+			}
+		}
+		switch branch {
+		case 1:
 			if atLimit {
-				pendingRefs = append(pendingRefs, info)
+				pendingRefs = append(pendingRefs, inBlock)
 			} else {
-				total += info.ref.Size()
+				total += inBlock.ref.Size()
 				if total < s.blockLimit {
-					refs = append(refs, info)
+					refs = append(refs, inBlock)
 				} else {
 					atLimit = true
-					pendingRefs = append(pendingRefs, info)
+					pendingRefs = append(pendingRefs, inBlock)
 				}
 			}
-		case tx := <-s.txs:
+		case 2:
 			if atLimit {
-				pendingTxs = append(pendingTxs, tx)
+				pendingTxs = append(pendingTxs, inTx)
 			} else {
-				total += tx.Size()
+				total += inTx.Size()
 				if total < s.blockLimit {
-					txs = append(txs, tx)
+					txs = append(txs, inTx)
 				} else {
 					atLimit = true
-					pendingTxs = append(pendingTxs, tx)
+					pendingTxs = append(pendingTxs, inTx)
 				}
 			}
-		case <-tick.C:
+		case 3:
 			round++
 			blocks := make([]*SignedData, len(refs))
 			for i, info := range refs {
@@ -458,10 +484,6 @@ func (s *Service) genBlocks() {
 				}
 				pendingTxs = npendingTxs
 			}
-		case <-s.ctx.Done():
-			tick.Stop()
-			s.cond.Signal()
-			return
 		}
 	}
 }
