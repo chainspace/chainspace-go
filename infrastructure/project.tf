@@ -41,16 +41,15 @@ resource "google_compute_firewall" "default" {
 
 resource "google_compute_instance" "default" {
   name   = "node-${format("%d", count.index+1)}"
-  machine_type = "f1-micro"
+  // machine_type = "f1-micro"
+  machine_type = "n1-standard-2"
   zone = "europe-west2-b"
   tags = ["node"]
 
   boot_disk {
     initialize_params {
       image = "debian-cloud/debian-9"
-      // image = "ubuntu-os-cloud/ubuntu-1804-bionic-v20180814"
-      // image = "cos-cloud/cos-stable-67-10575-66-0"
-      // image = "coreos-cloud/coreos-stable"
+      type = "pd-ssd"
     }
   }
 
@@ -111,7 +110,7 @@ resource "google_compute_instance" "default" {
     }
 
     inline = [<<EOF
-     sudo docker run -d --name chainspace --volume=/etc/chainspace/conf:/conf --network=host ${data.google_container_registry_image.chainspace.image_url} run -c /conf testnet `cat /etc/chainspace/node_id`
+     sudo docker run -d --name chainspace --volume=/etc/chainspace/conf:/conf --network=host ${data.google_container_registry_image.chainspace.image_url} run --console-log info --config-root /conf testnet `cat /etc/chainspace/node_id`
      EOF
     ]
   }
