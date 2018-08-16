@@ -10,6 +10,9 @@ chainspace:
 httptest:
 	go install chainspace.io/prototype/cmd/httptest
 
+docker:
+	docker build -t chainspace.io/chainspace:v0.1 -t gcr.io/acoustic-atom-211511/chainspace:latest -t gcr.io/acoustic-atom-211511/chainspace:v0.1 .
+
 proto: ## recompile all protobuf definitions
 	$(foreach f,$(FILES),\
 		./genproto.sh $(f);\

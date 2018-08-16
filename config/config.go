@@ -14,10 +14,10 @@ import (
 
 // Bootstrap represents the configuration for bootstrapping peer addresses.
 type Bootstrap struct {
-	File   string            `yaml:",omitempty"`
-	MDNS   bool              `yaml:",omitempty"`
-	Static map[uint64]string `yaml:",omitempty"`
-	URL    string            `yaml:",omitempty"`
+	File     string            `yaml:",omitempty"`
+	MDNS     bool              `yaml:",omitempty"`
+	Registry bool              `yaml:",omitempty"`
+	Static   map[uint64]string `yaml:",omitempty"`
 }
 
 // Broadcast represents the configuration for maintaining the shard broadcast by
@@ -94,10 +94,23 @@ func (n *Network) Hash() ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
+// Node represents the configuration of an individual registry used for
+// chainspace boostrap.
+type Registry struct {
+	Host  string
+	Token string
+}
+
+// Announce represents the configuration for announcing address to peers.
+type Announce struct {
+	MDNS     bool `yaml:"mdns,omitempty"`
+	Registry bool `yaml:"registry,omitempty"`
+}
+
 // Node represents the configuration of an individual node in a Chainspace
 // network.
 type Node struct {
-	Announce          []string `yaml:"announce,omitempty"`
+	Announce          *Announce `yaml:"announce,omitempty"`
 	Bootstrap         *Bootstrap
 	Broadcast         *Broadcast
 	Connections       *Connections `yaml:"connections"`
@@ -105,7 +118,7 @@ type Node struct {
 	HTTP              HTTP
 	Logging           *Logging
 	Storage           *Storage
-	Token             string `yaml:"token,omitempty"`
+	Registries        []Registry `yaml:registry,omitempty`
 }
 
 // HTTP represents the configuration for the rest http api exposed by a node

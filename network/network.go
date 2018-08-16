@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,17 +22,21 @@ import (
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/log/fld"
+	"chainspace.io/prototype/x509certs"
 	"github.com/grandcat/zeroconf"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/minio/highwayhash"
 )
 
 const (
-	bootstrapURLPath = "/contacts.list"
+	contactsListPath = "contacts.list"
 )
 
 // Error values.
 var (
+	client *http.Client
+	pool   *x509.CertPool
+
 	ErrNodeWithZeroID = errors.New("network: received invalid Node ID: 0")
 )
 
@@ -155,25 +161,30 @@ func (t *Topology) BootstrapStatic(addresses map[uint64]string) error {
 
 // BootstrapURL will use the given URL endpoint to discover the initial
 // addresses of nodes in the network.
-func (t *Topology) BootstrapURL(endpoint string, token string) {
+func (t *Topology) BootstrapURL(registries []config.Registry) {
 	log.Debug("Bootstrapping network via URL", fld.NetworkName(t.name))
-	auth := fmt.Sprintf(`{"auth": {"network_id": "%v", "token": "%v"}}`, t.id, token)
-	go func() {
-		for {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			if err := t.bootstrapURL(ctx, endpoint, auth); err != nil {
-				log.Error("Unable to start bootstrapping with registry", log.Err(err))
+	for _, v := range registries {
+		v := v
+		go func() {
+			auth := fmt.Sprintf(`{"auth": {"network_id": "%v", "token": "%v"}}`, t.id, v.Token)
+			u, _ := url.Parse(v.Host)
+			u.Path = path.Join(u.Path, contactsListPath)
+			endpoint := u.String()
+			for {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				if err := t.bootstrapURL(ctx, endpoint, auth); err != nil {
+					log.Error("Unable to start bootstrapping with registry", log.Err(err))
+				}
+				select {
+				case <-ctx.Done():
+					cancel()
+				}
 			}
-			select {
-			case <-ctx.Done():
-				cancel()
-			}
-		}
-	}()
+		}()
+	}
 }
 
 func (t *Topology) bootstrapURL(ctx context.Context, endpoint string, payload string) error {
-	client := http.Client{}
 	buf := bytes.NewBufferString(payload)
 	req, err := http.NewRequest(http.MethodPost, endpoint, buf)
 	req = req.WithContext(ctx)
@@ -194,7 +205,7 @@ func (t *Topology) bootstrapURL(ctx context.Context, endpoint string, payload st
 	}{}
 	err = json.Unmarshal(b, &res)
 	if err != nil {
-		return fmt.Errorf("unable to unmarshal registry response, %v", err)
+		return fmt.Errorf("unable to unmarshal registry response, %v: %v", err, string(b))
 	}
 
 	for _, v := range res {
@@ -355,4 +366,10 @@ func New(name string, cfg *config.Network) (*Topology, error) {
 		shardCount: uint64(cfg.Shard.Count),
 		shardSize:  uint64(cfg.Shard.Size),
 	}, nil
+}
+
+func init() {
+	pool = x509.NewCertPool()
+	pool.AppendCertsFromPEM(x509certs.PemCerts)
+	client = &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool}}}
 }

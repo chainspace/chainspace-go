@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -311,8 +310,8 @@ func Run(cfg *Config) (*Server, error) {
 	}
 
 	// Bootstrap using a URL endpoint.
-	if cfg.Node.Bootstrap.URL != "" {
-		top.BootstrapURL(cfg.Node.Bootstrap.URL, cfg.Node.Token)
+	if cfg.Node.Bootstrap.Registry {
+		top.BootstrapURL(cfg.Node.Registries)
 	}
 
 	// Get a port to listen on.
@@ -469,18 +468,14 @@ func Run(cfg *Config) (*Server, error) {
 	go node.listen(l)
 
 	// Announce our location to the world.
-	for _, meth := range cfg.Node.Announce {
-		if meth == "mdns" {
-			if err = announceMDNS(cfg.Network.ID, cfg.NodeID, port); err != nil {
-				return nil, err
-			}
-		} else if strings.HasPrefix(meth, "https://") || strings.HasPrefix(meth, "http://") {
-			if err := announceRegistry(meth, cfg.Network.ID, cfg.Node.Token, cfg.NodeID, port); err != nil {
-				return nil, err
-			}
-			// Announce to the given URL endpoint.
-		} else {
-			return nil, fmt.Errorf("node: announcement endpoint %q does not start with http:// or https://", meth)
+	if cfg.Node.Announce.MDNS {
+		if err = announceMDNS(cfg.Network.ID, cfg.NodeID, port); err != nil {
+			return nil, err
+		}
+	}
+	if cfg.Node.Announce.Registry {
+		if err := announceRegistry(cfg.Node.Registries, cfg.Network.ID, cfg.NodeID, port); err != nil {
+			return nil, err
 		}
 	}
 

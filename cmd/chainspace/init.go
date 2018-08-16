@@ -6,7 +6,6 @@ import (
 	"math/rand"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -61,21 +60,19 @@ func cmdInit(args []string, usage string) {
 	}
 
 	bootstrap := &config.Bootstrap{}
-	announceURL := ""
-	token := ""
+	announce := &config.Announce{}
+	registries := []config.Registry{}
 	if len(*registryURL) > 0 {
-		u, err := url.Parse(*registryURL)
+		_, err := url.Parse(*registryURL)
 		if err != nil || (!strings.HasPrefix(*registryURL, "https://") && !strings.HasPrefix(*registryURL, "http://")) {
 			log.Fatal("the given url is not a valid http(s) url", log.String("url", *registryURL))
 		}
-		token = randSeq(10)
-		u2 := *u
-		u.Path = path.Join(u.Path, "contacts.list")
-		bootstrap.URL = u.String()
-		u2.Path = path.Join(u2.Path, "contacts.set")
-		announceURL = u2.String()
+		registries = append(registries, config.Registry{*registryURL, randSeq(10)})
+		bootstrap.Registry = true
+		announce.Registry = true
 	} else {
 		bootstrap.MDNS = true
+		announce.MDNS = true
 	}
 
 	broadcast := &config.Broadcast{
@@ -128,19 +125,14 @@ func cmdInit(args []string, usage string) {
 		}
 		// Create node.yaml
 		cfg := &config.Node{
+			Announce:    announce,
 			Bootstrap:   bootstrap,
 			Broadcast:   broadcast,
 			Connections: connections,
 			Logging:     logging,
 			Storage:     storage,
 			HTTP:        httpcfg,
-			Token:       token,
-		}
-
-		if len(announceURL) > 0 {
-			cfg.Announce = []string{announceURL}
-		} else {
-			cfg.Announce = []string{"mdns"}
+			Registries:  registries,
 		}
 
 		if err := writeYAML(filepath.Join(nodeDir, "node.yaml"), cfg); err != nil {
