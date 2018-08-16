@@ -132,7 +132,7 @@ func (g *Graph) process(e *entry) {
 
 	var s *state
 	if e.prev.Valid() {
-		s = g.states[e.prev].clone()
+		s = g.states[e.prev].clone(g.round)
 	} else {
 		s = &state{
 			timeouts: map[uint64][]timeout{},

@@ -61,6 +61,10 @@ type final struct {
 	round uint64
 }
 
+func (f final) getRound() uint64 {
+	return f.round
+}
+
 func (f final) skind() stateDataKind {
 	return finalState
 }
@@ -69,6 +73,10 @@ type hnv struct {
 	node  uint64
 	round uint64
 	view  uint32
+}
+
+func (h hnv) getRound() uint64 {
+	return h.round
 }
 
 func (h hnv) skind() stateDataKind {
@@ -163,6 +171,10 @@ type prepared struct {
 	view  uint32
 }
 
+func (p prepared) getRound() uint64 {
+	return p.round
+}
+
 func (p prepared) skind() stateDataKind {
 	return preparedState
 }
@@ -195,6 +207,10 @@ type preprepared struct {
 	view  uint32
 }
 
+func (p preprepared) getRound() uint64 {
+	return p.round
+}
+
 func (p preprepared) skind() stateDataKind {
 	return prepreparedState
 }
@@ -209,7 +225,7 @@ type state struct {
 	timeouts map[uint64][]timeout
 }
 
-func (s *state) clone() *state {
+func (s *state) clone(minround uint64) *state {
 	if s == nil {
 		return &state{
 			timeouts: map[uint64][]timeout{},
@@ -221,6 +237,9 @@ func (s *state) clone() *state {
 	if s.bitsets != nil {
 		bitsets := map[preprepare]*bitset{}
 		for k, v := range s.bitsets {
+			if k.round < minround {
+				continue
+			}
 			bitsets[k] = v.clone()
 		}
 		n.bitsets = bitsets
@@ -228,6 +247,9 @@ func (s *state) clone() *state {
 	if s.data != nil {
 		data := map[stateData]interface{}{}
 		for k, v := range s.data {
+			if k.getRound() < minround {
+				continue
+			}
 			data[k] = v
 		}
 		n.data = data
@@ -242,6 +264,9 @@ func (s *state) clone() *state {
 	if s.final != nil {
 		final := map[noderound]string{}
 		for k, v := range s.final {
+			if k.round < minround {
+				continue
+			}
 			final[k] = v
 		}
 		n.final = final
@@ -251,6 +276,9 @@ func (s *state) clone() *state {
 	n.out = out
 	timeouts := map[uint64][]timeout{}
 	for k, v := range s.timeouts {
+		if k < minround {
+			continue
+		}
 		timeouts[k] = v
 	}
 	n.timeouts = timeouts
@@ -295,6 +323,7 @@ func (s *state) getView(node uint64, round uint64) uint32 {
 }
 
 type stateData interface {
+	getRound() uint64
 	skind() stateDataKind
 }
 
@@ -334,6 +363,10 @@ type view struct {
 	round uint64
 }
 
+func (v view) getRound() uint64 {
+	return v.round
+}
+
 func (v view) skind() stateDataKind {
 	return viewState
 }
@@ -365,6 +398,10 @@ type viewchanged struct {
 	node  uint64
 	round uint64
 	view  uint32
+}
+
+func (v viewchanged) getRound() uint64 {
+	return v.round
 }
 
 func (v viewchanged) skind() stateDataKind {
