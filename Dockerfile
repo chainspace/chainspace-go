@@ -6,7 +6,7 @@ RUN apk update && apk upgrade && apk add curl openssh git
 RUN curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
 COPY . /go/src/chainspace.io/prototype
 WORKDIR /go/src/chainspace.io/prototype
-RUN dep ensure && CGO_ENABLED=0 GOOS=linux go install -a -tags netgo -ldflags '-w' chainspace.io/prototype/cmd/chainspace
+RUN CGO_ENABLED=0 GOOS=linux go install -a -tags netgo -ldflags '-w' chainspace.io/prototype/cmd/chainspace
 
 FROM scratch
 

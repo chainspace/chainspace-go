@@ -110,7 +110,7 @@ resource "google_compute_instance" "default" {
     }
 
     inline = [<<EOF
-     sudo docker run -d --name chainspace --volume=/etc/chainspace/conf:/conf --network=host ${data.google_container_registry_image.chainspace.image_url} run --console-log info --config-root /conf testnet `cat /etc/chainspace/node_id`
+     sudo docker run -d --name chainspace --volume=/etc/chainspace/conf:/conf --network=host ${data.google_container_registry_image.chainspace.image_url} genload --tx-interval 3us --config-root /conf testnet `cat /etc/chainspace/node_id`
      EOF
     ]
   }
