@@ -288,8 +288,9 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 	if err != nil {
 		return nil, fmt.Errorf("transactor: unable to marshal consensus tx: %v", err)
 	}
-	s.broadcaster.AddTransaction(b, 0)
-
+	if s.isNodeInitiatingBroadcast(ID(ids.TxID)) {
+		s.broadcaster.AddTransaction(b, 0)
+	}
 	// block here while the statemachine does its job
 	txres := <-txdetails.Result
 	if !txres {
@@ -477,4 +478,11 @@ func New(cfg *Config) (*Service, error) {
 	go s.pe.Run()
 	// go s.gcStateMachines()
 	return s, nil
+}
+
+func (s *Service) isNodeInitiatingBroadcast(txID uint32) bool {
+	nodesInShard := s.top.NodesInShard(s.shardID)
+	n := nodesInShard[txID%(uint32(len(nodesInShard)))] + 1
+	log.Info("consensus will be started", log.Uint64("peer", n))
+	return n == s.nodeID
 }

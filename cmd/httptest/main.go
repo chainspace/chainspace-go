@@ -113,7 +113,7 @@ func worker(ctx context.Context, seed []string, wg *sync.WaitGroup, id int) {
 		}
 
 		client := http.Client{
-			Timeout: 5 * time.Second,
+			Timeout: 10 * time.Second,
 		}
 
 		fmt.Printf("worker %v sending new transaction\n", id)
@@ -159,7 +159,7 @@ func worker(ctx context.Context, seed []string, wg *sync.WaitGroup, id int) {
 		metrics[id] = append(metrics[id], time.Since(start))
 		mu.Unlock()
 		fmt.Printf("worker %v received new objects keys: %v\n", id, seed)
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(2 * time.Second)
 	}
 	fmt.Printf("worker %v finished at: %v\n", id, time.Now().Format(time.Stamp))
 }

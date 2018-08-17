@@ -761,7 +761,11 @@ func (s *Service) toConsensus2Triggered(tx *TxDetails) (State, error) {
 	if err != nil {
 		return StateAborted, fmt.Errorf("transactor: unable to marshal consensus tx: %v", err)
 	}
-	s.broadcaster.AddTransaction(b, 0)
+
+	// choose the node to start the consensus based on the hash id of the transaction
+	if s.isNodeInitiatingBroadcast(tx.HashID) {
+		s.broadcaster.AddTransaction(b, 0)
+	}
 	return StateWaitingForConsensus2, nil
 }
 
@@ -777,7 +781,10 @@ func (s *Service) toConsensusCommitTriggered(tx *TxDetails) (State, error) {
 	if err != nil {
 		return StateAborted, fmt.Errorf("transactor: unable to marshal consensus tx: %v", err)
 	}
-	s.broadcaster.AddTransaction(b, 0)
+
+	if s.isNodeInitiatingBroadcast(tx.HashID) {
+		s.broadcaster.AddTransaction(b, 0)
+	}
 	return StateWaitingForConsensusCommit, nil
 }
 
