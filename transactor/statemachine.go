@@ -136,14 +136,18 @@ func (sm *StateMachine) moveState() error {
 }
 
 func (sm *StateMachine) consumeEvent(e *Event) bool {
-	log.Info("processing new event",
-		log.Uint32("id", sm.txDetails.HashID),
-		log.String("state", sm.state.String()),
-		fld.PeerID(e.peerID),
-	)
+	if log.AtDebug() {
+		log.Info("processing new event",
+			log.Uint32("id", sm.txDetails.HashID),
+			log.String("state", sm.state.String()),
+			fld.PeerID(e.peerID),
+		)
+	}
 	sm.table.onEvent(sm.txDetails, e)
 	if sm.state == StateSucceeded || sm.state == StateAborted {
-		log.Info("statemachine reach end", log.String("final_state", sm.state.String()))
+		if log.AtDebug() {
+			log.Debug("statemachine reach end", log.String("final_state", sm.state.String()))
+		}
 		return true
 	}
 	err := sm.moveState()
@@ -159,7 +163,9 @@ func (sm *StateMachine) OnEvent(e *Event) {
 }
 
 func NewStateMachine(table *StateTable, txDetails *TxDetails, initialState State) *StateMachine {
-	log.Info("starting new statemachine", fld.TxID(txDetails.HashID))
+	if log.AtDebug() {
+		log.Debug("starting new statemachine", fld.TxID(txDetails.HashID))
+	}
 	sm := &StateMachine{
 		state:     initialState,
 		table:     table,

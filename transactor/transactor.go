@@ -112,11 +112,15 @@ func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, e
 func (s *Service) consumeEvents(e *Event) bool {
 	sm, ok := s.getSateMachine(e.msg.Tx.ID)
 	if ok {
-		log.Info("sending new event to statemachine", fld.TxID(ID(e.msg.Tx.ID)), fld.PeerID(e.peerID), fld.PeerShard(s.top.ShardForNode(e.peerID)))
+		if log.AtDebug() {
+			log.Debug("sending new event to statemachine", fld.TxID(ID(e.msg.Tx.ID)), fld.PeerID(e.peerID), fld.PeerShard(s.top.ShardForNode(e.peerID)))
+		}
 		sm.OnEvent(e)
 		return true
 	}
-	log.Info("statemachine not ready", fld.TxID(ID(e.msg.Tx.ID)))
+	if log.AtDebug() {
+		log.Debug("statemachine not ready", fld.TxID(ID(e.msg.Tx.ID)))
+	}
 	return false
 }
 
@@ -128,7 +132,7 @@ func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64,
 		return nil, fmt.Errorf("transactor: sbac unmarshaling error: %v", err)
 	}
 	// if we received a COMMIT opcode, the statemachine may not exists
-	// lets check an create it here.
+	// lets check and create it here.
 	if req.Op == SBACOpcode_COMMIT {
 		txdetails := NewTxDetails(req.Tx.ID, []byte{}, req.Tx.Tx, req.Tx.Evidences)
 		_ = s.getOrCreateStateMachine(txdetails, StateWaitingForCommit)
@@ -172,7 +176,9 @@ func (s *Service) checkTransaction(ctx context.Context, payload []byte) (*servic
 		return nil, fmt.Errorf("transactor: unable to marshal check_transaction response")
 	}
 
-	log.Info("transactor: transaction checked successfully")
+	if log.AtDebug() {
+		log.Debug("transactor: transaction checked successfully", fld.TxID(ID(ids.TxID)))
+	}
 	return &service.Message{
 		Opcode:  uint32(Opcode_ADD_TRANSACTION),
 		Payload: b,
@@ -185,7 +191,9 @@ func (s *Service) verifySignatures(txID []byte, evidences map[uint64][]byte) boo
 	for nodeID, sig := range evidences {
 		key := keys[nodeID]
 		if !key.Verify(txID, sig) {
-			log.Info("invalid signature", fld.PeerID(nodeID))
+			if log.AtDebug() {
+				log.Debug("invalid signature", fld.PeerID(nodeID))
+			}
 			ok = false
 		}
 	}
@@ -225,7 +233,9 @@ func (s *Service) gcStateMachines() {
 		s.txstatesmu.Lock()
 		for k, v := range s.txstates {
 			if v.State() == StateAborted || v.State() == StateSucceeded {
-				log.Info("removing statemachine", log.String("finale_state", v.State().String()), fld.TxID(ID([]byte(k))))
+				if log.AtDebug() {
+					log.Debug("removing statemachine", log.String("finale_state", v.State().String()), fld.TxID(ID([]byte(k))))
+				}
 			}
 			delete(s.txstates, k)
 		}
@@ -386,10 +396,14 @@ func (s *Service) createObject(ctx context.Context, payload []byte) (*service.Me
 	ch := combihash.New()
 	ch.Write([]byte(req.Object))
 	key := ch.Digest()
-	log.Info("transactor: creating new object", log.String("objet", string(req.Object)), log.Uint32("object.id", ID(key)))
+	if log.AtDebug() {
+		log.Debug("transactor: creating new object", log.String("objet", string(req.Object)), log.Uint32("object.id", ID(key)))
+	}
 	o, err := CreateObject(s.store, key, req.Object)
 	if err != nil {
-		log.Info("transactor: unable to create object", log.String("objet", string(req.Object)), log.Uint32("object.id", ID(key)), fld.Err(err))
+		if log.AtDebug() {
+			log.Debug("transactor: unable to create object", log.String("objet", string(req.Object)), log.Uint32("object.id", ID(key)), fld.Err(err))
+		}
 		return nil, err
 	}
 

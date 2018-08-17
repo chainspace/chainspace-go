@@ -151,7 +151,9 @@ func (c *ConnsCache) readAck(conn *network.Conn, stop chan bool) {
 				_, ok := c.msgAcks[msgack.LastID]
 				if !ok {
 					// unknow lastID
-					log.Info("unknown lastID", log.Uint64("lastid", msgack.LastID))
+					if log.AtDebug() {
+						log.Debug("unknown lastID", log.Uint64("lastid", msgack.LastID))
+					}
 				} else {
 					delete(c.msgAcks, msgack.LastID)
 				}

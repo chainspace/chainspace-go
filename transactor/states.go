@@ -141,7 +141,12 @@ func (s *Service) onEvent(tx *TxDetails, event *Event) error {
 		log.Error("invalid transaction sent to state machine", log.Uint32("expected", tx.HashID), log.Uint32("got", ID(event.msg.Tx.ID)))
 		return errors.New("invalid transaction ID")
 	}
-	log.Info(SBACOpcode_name[int32(event.msg.Op)]+" decision received", fld.TxID(tx.HashID), log.String("decision", SBACDecision_name[int32(event.msg.Decision)]), fld.PeerID(event.peerID))
+	if log.AtDebug() {
+		log.Debug(SBACOpcode_name[int32(event.msg.Op)]+" decision received",
+			fld.TxID(tx.HashID),
+			log.String("decision", SBACDecision_name[int32(event.msg.Decision)]),
+			fld.PeerID(event.peerID))
+	}
 	switch event.msg.Op {
 	case SBACOpcode_PHASE1:
 		tx.Phase1Decisions[event.peerID] = SignedDecision{event.msg.Decision, event.msg.Tx.GetSignature()}
@@ -226,33 +231,41 @@ func (s *Service) onWaitingFor(tx *TxDetails, decisions map[uint64]SignedDecisio
 			}
 		}
 		if rejected >= vtplusone {
-			log.Info(phaseName+" transaction rejected",
-				fld.TxID(tx.HashID),
-				fld.PeerShard(v),
-				log.Uint64("t+1", vtplusone),
-				log.Uint64("rejected", rejected),
-			)
+			if log.AtDebug() {
+				log.Debug(phaseName+" transaction rejected",
+					fld.TxID(tx.HashID),
+					fld.PeerShard(v),
+					log.Uint64("t+1", vtplusone),
+					log.Uint64("rejected", rejected),
+				)
+			}
 			return WaitingDecisionResultAbort
 		}
 		if accepted >= vtwotplusone {
-			log.Info(phaseName+" transaction accepted",
-				fld.TxID(tx.HashID),
-				fld.PeerShard(v),
-				log.Uint64s("shards_involved", shards),
-				log.Uint64("2t+1", vtwotplusone),
-				log.Uint64("accepted", accepted),
-			)
+			if log.AtDebug() {
+				log.Debug(phaseName+" transaction accepted",
+					fld.TxID(tx.HashID),
+					fld.PeerShard(v),
+					log.Uint64s("shards_involved", shards),
+					log.Uint64("2t+1", vtwotplusone),
+					log.Uint64("accepted", accepted),
+				)
+			}
 			continue
 		}
 		somePending = true
 	}
 
 	if somePending {
-		log.Info(phaseName+" transaction pending, not enough answers from shards", fld.TxID(tx.HashID))
+		if log.AtDebug() {
+			log.Debug(phaseName+" transaction pending, not enough answers from shards", fld.TxID(tx.HashID))
+		}
 		return WaitingDecisionResultPending
 	}
 
-	log.Info(phaseName+" transaction accepted by all shards", fld.TxID(tx.HashID))
+	if log.AtDebug() {
+		log.Debug(phaseName+" transaction accepted by all shards", fld.TxID(tx.HashID))
+	}
 
 	// verify signatures now
 	for k, v := range decisions {
@@ -341,7 +354,9 @@ func (s *Service) onWaitingForConsensus1(tx *TxDetails) (State, error) {
 		}
 	}
 
-	log.Info("consensus1 evidences and input objects/references checked successfully", fld.TxID(tx.HashID))
+	if log.AtDebug() {
+		log.Debug("consensus1 evidences and input objects/references checked successfully", fld.TxID(tx.HashID))
+	}
 	return StateObjectLocked, nil
 }
 
@@ -475,7 +490,9 @@ func (s *Service) toRejectPhase1Broadcasted(tx *TxDetails) (State, error) {
 		log.Error("unable to sent reject transaction to all shards", fld.TxID(tx.HashID), fld.Err(err))
 	}
 
-	log.Info("reject transaction sent to all shards", fld.TxID(tx.HashID))
+	if log.AtDebug() {
+		log.Debug("reject transaction sent to all shards", fld.TxID(tx.HashID))
+	}
 	return StateAborted, err
 }
 
@@ -508,7 +525,9 @@ func (s *Service) toAcceptPhase1Broadcasted(tx *TxDetails) (State, error) {
 		return StateAborted, err
 	}
 
-	log.Info("accept transaction sent to all shards", fld.TxID(tx.HashID))
+	if log.AtDebug() {
+		log.Debug("accept transaction sent to all shards", fld.TxID(tx.HashID))
+	}
 	return StateWaitingForPhase1, nil
 }
 
@@ -540,7 +559,9 @@ func (s *Service) toRejectPhase2Broadcasted(tx *TxDetails) (State, error) {
 		log.Error("phase2 reject unable to sent reject transaction to all shards", fld.TxID(tx.HashID), fld.Err(err))
 	}
 
-	log.Info("phase2 reject transaction sent to all shards", fld.TxID(tx.HashID))
+	if log.AtDebug() {
+		log.Debug("phase2 reject transaction sent to all shards", fld.TxID(tx.HashID))
+	}
 	return StateAborted, err
 }
 
@@ -573,7 +594,9 @@ func (s *Service) toAcceptPhase2Broadcasted(tx *TxDetails) (State, error) {
 		return StateAborted, err
 	}
 
-	log.Info("phase2 accept transaction sent to all shards", fld.TxID(tx.HashID))
+	if log.AtDebug() {
+		log.Debug("phase2 accept transaction sent to all shards", fld.TxID(tx.HashID))
+	}
 	return StateWaitingForPhase2, nil
 }
 
@@ -594,7 +617,9 @@ func (s *Service) toObjectDeactivated(tx *TxDetails) (State, error) {
 		return StateAborted, nil
 	}
 
-	log.Info("all object deactivated successfully", fld.TxID(tx.HashID))
+	if log.AtDebug() {
+		log.Debug("all object deactivated successfully", fld.TxID(tx.HashID))
+	}
 	return StateObjectsCreated, nil
 }
 
@@ -625,7 +650,9 @@ func (s *Service) toObjectsCreated(tx *TxDetails) (State, error) {
 		log.Error("unable to create objects", fld.TxID(tx.HashID), fld.Err(err))
 		return StateAborted, err
 	}
-	log.Info("all objects created successfully", fld.TxID(tx.HashID))
+	if log.AtDebug() {
+		log.Debug("all objects created successfully", fld.TxID(tx.HashID))
+	}
 	if allObjectsInCurrentShard {
 		return StateSucceeded, nil
 	}
@@ -714,8 +741,10 @@ func (s *Service) toCommitObjectsBroadcasted(tx *TxDetails) (State, error) {
 
 	// TODO(): this should be blocking here waiting for the shards to send us back the response so we can return an error
 
-	log.Info("commit accept transaction sent to all shards",
-		fld.TxID(tx.HashID), log.Uint64s("shards_involved", shardsInvolved))
+	if log.AtDebug() {
+		log.Debug("commit accept transaction sent to all shards",
+			fld.TxID(tx.HashID), log.Uint64s("shards_involved", shardsInvolved))
+	}
 	return StateSucceeded, nil
 }
 
