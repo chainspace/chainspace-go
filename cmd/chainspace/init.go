@@ -1,28 +1,25 @@
 package main
 
 import (
-	"encoding/base64"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
-	"math/rand"
-	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
-
-	"chainspace.io/prototype/log/fld"
 
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/log"
+	"chainspace.io/prototype/log/fld"
 )
 
 func cmdInit(args []string, usage string) {
 	opts := newOpts("init NETWORK_NAME [OPTIONS]", usage)
 
 	configRoot := opts.Flags("--config-root").Label("PATH").String("Path to the Chainspace root directory [~/.chainspace]", defaultRootDir())
+	registry := opts.Flags("--registry").Label("HOST").String("address of the network registry")
 	shardCount := opts.Flags("--shard-count").Label("N").Int("Number of shards in the network [3]")
 	shardSize := opts.Flags("--shard-size").Label("N").Int("Number of nodes in each shard [4]")
-	registryURL := opts.Flags("--registry-url").Label("URL").String("address of the registry to bootrasp / announce on the network", "")
 
 	params := opts.Parse(args)
 
@@ -39,14 +36,34 @@ func cmdInit(args []string, usage string) {
 	netDir := filepath.Join(*configRoot, networkName)
 	createUnlessExists(netDir)
 
+	announce := &config.Announce{}
+	bootstrap := &config.Bootstrap{}
 	consensus := &config.Consensus{
 		BlockLimit:      100 * config.MB,
 		NonceExpiration: 30 * time.Second,
-		RoundInterval:   time.Second,
+		RoundInterval:   1 * time.Second,
 		ViewTimeout:     15,
 	}
 
 	peers := map[uint64]*config.Peer{}
+	registries := []config.Registry{}
+	if *registry == "" {
+		announce.MDNS = true
+		bootstrap.MDNS = true
+	} else {
+		announce.Registry = true
+		bootstrap.Registry = true
+		token := make([]byte, 36)
+		_, err := rand.Read(token)
+		if err != nil {
+			log.Fatal("Unable to generate random token for use with the network registry", fld.Err(err))
+		}
+		registries = append(registries, config.Registry{
+			Host:  *registry,
+			Token: hex.EncodeToString(token),
+		})
+	}
+
 	shard := &config.Shard{
 		Count: *shardCount,
 		Size:  *shardSize,
@@ -54,30 +71,14 @@ func cmdInit(args []string, usage string) {
 
 	network := &config.Network{
 		Consensus:  consensus,
-		MaxPayload: 128 * config.MB,
+		MaxPayload: 1280 * config.MB,
 		Shard:      shard,
 		SeedNodes:  peers,
 	}
 
-	bootstrap := &config.Bootstrap{}
-	announce := &config.Announce{}
-	registries := []config.Registry{}
-	if len(*registryURL) > 0 {
-		_, err := url.Parse(*registryURL)
-		if err != nil || (!strings.HasPrefix(*registryURL, "https://") && !strings.HasPrefix(*registryURL, "http://")) {
-			log.Fatal("the given url is not a valid http(s) url", log.String("url", *registryURL))
-		}
-		registries = append(registries, config.Registry{*registryURL, randSeq(10)})
-		bootstrap.Registry = true
-		announce.Registry = true
-	} else {
-		bootstrap.MDNS = true
-		announce.MDNS = true
-	}
-
 	broadcast := &config.Broadcast{
 		InitialBackoff: 1 * time.Second,
-		MaxBackoff:     30 * time.Second,
+		MaxBackoff:     5 * time.Second,
 	}
 
 	connections := &config.Connections{
@@ -162,14 +163,4 @@ func cmdInit(args []string, usage string) {
 		log.Fatal("Could not write to network.yaml", fld.Err(err))
 	}
 
-}
-
-var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-func randSeq(n int) string {
-	b := make([]rune, n)
-	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
-	}
-	return base64.StdEncoding.EncodeToString([]byte(string(b)))
 }
