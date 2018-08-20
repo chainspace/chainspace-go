@@ -11,8 +11,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/url"
-	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -78,31 +76,6 @@ type Topology struct {
 	shardSize  uint64
 }
 
-// BootstrapFile will use the JSON file at the given path for the initial set of
-// addresses for nodes in the network.
-func (t *Topology) BootstrapFile(path string) error {
-	log.Debug("Bootstrapping network via file", fld.NetworkName(t.name), fld.Path(path))
-	return errors.New("network: bootstrapping from a static map is not supported yet")
-}
-
-// BootstrapMDNS will try to auto-discover the addresses of initial nodes using
-// multicast DNS.
-func (t *Topology) BootstrapMDNS() {
-	log.Debug("Bootstrapping network via mDNS", fld.NetworkName(t.name))
-	go func() {
-		for {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			if err := t.bootstrapMDNS(ctx); err != nil {
-				log.Error("Unable to start bootstrapping mDNS", log.Err(err))
-			}
-			select {
-			case <-ctx.Done():
-				cancel()
-			}
-		}
-	}()
-}
-
 func (t *Topology) bootstrapMDNS(ctx context.Context) error {
 	resolver, err := zeroconf.NewResolver(nil)
 	if err != nil {
@@ -147,44 +120,7 @@ func (t *Topology) bootstrapMDNS(ctx context.Context) error {
 	return resolver.Browse(ctx, service, "local.", entries)
 }
 
-// BootstrapStatic will use the given static map of addresses for the initial
-// addresses of nodes in the network.
-func (t *Topology) BootstrapStatic(addresses map[uint64]string) error {
-	log.Debug("Bootstrapping network via a static map", fld.NetworkName(t.name))
-	t.contacts.Lock()
-	for id, addr := range addresses {
-		t.contacts.data[id] = addr
-	}
-	t.contacts.Unlock()
-	return nil
-}
-
-// BootstrapURL will use the given URL endpoint to discover the initial
-// addresses of nodes in the network.
-func (t *Topology) BootstrapURL(registries []config.Registry) {
-	log.Debug("Bootstrapping network via URL", fld.NetworkName(t.name))
-	for _, v := range registries {
-		v := v
-		go func() {
-			auth := fmt.Sprintf(`{"auth": {"network_id": "%v", "token": "%v"}}`, t.id, v.Token)
-			u, _ := url.Parse(v.Host)
-			u.Path = path.Join(u.Path, contactsListPath)
-			endpoint := u.String()
-			for {
-				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-				if err := t.bootstrapURL(ctx, endpoint, auth); err != nil {
-					log.Error("Unable to start bootstrapping with registry", log.Err(err))
-				}
-				select {
-				case <-ctx.Done():
-					cancel()
-				}
-			}
-		}()
-	}
-}
-
-func (t *Topology) bootstrapURL(ctx context.Context, endpoint string, payload string) error {
+func (t *Topology) bootstrapRegistries(ctx context.Context, endpoint string, payload string) error {
 	buf := bytes.NewBufferString(payload)
 	req, err := http.NewRequest(http.MethodPost, endpoint, buf)
 	req = req.WithContext(ctx)
@@ -195,6 +131,7 @@ func (t *Topology) bootstrapURL(ctx context.Context, endpoint string, payload st
 	}
 	b, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
+		resp.Body.Close()
 		return fmt.Errorf("unable reading response from registry: %v", err)
 	}
 	resp.Body.Close()
@@ -207,7 +144,6 @@ func (t *Topology) bootstrapURL(ctx context.Context, endpoint string, payload st
 	if err != nil {
 		return fmt.Errorf("unable to unmarshal registry response, %v: %v", err, string(b))
 	}
-
 	for _, v := range res {
 		oldAddr := t.contacts.get(v.NodeID)
 		addr := v.Addr + ":" + fmt.Sprintf("%v", v.Port)
@@ -222,7 +158,65 @@ func (t *Topology) bootstrapURL(ctx context.Context, endpoint string, payload st
 			t.mu.Unlock()
 		}
 	}
+	return nil
+}
 
+// BootstrapFile will use the JSON file at the given path for the initial set of
+// addresses for nodes in the network.
+func (t *Topology) BootstrapFile(path string) error {
+	log.Debug("Bootstrapping network via file", fld.NetworkName(t.name), fld.Path(path))
+	return errors.New("network: bootstrapping from a static map is not supported yet")
+}
+
+// BootstrapMDNS will try to auto-discover the addresses of initial nodes using
+// multicast DNS.
+func (t *Topology) BootstrapMDNS() {
+	log.Debug("Bootstrapping network via mDNS", fld.NetworkName(t.name))
+	go func() {
+		for {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			if err := t.bootstrapMDNS(ctx); err != nil {
+				log.Error("Unable to start bootstrapping mDNS", log.Err(err))
+			}
+			select {
+			case <-ctx.Done():
+				cancel()
+			}
+		}
+	}()
+}
+
+// BootstrapRegistries will use the given registries to discover the initial
+// addresses of nodes in the network.
+func (t *Topology) BootstrapRegistries(registries []config.Registry) {
+	log.Debug("Bootstrapping network via registry", fld.NetworkName(t.name))
+	for _, v := range registries {
+		go func(registry config.Registry) {
+			auth := fmt.Sprintf(`{"auth": {"network_id": "%v", "token": "%v"}}`, t.id, registry.Token)
+			endpoint := registry.URL() + contactsListPath
+			for {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				if err := t.bootstrapRegistries(ctx, endpoint, auth); err != nil {
+					log.Error("Unable to bootstrap via the registry", log.Err(err))
+				}
+				select {
+				case <-ctx.Done():
+					cancel()
+				}
+			}
+		}(v)
+	}
+}
+
+// BootstrapStatic will use the given static map of addresses for the initial
+// addresses of nodes in the network.
+func (t *Topology) BootstrapStatic(addresses map[uint64]string) error {
+	log.Debug("Bootstrapping network via a static map", fld.NetworkName(t.name))
+	t.contacts.Lock()
+	for id, addr := range addresses {
+		t.contacts.data[id] = addr
+	}
+	t.contacts.Unlock()
 	return nil
 }
 

@@ -302,16 +302,16 @@ func Run(cfg *Config) (*Server, error) {
 		top.BootstrapMDNS()
 	}
 
+	// Bootstrap via network registries.
+	if cfg.Node.Bootstrap.Registry {
+		top.BootstrapRegistries(cfg.Node.Registries)
+	}
+
 	// Bootstrap using a static map of addresses.
 	if cfg.Node.Bootstrap.Static != nil {
 		if err = top.BootstrapStatic(cfg.Node.Bootstrap.Static); err != nil {
 			return nil, err
 		}
-	}
-
-	// Bootstrap using a URL endpoint.
-	if cfg.Node.Bootstrap.Registry {
-		top.BootstrapURL(cfg.Node.Registries)
 	}
 
 	// Get a port to listen on.

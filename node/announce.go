@@ -7,8 +7,6 @@ import (
 	"crypto/x509"
 	"fmt"
 	"net/http"
-	"net/url"
-	"path"
 	"strings"
 	"time"
 
@@ -38,22 +36,21 @@ func announceMDNS(networkID string, nodeID uint64, port int) error {
 
 func announceRegistry(registries []config.Registry, networkID string, nodeID uint64, port int) error {
 	for _, v := range registries {
-		u, _ := url.Parse(v.Host)
-		u.Path = path.Join(u.Path, contactsSetPath)
+		endpoint := v.URL() + contactsSetPath
 		s := fmt.Sprintf(`{"auth": {"network_id": "%v", "token": "%v"}, "config": {"node_id": %v, "port": %v}}`, networkID, v.Token, nodeID, port)
 		payload := bytes.NewBufferString(s)
 		// log.Error("announce to registry", log.String("lol", s))
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		req, err := http.NewRequest(http.MethodPost, u.String(), payload)
+		req, err := http.NewRequest(http.MethodPost, endpoint, payload)
 		req = req.WithContext(ctx)
 		req.Header.Add("Content-Type", "application/json")
 		resp, err := client.Do(req)
 		if err != nil {
-			return fmt.Errorf("error calling registry: %v", err)
+			return fmt.Errorf("node: error calling registry: %v", err)
 		}
 		if resp.StatusCode != http.StatusNoContent {
-			return fmt.Errorf("registry answered with unexpected http status: %v", resp.StatusCode)
+			return fmt.Errorf("node: registry answered with unexpected http status: %v", resp.StatusCode)
 		}
 	}
 	return nil
