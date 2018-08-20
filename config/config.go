@@ -6,6 +6,7 @@ package config // import "chainspace.io/prototype/config"
 import (
 	"crypto/sha512"
 	"io/ioutil"
+	"strings"
 	"time"
 
 	"chainspace.io/prototype/log"
@@ -94,11 +95,19 @@ func (n *Network) Hash() ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
-// Node represents the configuration of an individual registry used for
-// chainspace boostrap.
+// Registry represents the configuration of an individual network registry
+// server.
 type Registry struct {
 	Host  string
 	Token string
+}
+
+// URL returns the registry's root URL including the scheme.
+func (r Registry) URL() string {
+	if strings.HasPrefix(r.Host, "localhost:") || r.Host == "localhost" {
+		return "http://" + r.Host + "/"
+	}
+	return "https://" + r.Host + "/"
 }
 
 // Announce represents the configuration for announcing address to peers.
