@@ -1,6 +1,7 @@
 package log
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -46,9 +47,21 @@ func (l *Logger) Debug(text string, fields ...Field) {
 	l.log(DebugLevel, text, fields)
 }
 
+// Debugf formats similarly to Printf and logs the resulting output at the
+// DebugLevel.
+func (l *Logger) Debugf(format string, args ...interface{}) {
+	l.log(DebugLevel, fmt.Sprintf(format, args...), nil)
+}
+
 // Error logs the given text and fields at ErrorLevel.
 func (l *Logger) Error(text string, fields ...Field) {
 	l.log(ErrorLevel, text, fields)
+}
+
+// Errorf formats similarly to Printf and logs the resulting output at the
+// ErrorLevel.
+func (l *Logger) Errorf(format string, args ...interface{}) {
+	l.log(ErrorLevel, fmt.Sprintf(format, args...), nil)
 }
 
 // Fatal logs the given text and fields at FatalLevel.
@@ -57,9 +70,21 @@ func (l *Logger) Fatal(text string, fields ...Field) {
 	process.Exit(1)
 }
 
+// Fatalf formats similarly to Printf and logs the resulting output at the
+// FatalLevel.
+func (l *Logger) Fatalf(format string, args ...interface{}) {
+	l.log(FatalLevel, fmt.Sprintf(format, args...), nil)
+}
+
 // Info logs the given text and fields at InfoLevel.
 func (l *Logger) Info(text string, fields ...Field) {
 	l.log(InfoLevel, text, fields)
+}
+
+// Infof formats similarly to Printf and logs the resulting output at the
+// InfoLevel.
+func (l *Logger) Infof(format string, args ...interface{}) {
+	l.log(InfoLevel, fmt.Sprintf(format, args...), nil)
 }
 
 // With returns a new logger that comes preset with the given fields.
