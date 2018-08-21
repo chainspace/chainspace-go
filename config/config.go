@@ -38,10 +38,11 @@ type Connections struct {
 
 // Consensus represents the configuration for the consensus protocol.
 type Consensus struct {
-	BlockLimit      ByteSize      `yaml:"block.limit"`
-	NonceExpiration time.Duration `yaml:"nonce.expiration"`
-	RoundInterval   time.Duration `yaml:"round.interval"`
-	ViewTimeout     int           `yaml:"view.timeout"`
+	BlockReferencesSizeLimit   ByteSize      `yaml:"block.references.size.limit"`
+	BlockTransactionsSizeLimit ByteSize      `yaml:"block.transactions.size.limit"`
+	NonceExpiration            time.Duration `yaml:"nonce.expiration"`
+	RoundInterval              time.Duration `yaml:"round.interval"`
+	ViewTimeout                int           `yaml:"view.timeout"`
 }
 
 // Key represents a cryptographic key of some kind.

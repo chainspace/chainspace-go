@@ -367,7 +367,12 @@ func Run(cfg *Config) (*Server, error) {
 		}
 	}
 
-	blockLimit, err := cfg.Network.Consensus.BlockLimit.Int()
+	refLimit, err := cfg.Network.Consensus.BlockReferencesSizeLimit.Int()
+	if err != nil {
+		return nil, err
+	}
+
+	txLimit, err := cfg.Network.Consensus.BlockTransactionsSizeLimit.Int()
 	if err != nil {
 		return nil, err
 	}
@@ -379,7 +384,8 @@ func Run(cfg *Config) (*Server, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	bcfg := &broadcast.Config{
-		BlockLimit:     blockLimit,
+		BlockRefLimit:  refLimit,
+		BlockTxLimit:   txLimit,
 		Directory:      dir,
 		Key:            key,
 		Keys:           keys,

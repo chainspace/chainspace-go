@@ -39,10 +39,11 @@ func cmdInit(args []string, usage string) {
 	announce := &config.Announce{}
 	bootstrap := &config.Bootstrap{}
 	consensus := &config.Consensus{
-		BlockLimit:      100 * config.MB,
-		NonceExpiration: 30 * time.Second,
-		RoundInterval:   1 * time.Second,
-		ViewTimeout:     15,
+		BlockReferencesSizeLimit:   10 * config.MB,
+		BlockTransactionsSizeLimit: 100 * config.MB,
+		NonceExpiration:            30 * time.Second,
+		RoundInterval:              1 * time.Second,
+		ViewTimeout:                15,
 	}
 
 	peers := map[uint64]*config.Peer{}
