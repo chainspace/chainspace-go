@@ -28,9 +28,7 @@ func (pe *pendingEvents) Run() {
 		if !pe.cb(e) {
 			pe.OnEvent(e)
 		}
-
 	}
-
 }
 
 func NewPendingEvents(cb func(*Event) bool) *pendingEvents {

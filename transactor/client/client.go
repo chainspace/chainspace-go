@@ -329,7 +329,7 @@ func (c *client) sendMessages(msg *service.Message, f func(uint64, uint64, *serv
 					log.Error("unable to write request", fld.PeerShard(s), fld.PeerID(v.NodeID), fld.Err(err))
 					return err
 				}
-				rmsg, err := v.Conn.ReadMessage(int(c.maxPaylod), 5*time.Second)
+				rmsg, err := v.Conn.ReadMessage(int(c.maxPaylod), 15*time.Second)
 				if err != nil {
 					log.Error("unable to read message", fld.PeerShard(s), fld.PeerID(v.NodeID), fld.Err(err))
 					return err

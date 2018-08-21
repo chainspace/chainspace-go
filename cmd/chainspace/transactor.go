@@ -37,12 +37,12 @@ func getRequiredParams(
 }
 
 func cmdTransactor(args []string, usage string) {
-
 	opts := newOpts("transactor NETWORK_NAME COMMAND [OPTIONS]", usage)
-	configRoot := opts.Flags("--config-root").Label("PATH").String("Path to the chainspace root directory [~/.chainspace]", defaultRootDir())
-	key := opts.Flags("--key").Label("KEY").String("A key/identifier for an object stored in chainspace, e.g [42 54 67]", "")
-	object := opts.Flags("--object").Label("OBJECT").String("An object to create in chainspace", "")
-	payloadPath := opts.Flags("--payload-path").Label("PATH").String("Path to the payload of the transaction to send", "")
+	configRoot := opts.Flags("-c", "--config-root").Label("PATH").String("path to the chainspace root directory [$HOME/.chainspace]", defaultRootDir())
+	consoleLog := opts.Flags("--console-log").Label("LEVEL").String("set the minimum console log level")
+	payloadPath := opts.Flags("-p", "--payload-path").Label("PATH").String("path to the payload of the transaction to send", "")
+	object := opts.Flags("-o", "--object").Label("OBJECT").String("an object to create in chainspace", "")
+	key := opts.Flags("-k", "--key").Label("KEY").String("a key/identifier for an object stored in chainspace, e.g [42 54 67]", "")
 	networkName, cmd := getRequiredParams(opts, args)
 
 	_, err := os.Stat(*configRoot)
@@ -57,6 +57,21 @@ func cmdTransactor(args []string, usage string) {
 	netCfg, err := config.LoadNetwork(filepath.Join(netPath, "network.yaml"))
 	if err != nil {
 		log.Fatal("Could not load network.yaml", fld.Err(err))
+	}
+
+	if *consoleLog != "" {
+		switch *consoleLog {
+		case "debug":
+			log.ToConsole(log.DebugLevel)
+		case "error":
+			log.ToConsole(log.ErrorLevel)
+		case "fatal":
+			log.ToConsole(log.FatalLevel)
+		case "info":
+			log.ToConsole(log.InfoLevel)
+		default:
+			log.Fatal("Unknown --console-log level: " + *consoleLog)
+		}
 	}
 
 	topology, err := network.New(networkName, netCfg)

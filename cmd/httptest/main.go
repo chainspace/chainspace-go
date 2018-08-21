@@ -42,7 +42,7 @@ func seedObjects() ([]string, error) {
 	}).String()
 	for i := 0; i < objects; i += 1 {
 		client := http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: 15 * time.Second,
 		}
 		payload := bytes.NewBufferString(fmt.Sprintf(`{"data": "%v"}`, randSeq(30)))
 		req, err := http.NewRequest(http.MethodPost, url, payload)
@@ -52,10 +52,10 @@ func seedObjects() ([]string, error) {
 			return nil, fmt.Errorf("error calling node: %v", err.Error())
 		}
 		b, err := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
 		if err != nil {
 			return nil, fmt.Errorf("error reading response from POST /object: %v", err.Error())
 		}
-		resp.Body.Close()
 		res := struct {
 			Data   interface{} `json:"data"`
 			Status string      `json:"status"`
@@ -93,6 +93,66 @@ func makeTransactionPayload(seed []string) []byte {
 	return txbytes
 }
 
+func objectsReady(ctx context.Context, workerID int, seed []string) {
+	url := (&url.URL{
+		Scheme: "http",
+		Host:   address,
+		Path:   "object/ready",
+	}).String()
+
+	for {
+		if err := ctx.Err(); err != nil {
+			fmt.Printf("context error: %v\n", err)
+			break
+		}
+		client := http.Client{
+			Timeout: 15 * time.Second,
+		}
+
+		p := struct {
+			Data []string `json:"data"`
+		}{
+			Data: seed,
+		}
+
+		by, _ := json.Marshal(&p)
+		payload := bytes.NewBuffer(by)
+		req, err := http.NewRequest(http.MethodPost, url, payload)
+		req = req.WithContext(ctx)
+		req.Header.Add("Content-Type", "application/json")
+		resp, err := client.Do(req)
+		if err != nil {
+			fmt.Printf("error calling node from objectReady: %v\n", err.Error())
+			continue
+		}
+		b, err := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			fmt.Printf("error reading response from POST /object/ready: %v\n", err.Error())
+			continue
+		}
+		res := struct {
+			Data   bool   `json:"data"`
+			Status string `json:"status"`
+		}{}
+		err = json.Unmarshal(b, &res)
+		if err != nil {
+			fmt.Printf("unable to unmarshal response worker=%v err=%v res=%v\n", workerID, err.Error(), string(b))
+			continue
+		}
+		if res.Status != "success" {
+			fmt.Printf("error from server: worker=%v err=%v\n", workerID, string(b))
+			continue
+		}
+		if res.Data == true {
+			fmt.Printf("worker %v all objects created and queryable with success\n", workerID)
+			return
+		}
+		fmt.Printf("worker %v some object still unavailable\n", workerID)
+		time.Sleep(time.Second)
+	}
+}
+
 func worker(ctx context.Context, seed []string, wg *sync.WaitGroup, id int) {
 	wg.Add(1)
 	defer wg.Done()
@@ -113,7 +173,7 @@ func worker(ctx context.Context, seed []string, wg *sync.WaitGroup, id int) {
 		}
 
 		client := http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: 15 * time.Second,
 		}
 
 		fmt.Printf("worker %v sending new transaction\n", id)
@@ -126,15 +186,15 @@ func worker(ctx context.Context, seed []string, wg *sync.WaitGroup, id int) {
 		req.Header.Add("Content-Type", "application/json")
 		resp, err := client.Do(req)
 		if err != nil {
-			fmt.Printf("error calling node: %v\n", err.Error())
+			fmt.Printf("error calling node from worker: %v\n", err.Error())
 			continue
 		}
 		b, err := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
 		if err != nil {
 			fmt.Printf("error reading response from POST /object: %v\n", err.Error())
 			continue
 		}
-		resp.Body.Close()
 
 		res := struct {
 			Data   interface{} `json:"data"`
@@ -158,8 +218,10 @@ func worker(ctx context.Context, seed []string, wg *sync.WaitGroup, id int) {
 		mu.Lock()
 		metrics[id] = append(metrics[id], time.Since(start))
 		mu.Unlock()
+		// ensure objects are all ready baby
+		objectsReady(ctx, id, seed)
 		fmt.Printf("worker %v received new objects keys: %v\n", id, seed)
-		time.Sleep(2 * time.Second)
+		// time.Sleep(2 * time.Second)
 	}
 	fmt.Printf("worker %v finished at: %v\n", id, time.Now().Format(time.Stamp))
 }

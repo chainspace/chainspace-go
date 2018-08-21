@@ -660,7 +660,12 @@ func (s *Service) toObjectsCreated(tx *TxDetails) (State, error) {
 }
 
 func (s *Service) toSucceeded(tx *TxDetails) (State, error) {
-	tx.Result <- true
+	// tx.Result <- true
+	log.Error("finishing transaction", fld.TxID(tx.HashID))
+	err := FinishTransaction(s.store, tx.ID)
+	if err != nil {
+		log.Error("unable to finish transaction", fld.TxID(tx.HashID), fld.Err(err))
+	}
 	return StateSucceeded, nil
 }
 
@@ -671,7 +676,12 @@ func (s *Service) toAborted(tx *TxDetails) (State, error) {
 	if err != nil {
 		log.Error("unable to unlock objects", fld.TxID(tx.HashID), fld.Err(err))
 	}
-	tx.Result <- false
+	log.Error("finishing transaction", fld.TxID(tx.HashID))
+	err = FinishTransaction(s.store, tx.ID)
+	if err != nil {
+		log.Error("unable to finish transaction", fld.TxID(tx.HashID), fld.Err(err))
+	}
+	// tx.Result <- false
 	return StateAborted, nil
 }
 

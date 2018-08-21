@@ -13,6 +13,7 @@ const (
 	keyTypeObjectStatus
 	keyTypeCommittedTxn
 	keyTypeSeenTxn
+	keyFinishedTxn
 )
 
 var (
@@ -29,6 +30,10 @@ func makeKey(ty keyType, key []byte) []byte {
 	out[0] = byte(ty)
 	copy(out[1:], key)
 	return out
+}
+
+func finishedTxnKey(key []byte) []byte {
+	return makeKey(keyFinishedTxn, key)
 }
 
 func objectKey(key []byte) []byte {
@@ -329,4 +334,32 @@ func DeleteObjects(store *badger.DB, objkeys [][]byte) error {
 	return store.Update(func(tx *badger.Txn) error {
 		return setObjectsInactive(tx, objkeys)
 	})
+}
+
+func FinishTransaction(store *badger.DB, txnkey []byte) error {
+	return store.Update(func(txn *badger.Txn) error {
+		finishedTxn := finishedTxnKey(txnkey)
+		if err := txn.Set(finishedTxn, []byte{}); err != nil {
+			return err
+		}
+		return nil
+	})
+
+}
+func TxnFinished(store *badger.DB, txnkey []byte) (bool, error) {
+	var ok bool
+	var err error = store.View(func(txn *badger.Txn) error {
+		key := finishedTxnKey(txnkey)
+		_, err := txn.Get(key)
+		if err != nil && err == badger.ErrKeyNotFound {
+			ok = false
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		ok = true
+		return nil
+	})
+	return ok, err
 }

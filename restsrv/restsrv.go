@@ -1,6 +1,7 @@
 package restsrv // import "chainspace.io/prototype/restsrv"
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -237,9 +238,59 @@ func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
 	success(rw, http.StatusOK, data)
 }
 
+func (s *Service) objectsReady(rw http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		fail(rw, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !strings.EqualFold(r.Header.Get("Content-Type"), "application/json") {
+		fail(rw, http.StatusBadRequest, "unsupported content-type")
+	}
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to read request: %v", err))
+		return
+	}
+	req := struct {
+		Data []string `json:"data"`
+	}{}
+	if err := json.Unmarshal(body, &req); err != nil {
+		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to unmarshal: %v", err))
+		return
+	}
+	txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
+	defer txclient.Close()
+	for _, v := range req.Data {
+		key, err := base64.StdEncoding.DecodeString(v)
+		if err != nil {
+			fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to b64decode: %v", err))
+			return
+		}
+		objs, err := txclient.Query(key)
+		if err != nil {
+			success(rw, http.StatusOK, false)
+			// errorr(rw, http.StatusInternalServerError, err.Error())
+			return
+		}
+		fmt.Printf("tx: %v", objs)
+		if uint64(len(objs)) != s.top.ShardSize() {
+			success(rw, http.StatusOK, false)
+			return
+		}
+		for _, v := range objs {
+			if !bytes.Equal(v.Key, objs[0].Key) {
+				fail(rw, http.StatusInternalServerError, "inconsistent data")
+				return
+			}
+		}
+	}
+	success(rw, http.StatusOK, true)
+}
+
 func (s *Service) makeServ(addr string, port int) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/object", s.object)
+	mux.HandleFunc("/object/ready", s.objectsReady)
 	mux.HandleFunc("/transaction", s.transaction)
 	handler := cors.Default().Handler(mux)
 	h := &http.Server{

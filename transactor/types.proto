@@ -24,7 +24,7 @@ message Transaction {
 }
 
 message Trace {
-  string contractID = 1 [(gogoproto.customname) = "ContractID"];;
+  string contractID = 1 [(gogoproto.customname) = "ContractID"];
   string procedure = 2;
   repeated bytes inputObjectsKeys = 3;
   repeated bytes inputReferencesKeys = 4;
@@ -52,7 +52,6 @@ message CheckTransactionResponse {
 message AddTransactionRequest {
   Transaction tx = 1;
   map<uint64, bytes> evidences = 2;
-
 }
 
 message ObjectTraceIDPair {

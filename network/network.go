@@ -272,6 +272,10 @@ func (t *Topology) ShardForNode(nodeID uint64) uint64 {
 	return ((nodeID - 1) % t.shardCount) + 1
 }
 
+func (t *Topology) ShardSize() uint64 {
+	return t.shardSize
+}
+
 // TotalNodes returns the total number of nodes in the network.
 func (t *Topology) TotalNodes() uint64 {
 	return t.shardCount * t.shardSize

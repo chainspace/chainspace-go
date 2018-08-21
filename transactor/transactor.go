@@ -104,12 +104,26 @@ func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, e
 	case Opcode_SBAC:
 		return s.handleSBAC(ctx, m.Payload, peerID, m.ID)
 	default:
-		log.Error("transactor: unknown message opcode", log.Uint32("opcode", m.Opcode), fld.PeerID(peerID))
+		log.Error("transactor: unknown message opcode", log.Uint32("opcode", m.Opcode), fld.PeerID(peerID), log.Int("LEN", len(m.Payload)))
 		return nil, fmt.Errorf("transactor: unknown message opcode: %v", m.Opcode)
 	}
 }
 
 func (s *Service) consumeEvents(e *Event) bool {
+	// check if statemachine is finished
+	ok, err := TxnFinished(s.store, e.msg.GetTx().GetID())
+	if err != nil {
+		log.Error("error calling TxnFinished", fld.Err(err))
+		// do nothing
+		return true
+	}
+	if ok {
+		log.Error("event for a finished transaction, skipping it", fld.NodeID(s.nodeID))
+		// txn already finished. move on
+		return true
+	}
+
+	// log.Error("PROCESSING EVENT BABY")
 	sm, ok := s.getSateMachine(e.msg.Tx.ID)
 	if ok {
 		if log.AtDebug() {
@@ -233,17 +247,19 @@ func (s *Service) gcStateMachines() {
 		s.txstatesmu.Lock()
 		for k, v := range s.txstates {
 			if v.State() == StateAborted || v.State() == StateSucceeded {
+				log.Error("removing statemachine", log.String("finale_state", v.State().String()), fld.TxID(ID([]byte(k))))
 				if log.AtDebug() {
 					log.Debug("removing statemachine", log.String("finale_state", v.State().String()), fld.TxID(ID([]byte(k))))
 				}
+				delete(s.txstates, k)
 			}
-			delete(s.txstates, k)
 		}
 		s.txstatesmu.Unlock()
 	}
 }
 
 func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.Message, error) {
+	log.Error("ADD TRANSACTION", fld.NodeID(s.nodeID))
 	req := &AddTransactionRequest{}
 	err := proto.Unmarshal(payload, req)
 	if err != nil {
@@ -292,10 +308,11 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 		s.broadcaster.AddTransaction(b, 0)
 	}
 	// block here while the statemachine does its job
-	txres := <-txdetails.Result
-	if !txres {
-		return nil, errors.New("unable to execute the transaction")
-	}
+	// log.Error("waiting for result", fld.NodeID(s.nodeID))
+	// txres := <-txdetails.Result
+	// if !txres {
+	// return nil, errors.New("unable to execute the transaction")
+	//}
 	res := &AddTransactionResponse{
 		Objects: objects,
 	}
@@ -476,13 +493,13 @@ func New(cfg *Config) (*Service, error) {
 	s.table = s.makeStateTable()
 	s.broadcaster.Register(s.handleDeliver)
 	go s.pe.Run()
-	// go s.gcStateMachines()
+	go s.gcStateMachines()
 	return s, nil
 }
 
 func (s *Service) isNodeInitiatingBroadcast(txID uint32) bool {
 	nodesInShard := s.top.NodesInShard(s.shardID)
-	n := nodesInShard[txID%(uint32(len(nodesInShard)))] + 1
-	log.Info("consensus will be started", log.Uint64("peer", n))
+	n := nodesInShard[txID%(uint32(len(nodesInShard)))]
+	log.Error("consensus will be started", log.Uint64("peer", n))
 	return n == s.nodeID
 }
