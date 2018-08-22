@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -13,64 +12,54 @@ import (
 	"time"
 
 	"chainspace.io/prototype/broadcast"
-
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/node"
+	"github.com/gogo/protobuf/proto"
 	"github.com/tav/golly/process"
 )
 
-var txpool = &sync.Pool{
-	New: func() interface{} {
-		return &broadcast.TransactionData{}
-	},
-}
-
 var (
 	txmu   sync.RWMutex
-	txrate int
+	txrate uint64
 )
 
 type loadTracker struct {
+	block  *broadcast.Block
 	mu     sync.Mutex
-	self   int
-	nodeID []byte
 	server *node.Server
-	total  int
+	total  uint64
 }
 
-func (l *loadTracker) DeliverEnd(round uint64) {
+func (l *loadTracker) handleDeliver(round uint64, blocks []*broadcast.SignedData) {
+	l.mu.Lock()
+	block := l.block
+	for _, signed := range blocks {
+		block.Transactions.Count = 0
+		block.Transactions.Data = nil
+		if err := proto.Unmarshal(signed.Data, block); err != nil {
+			log.Fatal("Unable to decode delivered signed block", fld.Err(err))
+		}
+		l.total += block.Transactions.Count
+	}
 	l.mu.Unlock()
 	l.server.Broadcast.Acknowledge(round)
 }
 
-func (l *loadTracker) DeliverStart(round uint64) {
+func (l *loadTracker) readCounter() uint64 {
 	l.mu.Lock()
-}
-
-func (l *loadTracker) DeliverTransaction(tx *broadcast.TransactionData) {
-	txpool.Put(tx)
-	l.total++
-	if bytes.Equal(tx.Data[:4], l.nodeID) {
-		l.self++
-	}
-}
-
-func (l *loadTracker) readCounter() (int, int) {
-	l.mu.Lock()
-	self := l.self
 	total := l.total
-	l.self = 0
 	l.total = 0
 	l.mu.Unlock()
-	return self, total
+	return total
 }
 
 func cmdGenLoad(args []string, usage string) {
 	opts := newOpts("genload NETWORK_NAME NODE_ID [OPTIONS]", usage)
 	configRoot := opts.Flags("--config-root").Label("PATH").String("path to the chainspace root directory [~/.chainspace]", defaultRootDir())
 	cpuProfile := opts.Flags("--cpu-profile").Label("PATH").String("write a CPU profile to the given file before exiting")
+	generators := opts.Flags("--generators").Label("N").Int("number of generator threads [1]")
 	initialRate := opts.Flags("--initial-rate").Label("TXS").Int("initial number of transactions to send per second [10000]")
 	memProfile := opts.Flags("--mem-profile").Label("PATH").String("write the memory profile to the given file before exiting")
 	rateDecrease := opts.Flags("--rate-decr").Label("FACTOR").String("multiplicative decrease factor of the queue size [0.8]")
@@ -148,14 +137,14 @@ func cmdGenLoad(args []string, usage string) {
 		log.Fatal("Could not start node", fld.NodeID(nodeID), fld.Err(err))
 	}
 
-	nenc := make([]byte, 4)
-	binary.LittleEndian.PutUint32(nenc, uint32(nodeID))
 	app := &loadTracker{
-		nodeID: nenc,
+		block: &broadcast.Block{
+			Transactions: &broadcast.Transactions{},
+		},
 		server: s,
 	}
 
-	s.Broadcast.Register(app)
+	s.Broadcast.Register(app.handleDeliver)
 
 	process.SetExitHandler(func() {
 		if *memProfile != "" {
@@ -175,80 +164,88 @@ func cmdGenLoad(args []string, usage string) {
 		}
 	})
 
-	txrate = *initialRate
-	go manageThroughput(app, netCfg.Shard.Size, *initialRate, *rateIncrease, rateDecr)
-	genLoad(s, nodeID, *txSize)
+	txrate = uint64(*initialRate / *generators)
+	if txrate == 0 {
+		txrate = 1
+	}
+
+	for i := 0; i < *generators; i++ {
+		go genLoad(s, nodeID, *txSize, uint64(*generators))
+	}
+
+	manageThroughput(app, netCfg.Shard.Size, uint64(*initialRate), uint64(*rateIncrease), rateDecr)
 
 }
 
-func genLoad(s *node.Server, nodeID uint64, txSize int) {
-	buf := make([]byte, 4)
-	binary.LittleEndian.PutUint32(buf, uint32(nodeID))
+func genLoad(s *node.Server, nodeID uint64, txSize int, generators uint64) {
 	tick := time.NewTicker(time.Second)
+	tx := make([]byte, txSize)
+	binary.LittleEndian.PutUint32(tx, uint32(nodeID))
 	for {
 		<-tick.C
 		txmu.RLock()
 		rate := txrate
 		txmu.RUnlock()
-		for i := 0; i < rate; i++ {
-			tx := txpool.Get().(*broadcast.TransactionData)
-			if len(tx.Data) != txSize {
-				tx.Data = make([]byte, txSize)
-			}
-			copy(tx.Data, buf)
-			s.Broadcast.AddTransaction(tx)
+		rate = rate / generators
+		if rate == 0 {
+			rate = 1
+		}
+		for i := uint64(0); i < rate; i++ {
+			s.Broadcast.AddTransaction(tx, 0)
 		}
 	}
 }
 
-func manageThroughput(l *loadTracker, nodeCount int, startRate int, incr int, decr float64) {
+func manageThroughput(l *loadTracker, nodeCount int, startRate uint64, incr uint64, decr float64) {
+	var (
+		highest  uint64
+		maxCount uint64
+		maxTotal uint64
+	)
 	tick := time.NewTicker(time.Second)
 	min := startRate / 10
 	if min == 0 {
 		min = 1
 	}
+	highestAvg := 0.0
 	rate := startRate
 	recent := make([]float64, 10)
-	txs := make([]int, 10)
-	for i := range recent {
-		recent[i] = float64(startRate)
-		txs[i] = 0
-	}
 	idx := 0
-	prev := float64(startRate)
 	for {
 		<-tick.C
-		self, total := l.readCounter()
-		recent[idx] = float64(self)
-		txs[idx] = total
+		total := l.readCounter()
+		recent[idx] = float64(total)
 		idx++
-		if idx >= 10 {
-			idx -= 10
+		if idx == 10 {
+			idx = 0
 		}
 		avg := 0.0
 		for _, val := range recent {
 			avg += val
 		}
 		avg /= 10
-		if self == 0 || avg < prev {
-			rate = int(float64(rate) * decr)
+		if total < min {
+			rate = uint64(float64(rate) * decr)
 			if rate < min {
 				rate = min
 			}
 		} else {
 			rate += incr
 		}
-		prev = avg
-		log.Info("Setting target generation rate for this node", log.Int("target.tps", rate))
+		log.Info("Setting target generation rate for this node", log.Uint64("target.tps", rate))
 		txmu.Lock()
 		txrate = rate
 		txmu.Unlock()
-		avgTxs := 0
-		for _, val := range txs {
-			avgTxs += val
+		log.Info("Current transactions/sec", log.Uint64("cur.tps", total))
+		if total > highest {
+			highest = total
 		}
-		avgTxs /= 10
-		log.Info("Transactions received in the last second", log.Int("cur.tps", total))
-		log.Info("Average transactions/sec in the last 10 seconds", log.Int("avg.tps", avgTxs))
+		if avg > highestAvg {
+			highestAvg = avg
+		}
+		log.Info("Highest transactions/sec", log.Uint64("highest.tps", highest))
+		maxCount++
+		maxTotal += total
+		log.Info("Average transactions/sec", log.Uint64("avg.tps", maxTotal/maxCount))
 	}
 }
