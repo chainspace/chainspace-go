@@ -19,7 +19,7 @@ message Block {
   SignedData previous = 2;
   repeated SignedData references = 3;
   uint64 round = 4;
-  repeated TransactionData transactions = 5;
+  Transactions transactions = 5;
 }
 
 message BlockReference {
@@ -40,7 +40,7 @@ message SignedData {
   bytes signature = 2;
 }
 
-message TransactionData {
-  bytes data = 1;
-  uint64 fee = 2;
+message Transactions {
+  uint64 count = 1;
+  bytes data = 2;
 }
