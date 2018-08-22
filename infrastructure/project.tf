@@ -42,14 +42,20 @@ resource "google_compute_firewall" "default" {
 resource "google_compute_instance" "default" {
   name   = "node-${format("%d", count.index+1)}"
   // machine_type = "f1-micro"
-  machine_type = "n1-standard-1"
+  machine_type = "n1-standard-2"
   zone = "europe-west2-b"
   tags = ["node"]
+  min_cpu_platform = "Intel Skylake"
+
+  scheduling {
+    preemptible = true
+  }
 
   boot_disk {
     initialize_params {
       image = "debian-cloud/debian-9"
       type = "pd-ssd"
+      size = "375"
     }
   }
 
@@ -110,7 +116,7 @@ resource "google_compute_instance" "default" {
     }
 
     inline = [<<EOF
-     sudo docker run -d --name chainspace --volume=/etc/chainspace/conf:/conf --network=host ${data.google_container_registry_image.chainspace.image_url} run --console-log info --config-root /conf testnet `cat /etc/chainspace/node_id`
+     sudo docker run -d --name chainspace --volume=/etc/chainspace/conf:/conf --network=host ${data.google_container_registry_image.chainspace.image_url} run --console-log error --file-log error --config-root /conf testnet `cat /etc/chainspace/node_id`
      EOF
     ]
   }

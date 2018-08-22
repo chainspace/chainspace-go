@@ -247,7 +247,6 @@ func (s *Service) gcStateMachines() {
 		s.txstatesmu.Lock()
 		for k, v := range s.txstates {
 			if v.State() == StateAborted || v.State() == StateSucceeded {
-				log.Error("removing statemachine", log.String("finale_state", v.State().String()), fld.TxID(ID([]byte(k))))
 				if log.AtDebug() {
 					log.Debug("removing statemachine", log.String("finale_state", v.State().String()), fld.TxID(ID([]byte(k))))
 				}
@@ -259,7 +258,6 @@ func (s *Service) gcStateMachines() {
 }
 
 func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.Message, error) {
-	log.Error("ADD TRANSACTION", fld.NodeID(s.nodeID))
 	req := &AddTransactionRequest{}
 	err := proto.Unmarshal(payload, req)
 	if err != nil {
@@ -500,6 +498,6 @@ func New(cfg *Config) (*Service, error) {
 func (s *Service) isNodeInitiatingBroadcast(txID uint32) bool {
 	nodesInShard := s.top.NodesInShard(s.shardID)
 	n := nodesInShard[txID%(uint32(len(nodesInShard)))]
-	log.Error("consensus will be started", log.Uint64("peer", n))
+	log.Debug("consensus will be started", log.Uint64("peer", n))
 	return n == s.nodeID
 }

@@ -258,14 +258,16 @@ func (s *Service) objectsReady(rw http.ResponseWriter, r *http.Request) {
 		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to unmarshal: %v", err))
 		return
 	}
-	txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
-	defer txclient.Close()
+
+	// defer
 	for _, v := range req.Data {
 		key, err := base64.StdEncoding.DecodeString(v)
 		if err != nil {
 			fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to b64decode: %v", err))
 			return
 		}
+		txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
+		txclient.Close()
 		objs, err := txclient.Query(key)
 		if err != nil {
 			success(rw, http.StatusOK, false)

@@ -89,7 +89,7 @@ func (sm *StateMachine) applyTransition(transitionTo State) error {
 			return nil
 		}
 
-		log.Error("applying transition",
+		log.Info("applying transition",
 			log.Uint32("id", sm.txDetails.HashID),
 			log.String("old_state", curState.String()),
 			log.String("new_state", transitionTo.String()),

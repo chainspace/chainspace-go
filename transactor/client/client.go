@@ -232,8 +232,6 @@ func (c *client) SendTransaction(tx *transactor.Transaction) ([]*transactor.Obje
 }
 
 func (c *client) Query(key []byte) ([]*transactor.Object, error) {
-	log.Error("-------------------- QUERYING -----------------")
-	defer log.Error("-------------------- QUERYING END -----------------")
 	shardID := c.top.ShardForKey(key)
 	if err := c.dialNodes(map[uint64]struct{}{shardID: struct{}{}}); err != nil {
 		return nil, err
@@ -319,12 +317,6 @@ func (c *client) Delete(key []byte) ([]*transactor.Object, error) {
 }
 
 func (c *client) sendMessages(msg *service.Message, f func(uint64, uint64, *service.Message) error) error {
-	if msg == nil {
-		log.Error("====================== FRIGGIN NIL MESSAGE =================")
-	}
-	if msg.Opcode == 0 {
-		log.Error("====================== FRIGGIN 0 OPCODE MESSAGE =================")
-	}
 	wg, _ := errgroup.WithContext(context.TODO())
 	for s, nc := range c.nodesConn {
 		s := s
