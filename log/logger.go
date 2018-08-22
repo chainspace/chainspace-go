@@ -2,6 +2,8 @@ package log
 
 import (
 	"fmt"
+	"runtime"
+	"strconv"
 	"sync"
 	"time"
 
@@ -40,6 +42,23 @@ func (l *Logger) log(lvl Level, text string, fields []Field) {
 	entry := entry{fields, lvl, l.fields, text, time.Now().UTC()}
 	textLog(entry)
 	netLog(entry)
+}
+
+func (l *Logger) stacktrace(text string) {
+	buf := []byte(text)
+	buf = append(buf, '\n', '\n')
+	pcs := make([]uintptr, 64)
+	frames := runtime.CallersFrames(pcs[:runtime.Callers(3, pcs)])
+	for frame, more := frames.Next(); more; frame, more = frames.Next() {
+		buf = append(buf, '\t')
+		buf = append(buf, frame.Function...)
+		buf = append(buf, '(', ')', '\n', '\t', '\t')
+		buf = append(buf, frame.File...)
+		buf = append(buf, ':')
+		buf = strconv.AppendInt(buf, int64(frame.Line), 10)
+		buf = append(buf, '\n')
+	}
+	l.log(TraceLevel, string(buf), nil)
 }
 
 // Debug logs the given text and fields at DebugLevel.
@@ -85,6 +104,11 @@ func (l *Logger) Info(text string, fields ...Field) {
 // InfoLevel.
 func (l *Logger) Infof(format string, args ...interface{}) {
 	l.log(InfoLevel, fmt.Sprintf(format, args...), nil)
+}
+
+// Trace logs the given text at TraceLevel along with the stacktrace.
+func (l *Logger) Trace(text string) {
+	l.stacktrace(text)
 }
 
 // With returns a new logger that comes preset with the given fields.

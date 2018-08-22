@@ -11,15 +11,17 @@ const (
 	DebugLevel Level = iota + 1
 	InfoLevel
 	ErrorLevel
+	TraceLevel
 	FatalLevel
 )
 
 const maxLevel = FatalLevel + 1
 
 const (
-	blue   = 34
-	red    = 31
-	yellow = 33
+	blue    = 34
+	magenta = 35
+	red     = 31
+	yellow  = 33
 )
 
 var (
@@ -31,8 +33,8 @@ var (
 )
 
 var (
-	level2color  = [...]string{"", color(yellow, "DEBUG"), color(blue, "INFO"), color(red, "ERROR"), color(red, "FATAL")}
-	level2string = [...]string{"", rpad("DEBUG"), rpad("INFO"), rpad("ERROR"), rpad("FATAL")}
+	level2color  = [...]string{"", color(yellow, "DEBUG"), color(blue, "INFO"), color(red, "ERROR"), color(magenta, "TRACE"), color(red, "FATAL")}
+	level2string = [...]string{"", rpad("DEBUG"), rpad("INFO"), rpad("ERROR"), rpad("TRACE"), rpad("FATAL")}
 )
 
 // Level represents a logging level.
@@ -51,6 +53,8 @@ func (l Level) MarshalYAML() (interface{}, error) {
 		return "fatal", nil
 	case InfoLevel:
 		return "info", nil
+	case TraceLevel:
+		return "trace", nil
 	default:
 		panic(fmt.Errorf("log: unknown level: %d", l))
 	}
@@ -66,6 +70,8 @@ func (l Level) String() string {
 		return "FATAL"
 	case InfoLevel:
 		return "INFO"
+	case TraceLevel:
+		return "TRACE"
 	default:
 		panic(fmt.Errorf("log: unknown level: %d", l))
 	}
@@ -91,6 +97,9 @@ func (l *Level) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return nil
 	case "info":
 		*l = InfoLevel
+		return nil
+	case "trace":
+		*l = TraceLevel
 		return nil
 	default:
 		return fmt.Errorf("log: unable to decode Level value: %q", raw)
@@ -137,4 +146,9 @@ func AtError() bool {
 // AtInfo returns whether the current configuration will log at the InfoLevel.
 func AtInfo() bool {
 	return minLevel <= InfoLevel
+}
+
+// AtTrace returns whether the current configuration will log at the TraceLevel.
+func AtTrace() bool {
+	return minLevel <= TraceLevel
 }

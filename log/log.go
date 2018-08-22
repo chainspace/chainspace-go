@@ -62,6 +62,12 @@ func SetGlobal(fields ...Field) {
 	root.fields = fields
 }
 
+// Trace logs the given text at TraceLevel along with the stacktrace using the
+// root logger.
+func Trace(text string) {
+	root.stacktrace(text)
+}
+
 // With returns a new logger based off of the root logger that comes preset with
 // the given fields.
 func With(fields ...Field) *Logger {
