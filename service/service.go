@@ -38,3 +38,16 @@ func SignHello(clientID uint64, serverID uint64, key signature.KeyPair, c CONNEC
 		Type:      c,
 	}, nil
 }
+
+// EncodeMessage takes a protobuf-compatible struct and encodes it into a
+// service Message.
+func EncodeMessage(opcode int32, pb proto.Message) *Message {
+	payload, err := proto.Marshal(pb)
+	if err != nil {
+		panic(err)
+	}
+	return &Message{
+		Opcode:  opcode,
+		Payload: payload,
+	}
+}

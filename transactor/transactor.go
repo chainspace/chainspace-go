@@ -104,7 +104,7 @@ func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, e
 	case Opcode_SBAC:
 		return s.handleSBAC(ctx, m.Payload, peerID, m.ID)
 	default:
-		log.Error("transactor: unknown message opcode", log.Uint32("opcode", m.Opcode), fld.PeerID(peerID), log.Int("LEN", len(m.Payload)))
+		log.Error("transactor: unknown message opcode", log.Int32("opcode", m.Opcode), fld.PeerID(peerID), log.Int("len", len(m.Payload)))
 		return nil, fmt.Errorf("transactor: unknown message opcode: %v", m.Opcode)
 	}
 }
@@ -155,7 +155,7 @@ func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64,
 	s.pe.OnEvent(e)
 	res := SBACMessageAck{LastID: msgID}
 	payloadres, err := proto.Marshal(&res)
-	return &service.Message{Payload: payloadres}, nil
+	return &service.Message{Opcode: 42, Payload: payloadres}, nil
 }
 
 func (s *Service) checkTransaction(ctx context.Context, payload []byte) (*service.Message, error) {
@@ -194,7 +194,7 @@ func (s *Service) checkTransaction(ctx context.Context, payload []byte) (*servic
 		log.Debug("transactor: transaction checked successfully", fld.TxID(ID(ids.TxID)))
 	}
 	return &service.Message{
-		Opcode:  uint32(Opcode_ADD_TRANSACTION),
+		Opcode:  int32(Opcode_ADD_TRANSACTION),
 		Payload: b,
 	}, nil
 }
@@ -324,7 +324,7 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 	log.Info("transactor: transaction added successfully")
 
 	return &service.Message{
-		Opcode:  uint32(Opcode_ADD_TRANSACTION),
+		Opcode:  int32(Opcode_ADD_TRANSACTION),
 		Payload: b,
 	}, nil
 }
@@ -358,7 +358,7 @@ func (s *Service) queryObject(ctx context.Context, payload []byte) (*service.Mes
 		return nil, fmt.Errorf("transactor: unable to marshal query_object response")
 	}
 	return &service.Message{
-		Opcode:  uint32(Opcode_QUERY_OBJECT),
+		Opcode:  int32(Opcode_QUERY_OBJECT),
 		Payload: b,
 	}, nil
 }
@@ -396,7 +396,7 @@ func (s *Service) deleteObject(ctx context.Context, payload []byte) (*service.Me
 		return nil, fmt.Errorf("transactor: unable to marshal remove_object response")
 	}
 	return &service.Message{
-		Opcode:  uint32(Opcode_DELETE_OBJECT),
+		Opcode:  int32(Opcode_DELETE_OBJECT),
 		Payload: b,
 	}, nil
 }
@@ -433,7 +433,7 @@ func (s *Service) createObject(ctx context.Context, payload []byte) (*service.Me
 		log.Error("unable to marshal NewObject reponse", fld.Err(err))
 		return nil, fmt.Errorf("transactor: unable to marshal new_object response")
 	}
-	return &service.Message{Opcode: uint32(Opcode_CREATE_OBJECT), Payload: b}, nil
+	return &service.Message{Opcode: int32(Opcode_CREATE_OBJECT), Payload: b}, nil
 }
 
 func (s *Service) Name() string {

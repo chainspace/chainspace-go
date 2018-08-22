@@ -135,7 +135,7 @@ func (c *client) checkTransaction(t *transactor.Transaction) (map[uint64][]byte,
 		return nil, err
 	}
 	msg := &service.Message{
-		Opcode:  uint32(transactor.Opcode_CHECK_TRANSACTION),
+		Opcode:  int32(transactor.Opcode_CHECK_TRANSACTION),
 		Payload: txbytes,
 	}
 	mtx := &sync.Mutex{}
@@ -173,7 +173,7 @@ func (c *client) addTransaction(t *transactor.Transaction) ([]*transactor.Object
 		return nil, err
 	}
 	msg := &service.Message{
-		Opcode:  uint32(transactor.Opcode_ADD_TRANSACTION),
+		Opcode:  int32(transactor.Opcode_ADD_TRANSACTION),
 		Payload: txbytes,
 	}
 	mu := sync.Mutex{}
@@ -232,6 +232,8 @@ func (c *client) SendTransaction(tx *transactor.Transaction) ([]*transactor.Obje
 }
 
 func (c *client) Query(key []byte) ([]*transactor.Object, error) {
+	log.Error("-------------------- QUERYING -----------------")
+	defer log.Error("-------------------- QUERYING END -----------------")
 	shardID := c.top.ShardForKey(key)
 	if err := c.dialNodes(map[uint64]struct{}{shardID: struct{}{}}); err != nil {
 		return nil, err
@@ -249,7 +251,7 @@ func (c *client) Query(key []byte) ([]*transactor.Object, error) {
 		return nil, err
 	}
 	msg := &service.Message{
-		Opcode:  uint32(transactor.Opcode_QUERY_OBJECT),
+		Opcode:  int32(transactor.Opcode_QUERY_OBJECT),
 		Payload: bytes,
 	}
 
@@ -292,7 +294,7 @@ func (c *client) Delete(key []byte) ([]*transactor.Object, error) {
 		return nil, err
 	}
 	msg := &service.Message{
-		Opcode:  uint32(transactor.Opcode_DELETE_OBJECT),
+		Opcode:  int32(transactor.Opcode_DELETE_OBJECT),
 		Payload: bytes,
 	}
 
@@ -317,6 +319,12 @@ func (c *client) Delete(key []byte) ([]*transactor.Object, error) {
 }
 
 func (c *client) sendMessages(msg *service.Message, f func(uint64, uint64, *service.Message) error) error {
+	if msg == nil {
+		log.Error("====================== FRIGGIN NIL MESSAGE =================")
+	}
+	if msg.Opcode == 0 {
+		log.Error("====================== FRIGGIN 0 OPCODE MESSAGE =================")
+	}
 	wg, _ := errgroup.WithContext(context.TODO())
 	for s, nc := range c.nodesConn {
 		s := s
@@ -368,7 +376,7 @@ func (c *client) Create(obj []byte) ([][]byte, error) {
 		return nil, err
 	}
 	msg := &service.Message{
-		Opcode:  uint32(transactor.Opcode_CREATE_OBJECT),
+		Opcode:  int32(transactor.Opcode_CREATE_OBJECT),
 		Payload: bytes,
 	}
 

@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"runtime/debug"
 	"sync"
 	"time"
 
 	"chainspace.io/prototype/service"
 	"github.com/gogo/protobuf/proto"
+	"github.com/tav/golly/log"
 )
 
 type timeoutError interface {
@@ -96,6 +98,20 @@ func (c *Conn) ReadPayload(limit int, timeout time.Duration) ([]byte, error) {
 // marshalled data to the underlying connection, along with a header indicating
 // the length of the data.
 func (c *Conn) WritePayload(pb proto.Message, limit int, timeout time.Duration) error {
+	if pb == nil {
+		log.Error("----------------- PB NIL -------------------")
+	}
+	switch x := pb.(type) {
+	case *service.Message:
+		if x.Opcode == 0 {
+			log.Error("-------------------------- 0 OPCODE ----------------")
+			debug.PrintStack()
+		}
+	case *service.Hello:
+	default:
+		log.Error("-------------------------- WEIRD MESSAGE ----------------")
+	}
+
 	payload, err := proto.Marshal(pb)
 	if err != nil {
 		c.conn.Close()

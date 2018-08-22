@@ -433,7 +433,7 @@ func makeMessage(m *SBACMessage) (*service.Message, error) {
 		return nil, err
 	}
 	return &service.Message{
-		Opcode:  uint32(Opcode_SBAC),
+		Opcode:  int32(Opcode_SBAC),
 		Payload: payload,
 	}, nil
 }

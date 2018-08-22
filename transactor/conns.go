@@ -86,6 +86,13 @@ func (c *ConnsCache) release(nodeID uint64) {
 }
 
 func (c *ConnsCache) WriteRequest(nodeID uint64, msg *service.Message, timeout time.Duration, ack bool) (uint64, error) {
+	if msg == nil {
+
+		log.Error("---------------- NIL MESSAGE -----------------")
+	}
+	if msg.Opcode == 0 {
+		log.Error("---------------- 0 OPCODE -----------------")
+	}
 	cc, err := c.dial(nodeID)
 	if err != nil {
 		return 0, err

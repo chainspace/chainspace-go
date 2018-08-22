@@ -115,7 +115,7 @@ func (s *Service) fillMissingBlocks(peerID uint64) {
 	interval := s.cfg.NetConsensus.RoundInterval
 	backoff := initialBackoff
 	getRounds := &GetRounds{}
-	getRoundsReq := &service.Message{Opcode: uint32(OP_GET_ROUNDS)}
+	getRoundsReq := &service.Message{Opcode: int32(OP_GET_ROUNDS)}
 	list := &ListBlocks{}
 	l := log.With(fld.PeerID(peerID))
 	maxBackoff := s.cfg.Broadcast.MaxBackoff
@@ -528,7 +528,7 @@ func (s *Service) handleBroadcastList(peerID uint64, msg *service.Message) (*ser
 		return nil, err
 	}
 	return &service.Message{
-		Opcode:  uint32(OP_ACK_BROADCAST),
+		Opcode:  int32(OP_ACK_BROADCAST),
 		Payload: data,
 	}, nil
 }
@@ -558,7 +558,7 @@ func (s *Service) handleGetBlocks(peerID uint64, msg *service.Message) (*service
 		return nil, err
 	}
 	return &service.Message{
-		Opcode:  uint32(OP_LIST_BLOCKS),
+		Opcode:  int32(OP_LIST_BLOCKS),
 		Payload: data,
 	}, nil
 }
@@ -587,7 +587,7 @@ func (s *Service) handleGetRounds(peerID uint64, msg *service.Message) (*service
 		return nil, err
 	}
 	return &service.Message{
-		Opcode:  uint32(OP_LIST_BLOCKS),
+		Opcode:  int32(OP_LIST_BLOCKS),
 		Payload: data,
 	}, nil
 }
@@ -668,6 +668,7 @@ func (s *Service) loadState() {
 
 func (s *Service) maintainBroadcast(peerID uint64) {
 	ack := &AckBroadcast{}
+
 	initialBackoff := s.cfg.Broadcast.InitialBackoff
 	interval := s.cfg.NetConsensus.RoundInterval
 	backoff := initialBackoff
