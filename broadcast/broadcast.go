@@ -4,6 +4,8 @@ package broadcast // import "chainspace.io/prototype/broadcast"
 
 import (
 	"context"
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -23,21 +25,17 @@ import (
 	"github.com/tav/golly/process"
 )
 
-// Callback defines the interface for the callback set registered with the
-// broadcast service. The DeliverStart method is called as soon as a particular
-// round reaches consensus, followed by individual DeliverTransaction calls for
-// each of the transactions in consensus order, and finished off with a
-// DeliverEnd call for each round. The DeliverEnd method should call Acknowledge
-// at some point so as to mark the delivery of the round as successful.
-type Callback interface {
-	DeliverStart(round uint64)
-	DeliverTransaction(txdata *TransactionData)
-	DeliverEnd(round uint64)
-}
+var errTransactionTooLarge = errors.New("broadcast: transaction is too large")
+
+// Callback defines the delivery callback registered with the broadcast service.
+// The callback should call Acknowledge at some point so as to mark the delivery
+// of the round as successful.
+type Callback func(round uint64, blocks []*SignedData)
 
 // Config for the broadcast service.
 type Config struct {
-	BlockLimit     int
+	BlockRefLimit  int
+	BlockTxLimit   int
 	Directory      string
 	Key            signature.KeyPair
 	Keys           map[uint64]signature.PublicKey
@@ -53,13 +51,16 @@ type Config struct {
 
 // Service implements the broadcast and consensus system.
 type Service struct {
-	blockLimit     int
-	blocks         chan *blockData
+	blockRefLimit  int
+	blockTxCount   uint64
+	blockTxData    []byte
+	blockTxIdx     int
+	blockTxLimit   int
 	cb             Callback
-	cond           *sync.Cond // protects interpreted, toDeliver
 	ctx            context.Context
 	depgraph       *depgraph
 	graph          *byzco.Graph
+	imu            sync.Mutex // protects cb, interpreted, toDeliver
 	initialBackoff time.Duration
 	interpreted    uint64
 	interval       time.Duration
@@ -69,8 +70,9 @@ type Service struct {
 	maxBackoff     time.Duration
 	maxBlocks      int
 	maxPayload     int
-	mu             sync.RWMutex // protects previous, round, sent, signal
+	mu             sync.RWMutex // protects overloaded, previous, round, sent, signal
 	nodeID         uint64
+	overloaded     bool
 	ownblocks      *ownblocks
 	peers          []uint64
 	prevhash       []byte
@@ -84,13 +86,12 @@ type Service struct {
 	store          *store
 	toDeliver      []*byzco.Interpreted
 	top            *network.Topology
-	txs            chan *TransactionData
+	txmu           sync.Mutex
 	writeTimeout   time.Duration
 }
 
-// NOTE(tav): toDeliver will keep growing indefinitely if a Callback is never
-// registered.
 func (s *Service) byzcoCallback(data *byzco.Interpreted) {
+	log.Info("Reached consensus", fld.Round(data.Round))
 	if log.AtInfo() {
 		blocks := make([]string, len(data.Blocks))
 		for i, block := range data.Blocks {
@@ -100,61 +101,14 @@ func (s *Service) byzcoCallback(data *byzco.Interpreted) {
 			log.Uint64("consumed", data.Consumed), log.Strings("blocks", blocks), log.Int("block.count", len(data.Blocks)))
 	}
 	s.store.setInterpreted(data)
-	s.cond.L.Lock()
-	s.interpreted = data.Round
-	s.toDeliver = append(s.toDeliver, data)
-	s.cond.L.Unlock()
-	s.cond.Signal()
-}
-
-func (s *Service) deliver() {
-	s.cond.L.Lock()
-	ack, err := s.store.getDeliverAcknowledged()
-	if err != nil {
-		if err != badger.ErrKeyNotFound {
-			log.Fatal("Could not load latest acknowledged round from DB", log.Err(err))
-		}
+	s.imu.Lock()
+	if s.cb == nil {
+		s.interpreted = data.Round
+		s.imu.Unlock()
+		return
 	}
-	latest := s.interpreted
-	for i := ack + 1; i <= latest; i++ {
-		blocks, err := s.store.getInterpreted(i)
-		if err != nil {
-			log.Fatal("Unable to load blocks for a round", fld.Round(i), log.Err(err))
-		}
-		s.deliverRound(i, blocks)
-	}
-	s.cond.L.Unlock()
-	for {
-		s.cond.L.Lock()
-		for len(s.toDeliver) == 0 {
-			s.cond.Wait()
-			select {
-			case <-s.ctx.Done():
-				s.cond.L.Unlock()
-				return
-			default:
-			}
-		}
-		data := s.toDeliver[0]
-		s.toDeliver = s.toDeliver[1:]
-		s.cond.L.Unlock()
-		blocks := s.getBlocks(data.Blocks)
-		s.deliverRound(data.Round, blocks)
-	}
-}
-
-func (s *Service) deliverRound(round uint64, blocks []*SignedData) {
-	s.cb.DeliverStart(round)
-	for _, block := range blocks {
-		txs, err := block.Transactions()
-		if err != nil {
-			log.Fatal("Unable to decode transactions", fld.Round(round), fld.BlockHash(block.Digest()))
-		}
-		for _, tx := range txs {
-			s.cb.DeliverTransaction(tx)
-		}
-	}
-	s.cb.DeliverEnd(round)
+	s.imu.Unlock()
+	s.cb(data.Round, s.getBlocks(data.Blocks))
 }
 
 func (s *Service) fillMissingBlocks(peerID uint64) {
@@ -294,19 +248,11 @@ func (s *Service) fillMissingBlocks(peerID uint64) {
 }
 
 func (s *Service) genBlocks() {
-	var (
-		atLimit     bool
-		branch      int
-		inBlock     *blockData
-		inTx        *TransactionData
-		pendingRefs []*blockData
-		pendingTxs  []*TransactionData
-		refs        []*blockData
-		txs         []*TransactionData
-	)
 	block := &Block{
-		Node: s.nodeID,
+		Node:         s.nodeID,
+		Transactions: &Transactions{},
 	}
+
 	hasher := combihash.New()
 	rootRef := &BlockReference{
 		Node: s.nodeID,
@@ -315,58 +261,11 @@ func (s *Service) genBlocks() {
 	// TODO(tav): time.Ticker's behaviour around slow receivers may not be the
 	// exact semantics we want.
 	tick := time.NewTicker(s.interval)
-	total := 0
 	for {
-		if atLimit {
-			select {
-			case <-tick.C:
-				branch = 3
-			case <-s.ctx.Done():
-				tick.Stop()
-				s.cond.Signal()
-				return
-			}
-		} else {
-			select {
-			case inBlock = <-s.blocks:
-				branch = 1
-			case inTx = <-s.txs:
-				branch = 2
-			case <-tick.C:
-				branch = 3
-			case <-s.ctx.Done():
-				tick.Stop()
-				s.cond.Signal()
-				return
-			}
-		}
-		switch branch {
-		case 1:
-			if atLimit {
-				pendingRefs = append(pendingRefs, inBlock)
-			} else {
-				total += inBlock.ref.Size()
-				if total < s.blockLimit {
-					refs = append(refs, inBlock)
-				} else {
-					atLimit = true
-					pendingRefs = append(pendingRefs, inBlock)
-				}
-			}
-		case 2:
-			if atLimit {
-				pendingTxs = append(pendingTxs, inTx)
-			} else {
-				total += inTx.Size()
-				if total < s.blockLimit {
-					txs = append(txs, inTx)
-				} else {
-					atLimit = true
-					pendingTxs = append(pendingTxs, inTx)
-				}
-			}
-		case 3:
+		select {
+		case <-tick.C:
 			round++
+			refs := s.depgraph.getBlocks(s.blockRefLimit)
 			blocks := make([]*SignedData, len(refs))
 			for i, info := range refs {
 				if log.AtDebug() {
@@ -377,11 +276,18 @@ func (s *Service) genBlocks() {
 			block.Previous = s.prevref
 			block.References = blocks
 			block.Round = round
-			block.Transactions = txs
+			s.txmu.Lock()
+			txcount := s.blockTxCount
+			block.Transactions.Count = txcount
+			block.Transactions.Data = s.blockTxData[:s.blockTxIdx]
 			data, err := proto.Marshal(block)
 			if err != nil {
 				log.Fatal("Got unexpected error encoding latest block", log.Err(err))
 			}
+			s.blockTxCount = 0
+			s.blockTxIdx = 0
+			s.txmu.Unlock()
+			log.Info("Creating block", fld.Round(round), log.Uint64("tx", txcount), log.Int("blocks", len(blocks)))
 			if _, err := hasher.Write(data); err != nil {
 				log.Fatal("Could not hash encoded block", log.Err(err))
 			}
@@ -445,45 +351,13 @@ func (s *Service) genBlocks() {
 			if log.AtDebug() {
 				log.Debug("Created block", fld.Round(block.Round))
 			}
-			if round%10 == 0 {
-				s.lru.prune(len(s.peers) * 10)
-				s.ownblocks.prune(10)
+			if round%1000 == 0 {
+				s.lru.prune(len(s.peers) * 1000)
+				s.ownblocks.prune(1000)
 			}
-			refs = nil
-			txs = nil
-			total = 0
-			if len(pendingRefs) > 0 {
-				var npendingRefs []*blockData
-				for _, info := range pendingRefs {
-					if len(npendingRefs) > 0 {
-						npendingRefs = append(npendingRefs, info)
-					} else {
-						total += info.ref.Size()
-						if total < s.blockLimit {
-							refs = append(refs, info)
-						} else {
-							npendingRefs = append(npendingRefs, info)
-						}
-					}
-				}
-				pendingRefs = npendingRefs
-			}
-			if len(pendingTxs) > 0 {
-				var npendingTxs []*TransactionData
-				for _, tx := range pendingTxs {
-					if len(npendingTxs) > 0 {
-						npendingTxs = append(npendingTxs, tx)
-					} else {
-						total += tx.Size()
-						if total < s.blockLimit {
-							txs = append(txs, tx)
-						} else {
-							npendingTxs = append(npendingTxs, tx)
-						}
-					}
-				}
-				pendingTxs = npendingTxs
-			}
+		case <-s.ctx.Done():
+			tick.Stop()
+			return
 		}
 	}
 }
@@ -739,7 +613,6 @@ func (s *Service) loadState() {
 		ctx:     s.ctx,
 		icache:  map[byzco.BlockID]bool{},
 		pending: map[byzco.BlockID]*blockData{},
-		out:     s.blocks,
 		self:    s.nodeID,
 		store:   s.store,
 		tcache:  map[byzco.BlockID]bool{},
@@ -1030,8 +903,33 @@ func (s *Service) Acknowledge(round uint64) {
 
 // AddTransaction adds the given transaction data onto a queue to be added to
 // the current block.
-func (s *Service) AddTransaction(txdata *TransactionData) {
-	s.txs <- txdata
+func (s *Service) AddTransaction(txdata []byte, fee uint64) error {
+	size := len(txdata)
+	if size >= (1<<32) || size > s.blockTxLimit {
+		return errTransactionTooLarge
+	}
+	for {
+		s.mu.RLock()
+		overloaded := s.overloaded
+		signal := s.signal
+		s.mu.RUnlock()
+		if overloaded {
+			<-signal
+			continue
+		}
+		s.txmu.Lock()
+		if s.blockTxIdx+size+100 > s.blockTxLimit {
+			s.txmu.Unlock()
+			<-signal
+			continue
+		}
+		binary.LittleEndian.PutUint64(s.blockTxData[s.blockTxIdx:s.blockTxIdx+8], fee)
+		binary.LittleEndian.PutUint32(s.blockTxData[s.blockTxIdx+8:s.blockTxIdx+12], uint32(size))
+		copy(s.blockTxData[s.blockTxIdx+12:], txdata)
+		s.blockTxCount++
+		s.blockTxIdx += 12 + size
+		s.txmu.Unlock()
+	}
 }
 
 // Handle implements the service Handler interface for handling messages
@@ -1057,14 +955,27 @@ func (s *Service) Name() string {
 // Register saves the given callback to be called when transactions have reached
 // consensus. It'll also trigger the replaying of any unacknowledged rounds.
 func (s *Service) Register(cb Callback) {
-	s.mu.Lock()
+	s.imu.Lock()
 	if s.cb != nil {
 		s.mu.Unlock()
 		log.Fatal("Attempt to register a broadcast.Callback when one already exists")
 	}
 	s.cb = cb
-	s.mu.Unlock()
-	go s.deliver()
+	ack, err := s.store.getDeliverAcknowledged()
+	if err != nil {
+		if err != badger.ErrKeyNotFound {
+			log.Fatal("Could not load latest acknowledged round from DB", log.Err(err))
+		}
+	}
+	latest := s.interpreted
+	for i := ack + 1; i <= latest; i++ {
+		blocks, err := s.store.getInterpreted(i)
+		if err != nil {
+			log.Fatal("Unable to load blocks for a round", fld.Round(i), log.Err(err))
+		}
+		cb(i, blocks)
+	}
+	s.imu.Unlock()
 }
 
 // New returns a fully instantiated broadcaster service.
@@ -1104,9 +1015,9 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		IdleTimeout:      cfg.WriteTimeout,
 	}
 	s := &Service{
-		blockLimit:     cfg.BlockLimit,
-		blocks:         make(chan *blockData, 100000),
-		cond:           sync.NewCond(&sync.Mutex{}),
+		blockRefLimit:  cfg.BlockRefLimit,
+		blockTxData:    make([]byte, cfg.BlockTxLimit),
+		blockTxLimit:   cfg.BlockTxLimit,
 		ctx:            ctx,
 		interval:       cfg.RoundInterval,
 		key:            cfg.Key,
@@ -1114,7 +1025,7 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		initialBackoff: cfg.InitialBackoff,
 		lru:            lru,
 		maxBackoff:     cfg.MaxBackoff,
-		maxBlocks:      cfg.MaxPayload / cfg.BlockLimit,
+		maxBlocks:      cfg.MaxPayload / (cfg.BlockRefLimit + cfg.BlockTxLimit + 100),
 		maxPayload:     cfg.MaxPayload,
 		nodeID:         cfg.NodeID,
 		ownblocks:      ownblocks,
@@ -1123,7 +1034,6 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		readTimeout:    cfg.ReadTimeout,
 		store:          store,
 		top:            top,
-		txs:            make(chan *TransactionData, 100000),
 		writeTimeout:   cfg.WriteTimeout,
 	}
 	s.loadState()

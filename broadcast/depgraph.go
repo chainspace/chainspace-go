@@ -18,13 +18,14 @@ type blockData struct {
 
 type depgraph struct {
 	await   map[byzco.BlockID][]byzco.BlockID
+	bmu     sync.Mutex // protects blocks
+	blocks  []*blockData
 	cond    *sync.Cond // protects in
 	ctx     context.Context
 	icache  map[byzco.BlockID]bool
 	in      []*blockData
 	mu      sync.RWMutex // protects icache, tcache
 	pending map[byzco.BlockID]*blockData
-	out     chan *blockData
 	self    uint64
 	store   *store
 	tcache  map[byzco.BlockID]bool
@@ -62,6 +63,23 @@ func (d *depgraph) addPending(block *blockData, deps []byzco.BlockID) {
 			d.await[dep] = []byzco.BlockID{block.id}
 		}
 	}
+}
+
+func (d *depgraph) getBlocks(limit int) []*blockData {
+	d.bmu.Lock()
+	idx := 0
+	total := 0
+	for _, block := range d.blocks {
+		total += block.ref.Size()
+		if total > limit {
+			break
+		}
+		idx++
+	}
+	blocks := d.blocks[:idx]
+	d.blocks = d.blocks[idx:]
+	d.bmu.Unlock()
+	return blocks
 }
 
 func (d *depgraph) isIncluded(id byzco.BlockID) bool {
@@ -187,7 +205,9 @@ func (d *depgraph) processBlock(block *blockData) bool {
 	}
 	// Mark the block as included and queue it for actual inclusion.
 	d.markIncluded(block.id)
-	d.out <- block
+	d.bmu.Lock()
+	d.blocks = append(d.blocks, block)
+	d.bmu.Unlock()
 	return true
 }
 
