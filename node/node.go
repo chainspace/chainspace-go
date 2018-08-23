@@ -367,16 +367,6 @@ func Run(cfg *Config) (*Server, error) {
 		}
 	}
 
-	refLimit, err := cfg.Network.Consensus.BlockReferencesSizeLimit.Int()
-	if err != nil {
-		return nil, err
-	}
-
-	txLimit, err := cfg.Network.Consensus.BlockTransactionsSizeLimit.Int()
-	if err != nil {
-		return nil, err
-	}
-
 	maxPayload, err := cfg.Network.MaxPayload.Int()
 	if err != nil {
 		return nil, err
@@ -384,19 +374,16 @@ func Run(cfg *Config) (*Server, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	bcfg := &broadcast.Config{
-		BlockRefLimit:  refLimit,
-		BlockTxLimit:   txLimit,
-		Directory:      dir,
-		Key:            key,
-		Keys:           keys,
-		InitialBackoff: cfg.Node.Broadcast.InitialBackoff,
-		MaxBackoff:     cfg.Node.Broadcast.MaxBackoff,
-		MaxPayload:     maxPayload,
-		NodeID:         cfg.NodeID,
-		Peers:          peers,
-		ReadTimeout:    cfg.Node.Connections.ReadTimeout,
-		RoundInterval:  cfg.Network.Consensus.RoundInterval,
-		WriteTimeout:   cfg.Node.Connections.WriteTimeout,
+		Broadcast:   cfg.Node.Broadcast,
+		Connections: cfg.Node.Connections,
+		Consensus:   cfg.Network.Consensus,
+		Directory:   dir,
+		Key:         key,
+		Keys:        keys,
+		MaxPayload:  maxPayload,
+		NodeID:      cfg.NodeID,
+		RateLimit:   cfg.Node.RateLimit,
+		Peers:       peers,
 	}
 
 	broadcaster, err := broadcast.New(ctx, bcfg, top)
@@ -431,8 +418,8 @@ func Run(cfg *Config) (*Server, error) {
 		}
 		if cfg.Node.HTTP.Enabled {
 			var rport int
-			if cfg.Node.HTTP.Port != nil {
-				rport = *cfg.Node.HTTP.Port
+			if cfg.Node.HTTP.Port > 0 {
+				rport = cfg.Node.HTTP.Port
 			} else {
 				rport, _ = freeport.TCP("")
 			}

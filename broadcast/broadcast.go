@@ -14,6 +14,7 @@ import (
 
 	"chainspace.io/prototype/byzco"
 	"chainspace.io/prototype/combihash"
+	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/log/fld"
@@ -34,28 +35,20 @@ type Callback func(round uint64, blocks []*SignedData)
 
 // Config for the broadcast service.
 type Config struct {
-	BlockRefLimit  int
-	BlockTxLimit   int
-	Directory      string
-	Key            signature.KeyPair
-	Keys           map[uint64]signature.PublicKey
-	InitialBackoff time.Duration
-	MaxBackoff     time.Duration
-	MaxPayload     int
-	NodeID         uint64
-	Peers          []uint64
-	ReadTimeout    time.Duration
-	RoundInterval  time.Duration
-	WriteTimeout   time.Duration
+	Broadcast   *config.Broadcast
+	Connections *config.Connections
+	Consensus   *config.Consensus
+	Directory   string
+	Key         signature.KeyPair
+	Keys        map[uint64]signature.PublicKey
+	MaxPayload  int
+	NodeID      uint64
+	Peers       []uint64
+	RateLimit   *config.RateLimit
 }
 
 // Service implements the broadcast and consensus system.
 type Service struct {
-	blockRefLimit  int
-	blockTxCount   uint64
-	blockTxData    []byte
-	blockTxIdx     int
-	blockTxLimit   int
 	cb             Callback
 	ctx            context.Context
 	depgraph       *depgraph
@@ -70,7 +63,7 @@ type Service struct {
 	maxBackoff     time.Duration
 	maxBlocks      int
 	maxPayload     int
-	mu             sync.RWMutex // protects overloaded, previous, round, sent, signal
+	mu             sync.RWMutex // protects overloaded, previous, round, sent, signal, txCountLimit
 	nodeID         uint64
 	overloaded     bool
 	ownblocks      *ownblocks
@@ -79,6 +72,7 @@ type Service struct {
 	prevref        *SignedData
 	qcfg           *quic.Config
 	readTimeout    time.Duration
+	refSizeLimit   int
 	received       *receivedMap
 	round          uint64
 	sent           map[uint64]uint64
@@ -86,7 +80,15 @@ type Service struct {
 	store          *store
 	toDeliver      []*byzco.Interpreted
 	top            *network.Topology
-	txmu           sync.Mutex
+	txCount        int
+	txCountLimit   int
+	txData         []byte
+	txDecr         float64
+	txIdx          int
+	txIncr         int
+	txInitial      int
+	txSizeLimit    int
+	txmu           sync.Mutex // protects txCount, txData, txIdx
 	writeTimeout   time.Duration
 }
 
@@ -248,117 +250,140 @@ func (s *Service) fillMissingBlocks(peerID uint64) {
 }
 
 func (s *Service) genBlocks() {
+	// TOOD(tav): Perhaps make these configurable
+	const (
+		startTolerance = 10 * time.Millisecond
+		workFraction   = 10
+	)
 	block := &Block{
 		Node:         s.nodeID,
 		Transactions: &Transactions{},
 	}
-
 	hasher := combihash.New()
+	interval := s.interval
+	overloaded := false
 	rootRef := &BlockReference{
 		Node: s.nodeID,
 	}
 	round := s.round
-	// TODO(tav): time.Ticker's behaviour around slow receivers may not be the
-	// exact semantics we want.
-	tick := time.NewTicker(s.interval)
+	start := time.Now().Truncate(interval)
+	workDuration := interval / workFraction
+	next := start.Add(interval)
+	workStart := next.Add(-workDuration)
+	time.Sleep(workStart.Sub(time.Now().Round(0)))
 	for {
 		select {
-		case <-tick.C:
-			round++
-			refs := s.depgraph.getBlocks(s.blockRefLimit)
-			blocks := make([]*SignedData, len(refs))
-			for i, info := range refs {
-				if log.AtDebug() {
-					log.Debug("Including block", fld.BlockID(info.id))
-				}
-				blocks[i] = info.ref
-			}
-			block.Previous = s.prevref
-			block.References = blocks
-			block.Round = round
-			s.txmu.Lock()
-			txcount := s.blockTxCount
-			block.Transactions.Count = txcount
-			block.Transactions.Data = s.blockTxData[:s.blockTxIdx]
-			data, err := proto.Marshal(block)
-			if err != nil {
-				log.Fatal("Got unexpected error encoding latest block", log.Err(err))
-			}
-			s.blockTxCount = 0
-			s.blockTxIdx = 0
-			s.txmu.Unlock()
-			log.Info("Creating block", fld.Round(round), log.Uint64("tx", txcount), log.Int("blocks", len(blocks)))
-			if _, err := hasher.Write(data); err != nil {
-				log.Fatal("Could not hash encoded block", log.Err(err))
-			}
-			hash := hasher.Digest()
-			rootRef.Hash = hash
-			rootRef.Round = round
-			refData, err := proto.Marshal(rootRef)
-			if err != nil {
-				log.Fatal("Got unexpected error encoding latest block reference", log.Err(err))
-			}
-			signed := &SignedData{
-				Data:      data,
-				Signature: s.key.Sign(refData),
-			}
-			blockRef := &SignedData{
-				Data:      refData,
-				Signature: signed.Signature,
-			}
-			hasher.Reset()
-			signal := s.signal
-			graph := &byzco.BlockGraph{
-				Block: byzco.BlockID{
-					Hash:  string(hash),
-					Node:  s.nodeID,
-					Round: round,
-				},
-			}
-			if round != 1 {
-				graph.Prev = byzco.BlockID{
-					Hash:  string(s.prevhash),
-					Node:  s.nodeID,
-					Round: round - 1,
-				}
-			}
-			var deps []byzco.Dep
-			for _, ref := range refs {
-				deps = append(deps, byzco.Dep{
-					Block: ref.id,
-					Deps:  ref.deps,
-					Prev:  ref.prev,
-				})
-			}
-			graph.Deps = deps
-			if err := s.setOwnBlock(signed, blockRef, graph); err != nil {
-				log.Fatal("Could not write own block to the DB", fld.Round(round), log.Err(err))
-			}
-			for _, ref := range refs {
-				s.depgraph.actuallyIncluded(ref.id)
-			}
-			s.graph.Add(graph)
-			s.prevhash = hash
-			s.prevref = &SignedData{
-				Data:      refData,
-				Signature: signed.Signature,
-			}
-			s.mu.Lock()
-			s.round = round
-			s.signal = make(chan struct{})
-			s.mu.Unlock()
-			close(signal)
-			if log.AtDebug() {
-				log.Debug("Created block", fld.Round(block.Round))
-			}
-			if round%1000 == 0 {
-				s.lru.prune(len(s.peers) * 1000)
-				s.ownblocks.prune(1000)
-			}
 		case <-s.ctx.Done():
-			tick.Stop()
 			return
+		default:
 		}
+		if time.Since(workStart) > startTolerance {
+			if !overloaded {
+				log.Error("OVERLOADED")
+				overloaded = true
+			}
+		} else {
+			if overloaded {
+				log.Error("NOT OVERLOADED")
+				overloaded = false
+			}
+		}
+		round++
+		refs := s.depgraph.getBlocks(s.refSizeLimit)
+		blocks := make([]*SignedData, len(refs))
+		for i, info := range refs {
+			if log.AtDebug() {
+				log.Debug("Including block", fld.BlockID(info.id))
+			}
+			blocks[i] = info.ref
+		}
+		block.Previous = s.prevref
+		block.References = blocks
+		block.Round = round
+		s.txmu.Lock()
+		txcount := s.txCount
+		block.Transactions.Count = uint64(txcount)
+		block.Transactions.Data = s.txData[:s.txIdx]
+		data, err := proto.Marshal(block)
+		if err != nil {
+			log.Fatal("Got unexpected error encoding latest block", log.Err(err))
+		}
+		s.txCount = 0
+		s.txIdx = 0
+		s.txmu.Unlock()
+		log.Info("Creating block", fld.Round(round), log.Int("txs", txcount), log.Int("blocks", len(blocks)))
+		if _, err := hasher.Write(data); err != nil {
+			log.Fatal("Could not hash encoded block", log.Err(err))
+		}
+		hash := hasher.Digest()
+		rootRef.Hash = hash
+		rootRef.Round = round
+		refData, err := proto.Marshal(rootRef)
+		if err != nil {
+			log.Fatal("Got unexpected error encoding latest block reference", log.Err(err))
+		}
+		signed := &SignedData{
+			Data:      data,
+			Signature: s.key.Sign(refData),
+		}
+		blockRef := &SignedData{
+			Data:      refData,
+			Signature: signed.Signature,
+		}
+		hasher.Reset()
+		signal := s.signal
+		graph := &byzco.BlockGraph{
+			Block: byzco.BlockID{
+				Hash:  string(hash),
+				Node:  s.nodeID,
+				Round: round,
+			},
+		}
+		if round != 1 {
+			graph.Prev = byzco.BlockID{
+				Hash:  string(s.prevhash),
+				Node:  s.nodeID,
+				Round: round - 1,
+			}
+		}
+		var deps []byzco.Dep
+		for _, ref := range refs {
+			deps = append(deps, byzco.Dep{
+				Block: ref.id,
+				Deps:  ref.deps,
+				Prev:  ref.prev,
+			})
+		}
+		graph.Deps = deps
+		if err := s.setOwnBlock(signed, blockRef, graph); err != nil {
+			log.Fatal("Could not write own block to the DB", fld.Round(round), log.Err(err))
+		}
+		for _, ref := range refs {
+			s.depgraph.actuallyIncluded(ref.id)
+		}
+		s.graph.Add(graph)
+		s.prevhash = hash
+		s.prevref = &SignedData{
+			Data:      refData,
+			Signature: signed.Signature,
+		}
+		s.mu.Lock()
+		s.round = round
+		s.signal = make(chan struct{})
+		s.mu.Unlock()
+		close(signal)
+		if log.AtDebug() {
+			log.Debug("Created block", fld.Round(block.Round))
+		}
+		if round%1000 == 0 {
+			s.lru.prune(len(s.peers) * 1000)
+			s.ownblocks.prune(1000)
+		}
+		now := time.Now().Round(0)
+		workDuration = now.Sub(workStart)
+		next = next.Add(interval)
+		workStart = next.Add(-workDuration)
+		time.Sleep(workStart.Sub(now))
 	}
 }
 
@@ -905,7 +930,7 @@ func (s *Service) Acknowledge(round uint64) {
 // the current block.
 func (s *Service) AddTransaction(txdata []byte, fee uint64) error {
 	size := len(txdata)
-	if size >= (1<<32) || size > s.blockTxLimit {
+	if size >= (1<<32) || size > s.txSizeLimit {
 		return errTransactionTooLarge
 	}
 	for {
@@ -918,17 +943,18 @@ func (s *Service) AddTransaction(txdata []byte, fee uint64) error {
 			continue
 		}
 		s.txmu.Lock()
-		if s.blockTxIdx+size+100 > s.blockTxLimit {
+		if s.txIdx+size+100 > s.txSizeLimit {
 			s.txmu.Unlock()
 			<-signal
 			continue
 		}
-		binary.LittleEndian.PutUint64(s.blockTxData[s.blockTxIdx:s.blockTxIdx+8], fee)
-		binary.LittleEndian.PutUint32(s.blockTxData[s.blockTxIdx+8:s.blockTxIdx+12], uint32(size))
-		copy(s.blockTxData[s.blockTxIdx+12:], txdata)
-		s.blockTxCount++
-		s.blockTxIdx += 12 + size
+		binary.LittleEndian.PutUint64(s.txData[s.txIdx:s.txIdx+8], fee)
+		binary.LittleEndian.PutUint32(s.txData[s.txIdx+8:s.txIdx+12], uint32(size))
+		copy(s.txData[s.txIdx+12:], txdata)
+		s.txCount++
+		s.txIdx += 12 + size
 		s.txmu.Unlock()
+		return nil
 	}
 }
 
@@ -1010,31 +1036,43 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		}
 	})
 	qcfg := &quic.Config{
-		HandshakeTimeout: cfg.WriteTimeout,
+		HandshakeTimeout: cfg.Connections.WriteTimeout,
 		KeepAlive:        true,
-		IdleTimeout:      cfg.WriteTimeout,
+		IdleTimeout:      cfg.Connections.WriteTimeout,
+	}
+	refSizeLimit, err := cfg.Consensus.BlockReferencesSizeLimit.Int()
+	if err != nil {
+		return nil, err
+	}
+	txSizeLimit, err := cfg.Consensus.BlockTransactionsSizeLimit.Int()
+	if err != nil {
+		return nil, err
 	}
 	s := &Service{
-		blockRefLimit:  cfg.BlockRefLimit,
-		blockTxData:    make([]byte, cfg.BlockTxLimit),
-		blockTxLimit:   cfg.BlockTxLimit,
 		ctx:            ctx,
-		interval:       cfg.RoundInterval,
+		interval:       cfg.Consensus.RoundInterval,
 		key:            cfg.Key,
 		keys:           cfg.Keys,
-		initialBackoff: cfg.InitialBackoff,
+		initialBackoff: cfg.Broadcast.InitialBackoff,
 		lru:            lru,
-		maxBackoff:     cfg.MaxBackoff,
-		maxBlocks:      cfg.MaxPayload / (cfg.BlockRefLimit + cfg.BlockTxLimit + 100),
+		maxBackoff:     cfg.Broadcast.MaxBackoff,
+		maxBlocks:      cfg.MaxPayload / (refSizeLimit + txSizeLimit + 100),
 		maxPayload:     cfg.MaxPayload,
 		nodeID:         cfg.NodeID,
 		ownblocks:      ownblocks,
 		peers:          cfg.Peers,
 		qcfg:           qcfg,
-		readTimeout:    cfg.ReadTimeout,
+		readTimeout:    cfg.Connections.ReadTimeout,
+		refSizeLimit:   refSizeLimit,
 		store:          store,
 		top:            top,
-		writeTimeout:   cfg.WriteTimeout,
+		txCountLimit:   cfg.RateLimit.InitialRate,
+		txData:         make([]byte, txSizeLimit),
+		txDecr:         cfg.RateLimit.RateDecrease,
+		txInitial:      cfg.RateLimit.InitialRate,
+		txIncr:         cfg.RateLimit.RateIncrease,
+		txSizeLimit:    txSizeLimit,
+		writeTimeout:   cfg.Connections.WriteTimeout,
 	}
 	s.loadState()
 	go s.genBlocks()
