@@ -37,12 +37,12 @@ func getRequiredParams(
 }
 
 func cmdTransactor(args []string, usage string) {
-	opts := newOpts("transactor NETWORK_NAME COMMAND [OPTIONS]", usage)
-	configRoot := opts.Flags("-c", "--config-root").Label("PATH").String("path to the chainspace root directory [$HOME/.chainspace]", defaultRootDir())
-	payloadPath := opts.Flags("-p", "--payload-path").Label("PATH").String("path to the payload of the transaction to send", "")
-	object := opts.Flags("-o", "--object").Label("OBJECT").String("an object to create in chainspace", "")
-	key := opts.Flags("-k", "--key").Label("KEY").String("a key/identifier for an object stored in chainspace, e.g [42 54 67]", "")
 
+	opts := newOpts("transactor NETWORK_NAME COMMAND [OPTIONS]", usage)
+	configRoot := opts.Flags("--config-root").Label("PATH").String("Path to the chainspace root directory [~/.chainspace]", defaultRootDir())
+	key := opts.Flags("--key").Label("KEY").String("A key/identifier for an object stored in chainspace, e.g [42 54 67]", "")
+	object := opts.Flags("--object").Label("OBJECT").String("An object to create in chainspace", "")
+	payloadPath := opts.Flags("--payload-path").Label("PATH").String("Path to the payload of the transaction to send", "")
 	networkName, cmd := getRequiredParams(opts, args)
 
 	_, err := os.Stat(*configRoot)
@@ -172,6 +172,7 @@ func cmdTransactor(args []string, usage string) {
 	default:
 		log.Fatal("invalid/unknown command", fld.TransactorCmd(cmd))
 	}
+
 }
 
 func readkey(s string) []byte {

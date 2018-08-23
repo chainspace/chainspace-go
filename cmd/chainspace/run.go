@@ -16,12 +16,12 @@ import (
 
 func cmdRun(args []string, usage string) {
 	opts := newOpts("run NETWORK_NAME NODE_ID [OPTIONS]", usage)
-	configRoot := opts.Flags("--config-root").Label("PATH").String("path to the chainspace root directory [~/.chainspace]", defaultRootDir())
-	consoleLog := opts.Flags("--console-log").Label("LEVEL").String("set the minimum console log level")
-	cpuProfile := opts.Flags("--cpu-profile").Label("PATH").String("write a CPU profile to the given file before exiting")
-	fileLog := opts.Flags("--file-log").Label("LEVEL").String("set the minimum file log level")
-	memProfile := opts.Flags("--mem-profile").Label("PATH").String("write the memory profile to the given file before exiting")
-	runtimeRoot := opts.Flags("--runtime-root").Label("PATH").String("path to the runtime root directory [~/.chainspace]", defaultRootDir())
+	configRoot := opts.Flags("--config-root").Label("PATH").String("Path to the chainspace root directory [~/.chainspace]", defaultRootDir())
+	consoleLog := opts.Flags("--console-log").Label("LEVEL").String("Set the minimum console log level")
+	cpuProfile := opts.Flags("--cpu-profile").Label("PATH").String("Write a CPU profile to the given file before exiting")
+	fileLog := opts.Flags("--file-log").Label("LEVEL").String("Set the minimum file log level")
+	memProfile := opts.Flags("--mem-profile").Label("PATH").String("Write the memory profile to the given file before exiting")
+	runtimeRoot := opts.Flags("--runtime-root").Label("PATH").String("Path to the runtime root directory [~/.chainspace]", defaultRootDir())
 	networkName, nodeID := getNetworkNameAndNodeID(opts, args)
 
 	_, err := os.Stat(*configRoot)

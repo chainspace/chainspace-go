@@ -17,7 +17,7 @@ func cmdInit(args []string, usage string) {
 	opts := newOpts("init NETWORK_NAME [OPTIONS]", usage)
 
 	configRoot := opts.Flags("--config-root").Label("PATH").String("Path to the Chainspace root directory [~/.chainspace]", defaultRootDir())
-	registry := opts.Flags("--registry").Label("HOST").String("address of the network registry")
+	registry := opts.Flags("--registry").Label("HOST").String("Address of the network registry")
 	shardCount := opts.Flags("--shard-count").Label("N").Int("Number of shards in the network [3]")
 	shardSize := opts.Flags("--shard-size").Label("N").Int("Number of nodes in each shard [4]")
 
@@ -79,18 +79,24 @@ func cmdInit(args []string, usage string) {
 
 	broadcast := &config.Broadcast{
 		InitialBackoff: 1 * time.Second,
-		MaxBackoff:     5 * time.Second,
+		MaxBackoff:     2 * time.Second,
 	}
 
 	connections := &config.Connections{
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 5 * time.Second,
 	}
 
 	logging := &config.Logging{
 		ConsoleLevel: log.DebugLevel,
 		FileLevel:    log.DebugLevel,
 		FilePath:     "log/chainspace.log",
+	}
+
+	rateLimit := &config.RateLimit{
+		InitialRate:  10000,
+		RateDecrease: 0.8,
+		RateIncrease: 1000,
 	}
 
 	storage := &config.Storage{
@@ -119,10 +125,9 @@ func cmdInit(args []string, usage string) {
 
 		var httpcfg config.HTTP
 		if i == 1 {
-			httpport := 8080
 			httpcfg = config.HTTP{
-				Port:    &httpport,
 				Enabled: true,
+				Port:    8080,
 			}
 		}
 		// Create node.yaml
@@ -131,10 +136,11 @@ func cmdInit(args []string, usage string) {
 			Bootstrap:   bootstrap,
 			Broadcast:   broadcast,
 			Connections: connections,
-			Logging:     logging,
-			Storage:     storage,
 			HTTP:        httpcfg,
+			Logging:     logging,
+			RateLimit:   rateLimit,
 			Registries:  registries,
+			Storage:     storage,
 		}
 
 		if err := writeYAML(filepath.Join(nodeDir, "node.yaml"), cfg); err != nil {

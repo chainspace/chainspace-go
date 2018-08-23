@@ -57,26 +57,22 @@ func (l *loadTracker) readCounter() uint64 {
 
 func cmdGenLoad(args []string, usage string) {
 	opts := newOpts("genload NETWORK_NAME NODE_ID [OPTIONS]", usage)
-	configRoot := opts.Flags("--config-root").Label("PATH").String("path to the chainspace root directory [~/.chainspace]", defaultRootDir())
-	cpuProfile := opts.Flags("--cpu-profile").Label("PATH").String("write a CPU profile to the given file before exiting")
-	generators := opts.Flags("--generators").Label("N").Int("number of generator threads [1]")
-	initialRate := opts.Flags("--initial-rate").Label("TXS").Int("initial number of transactions to send per second [10000]")
-	memProfile := opts.Flags("--mem-profile").Label("PATH").String("write the memory profile to the given file before exiting")
-	rateDecrease := opts.Flags("--rate-decr").Label("FACTOR").String("multiplicative decrease factor of the queue size [0.8]")
-	rateIncrease := opts.Flags("--rate-incr").Label("FACTOR").Int("additive increase factor of the queue size [1000]")
-	runtimeRoot := opts.Flags("--runtime-root").Label("PATH").String("path to the runtime root directory [~/.chainspace]", defaultRootDir())
-	txSize := opts.Flags("--tx-size").Label("SIZE").Int("size in bytes of the generated transactions [100]")
+	configRoot := opts.Flags("--config-root").Label("PATH").String("Path to the chainspace root directory [~/.chainspace]", defaultRootDir())
+	cpuProfile := opts.Flags("--cpu-profile").Label("PATH").String("Write a CPU profile to the given file before exiting")
+	generators := opts.Flags("--generators").Label("N").Int("Number of generator threads [1]")
+	initialRate := opts.Flags("--initial-rate").Label("TXS").Int("Initial number of transactions to send per second [10000]")
+	memProfile := opts.Flags("--mem-profile").Label("PATH").String("Write the memory profile to the given file before exiting")
+	rateDecrease := opts.Flags("--rate-decr").Label("FACTOR").Float("Multiplicative decrease factor of the queue size [0.8]")
+	rateIncrease := opts.Flags("--rate-incr").Label("FACTOR").Int("Additive increase factor of the queue size [1000]")
+	runtimeRoot := opts.Flags("--runtime-root").Label("PATH").String("Path to the runtime root directory [~/.chainspace]", defaultRootDir())
+	txSize := opts.Flags("--tx-size").Label("SIZE").Int("Size in bytes of the generated transactions [100]")
 	networkName, nodeID := getNetworkNameAndNodeID(opts, args)
 
-	rateDecr, err := strconv.ParseFloat(*rateDecrease, 64)
-	if err != nil {
-		log.Fatal(fmt.Sprintf("chainspace genload: couldn't convert --rate-decr value '%s' to a float", *rateDecrease))
-	}
-	if rateDecr < 0 || rateDecr > 1 {
+	if *rateDecrease < 0 || *rateDecrease > 1 {
 		log.Fatal(fmt.Sprintf("chainspace genload: the --rate-decr value must be between 0 and 1.0"))
 	}
 
-	_, err = os.Stat(*configRoot)
+	_, err := os.Stat(*configRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
 			log.Fatal("Could not find the Chainspace root directory", fld.Path(*configRoot))
@@ -173,7 +169,7 @@ func cmdGenLoad(args []string, usage string) {
 		go genLoad(s, nodeID, *txSize, uint64(*generators))
 	}
 
-	manageThroughput(app, netCfg.Shard.Size, uint64(*initialRate), uint64(*rateIncrease), rateDecr)
+	manageThroughput(app, netCfg.Shard.Size, uint64(*initialRate), uint64(*rateIncrease), *rateDecrease)
 
 }
 
