@@ -120,21 +120,29 @@ type Announce struct {
 // Node represents the configuration of an individual node in a Chainspace
 // network.
 type Node struct {
-	Announce          *Announce `yaml:"announce,omitempty"`
-	Bootstrap         *Bootstrap
-	Broadcast         *Broadcast
+	Announce          *Announce    `yaml:"announce,omitempty"`
+	Bootstrap         *Bootstrap   `yaml:"bootstrap"`
+	Broadcast         *Broadcast   `yaml:"broadcast"`
 	Connections       *Connections `yaml:"connections"`
 	DisableTransactor bool         `yaml:"disable.transactor,omitempty"`
-	HTTP              HTTP
-	Logging           *Logging
-	Storage           *Storage
-	Registries        []Registry `yaml:registry,omitempty`
+	HTTP              HTTP         `yaml:"http,omitempty"`
+	Logging           *Logging     `yaml:"logging"`
+	RateLimit         *RateLimit   `yaml:"rate.limit"`
+	Registries        []Registry   `yaml:"registries,omitempty"`
+	Storage           *Storage     `yaml:"storage"`
 }
 
-// HTTP represents the configuration for the rest http api exposed by a node
+// RateLimit represents the configuration for rate-limiting within the system.
+type RateLimit struct {
+	InitialRate  int     `yaml:"initial.rate"`
+	RateDecrease float64 `yaml:"rate.decrease"`
+	RateIncrease int     `yaml:"rate.increase"`
+}
+
+// HTTP represents the configuration for the REST HTTP API exposed by a node.
 type HTTP struct {
 	Enabled bool
-	Port    *int `yaml:"port,omitempty"`
+	Port    int `yaml:"port,omitempty"`
 }
 
 // Peer represents the cryptographic public keys of a node in a Chainspace
