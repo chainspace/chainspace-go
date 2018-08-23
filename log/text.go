@@ -36,7 +36,7 @@ func textLog(e entry) {
 	b.buf = append(b.buf, e.text...)
 	b.buf = append(b.buf, '\n')
 	if len(e.parfields) > 0 || len(e.fields) > 0 {
-		b.buf = append(b.buf, "                              "...)
+		b.buf = append(b.buf, "                                  "...)
 		if len(e.parfields) > 0 {
 			writeTextFields(b, e.parfields)
 		}

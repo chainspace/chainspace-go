@@ -58,7 +58,7 @@ func (l *Logger) stacktrace(text string) {
 		buf = strconv.AppendInt(buf, int64(frame.Line), 10)
 		buf = append(buf, '\n')
 	}
-	l.log(TraceLevel, string(buf), nil)
+	l.log(StackTraceLevel, string(buf), nil)
 }
 
 // Debug logs the given text and fields at DebugLevel.
@@ -106,8 +106,8 @@ func (l *Logger) Infof(format string, args ...interface{}) {
 	l.log(InfoLevel, fmt.Sprintf(format, args...), nil)
 }
 
-// Trace logs the given text at TraceLevel along with the stacktrace.
-func (l *Logger) Trace(text string) {
+// StackTrace logs the given text at StackTraceLevel along with the stacktrace.
+func (l *Logger) StackTrace(text string) {
 	l.stacktrace(text)
 }
 

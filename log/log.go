@@ -62,9 +62,9 @@ func SetGlobal(fields ...Field) {
 	root.fields = fields
 }
 
-// Trace logs the given text at TraceLevel along with the stacktrace using the
-// root logger.
-func Trace(text string) {
+// StackTrace logs the given text at StackTraceLevel along with the stacktrace
+// using the root logger.
+func StackTrace(text string) {
 	root.stacktrace(text)
 }
 

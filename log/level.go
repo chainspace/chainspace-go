@@ -11,7 +11,7 @@ const (
 	DebugLevel Level = iota + 1
 	InfoLevel
 	ErrorLevel
-	TraceLevel
+	StackTraceLevel
 	FatalLevel
 )
 
@@ -33,8 +33,8 @@ var (
 )
 
 var (
-	level2color  = [...]string{"", color(yellow, "DEBUG"), color(blue, "INFO"), color(red, "ERROR"), color(magenta, "TRACE"), color(red, "FATAL")}
-	level2string = [...]string{"", rpad("DEBUG"), rpad("INFO"), rpad("ERROR"), rpad("TRACE"), rpad("FATAL")}
+	level2color  = [...]string{"", color(yellow, "DEBUG"), color(blue, "INFO"), color(red, "ERROR"), color(magenta, "STACKTRACE"), color(red, "FATAL")}
+	level2string = [...]string{"", rpad("DEBUG"), rpad("INFO"), rpad("ERROR"), rpad("STACKTRACE"), rpad("FATAL")}
 )
 
 // Level represents a logging level.
@@ -53,8 +53,8 @@ func (l Level) MarshalYAML() (interface{}, error) {
 		return "fatal", nil
 	case InfoLevel:
 		return "info", nil
-	case TraceLevel:
-		return "trace", nil
+	case StackTraceLevel:
+		return "stacktrace", nil
 	default:
 		panic(fmt.Errorf("log: unknown level: %d", l))
 	}
@@ -70,8 +70,8 @@ func (l Level) String() string {
 		return "FATAL"
 	case InfoLevel:
 		return "INFO"
-	case TraceLevel:
-		return "TRACE"
+	case StackTraceLevel:
+		return "STACKTRACE"
 	default:
 		panic(fmt.Errorf("log: unknown level: %d", l))
 	}
@@ -98,8 +98,8 @@ func (l *Level) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	case "info":
 		*l = InfoLevel
 		return nil
-	case "trace":
-		*l = TraceLevel
+	case "stacktrace":
+		*l = StackTraceLevel
 		return nil
 	default:
 		return fmt.Errorf("log: unable to decode Level value: %q", raw)
@@ -111,7 +111,7 @@ func color(code int64, text string) string {
 }
 
 func rpad(text string) string {
-	for i := len(text); i < 8; i++ {
+	for i := len(text); i < 12; i++ {
 		text += " "
 	}
 	return text
@@ -148,7 +148,8 @@ func AtInfo() bool {
 	return minLevel <= InfoLevel
 }
 
-// AtTrace returns whether the current configuration will log at the TraceLevel.
-func AtTrace() bool {
-	return minLevel <= TraceLevel
+// AtStackTrace returns whether the current configuration will log at the
+// StackTraceLevel.
+func AtStackTrace() bool {
+	return minLevel <= StackTraceLevel
 }
