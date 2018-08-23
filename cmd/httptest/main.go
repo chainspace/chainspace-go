@@ -105,6 +105,7 @@ func objectsReady(ctx context.Context, workerID int, seed []string) {
 			fmt.Printf("context error: %v\n", err)
 			break
 		}
+		time.Sleep(time.Second)
 		client := http.Client{
 			Timeout: 15 * time.Second,
 		}
@@ -149,7 +150,6 @@ func objectsReady(ctx context.Context, workerID int, seed []string) {
 			return
 		}
 		fmt.Printf("worker %v some object still unavailable\n", workerID)
-		time.Sleep(time.Second)
 	}
 }
 

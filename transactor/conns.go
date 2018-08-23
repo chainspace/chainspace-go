@@ -65,6 +65,7 @@ func (c *ConnsCache) dial(nodeID uint64) (*ConnChan, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Error("new streamid", log.Int("STREAMID", int(conn.StreamID())))
 	err = c.sendHello(nodeID, conn)
 	if err != nil {
 		conn.Close()

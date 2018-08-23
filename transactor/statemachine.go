@@ -63,6 +63,10 @@ type StateMachine struct {
 	mu        sync.Mutex
 }
 
+func (sm *StateMachine) Close() {
+	sm.events.Close()
+}
+
 func (sm *StateMachine) Reset() {
 	sm.state = StateWaitingForConsensus1
 }

@@ -250,6 +250,7 @@ func (s *Service) gcStateMachines() {
 				if log.AtDebug() {
 					log.Debug("removing statemachine", log.String("finale_state", v.State().String()), fld.TxID(ID([]byte(k))))
 				}
+				v.Close()
 				delete(s.txstates, k)
 			}
 		}

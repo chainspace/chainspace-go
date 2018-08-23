@@ -42,13 +42,14 @@ resource "google_compute_firewall" "default" {
 resource "google_compute_instance" "default" {
   name   = "node-${format("%d", count.index+1)}"
   // machine_type = "f1-micro"
-  machine_type = "n1-standard-2"
+  machine_type = "n1-standard-32"
   zone = "europe-west2-b"
   tags = ["node"]
   min_cpu_platform = "Intel Skylake"
 
   scheduling {
     preemptible = true
+    automatic_restart = false
   }
 
   boot_disk {

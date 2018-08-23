@@ -1,12 +1,24 @@
 package transactor
 
-import "sync"
+import (
+	"sync"
+
+	"context"
+)
 
 type pendingEvents struct {
+	cancel func()
 	cond   *sync.Cond
+	ctx    context.Context
 	events []*Event
 	mu     sync.Mutex
 	cb     func(*Event) bool
+}
+
+func (pe *pendingEvents) Close() {
+	pe.cancel()
+	// just sending a nil event, this will get canceled directly
+	pe.OnEvent(nil)
 }
 
 func (pe *pendingEvents) OnEvent(e *Event) {
@@ -22,6 +34,10 @@ func (pe *pendingEvents) Run() {
 		for len(pe.events) == 0 {
 			pe.cond.Wait()
 		}
+		// check if context exited
+		if pe.ctx.Err() != nil {
+			return
+		}
 		e := pe.events[0]
 		pe.events = pe.events[1:]
 		pe.mu.Unlock()
@@ -32,9 +48,12 @@ func (pe *pendingEvents) Run() {
 }
 
 func NewPendingEvents(cb func(*Event) bool) *pendingEvents {
+	ctx, cancel := context.WithCancel(context.Background())
 	pe := &pendingEvents{
-		events: []*Event{},
+		cancel: cancel,
 		cb:     cb,
+		ctx:    ctx,
+		events: []*Event{},
 	}
 	pe.cond = sync.NewCond(&pe.mu)
 	return pe
