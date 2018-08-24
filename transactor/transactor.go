@@ -58,31 +58,32 @@ type Service struct {
 	txstatesmu  sync.Mutex
 }
 
-func (s *Service) DeliverStart(round uint64) {
-	log.Info("DELIVER START", fld.Round(round))
-}
-
-func (s *Service) DeliverTransaction(txdata *broadcast.TransactionData) {
-	// TODO(): do stuff with the fee?
-	tx := &SBACTransaction{}
-	err := proto.Unmarshal(txdata.Data, tx)
-	if err != nil {
-		log.Error("unable to unmarshal transaction data", fld.Err(err))
+func (s *Service) handleDeliver(round uint64, blocks []*broadcast.SignedData) {
+	for _, signed := range blocks {
+		block, err := signed.Block()
+		if err != nil {
+			log.Fatal("Unable to decode delivered block", fld.Round(round), fld.Err(err))
+		}
+		for iter := block.Iter(); iter.Valid(); iter.Next() {
+			// TODO(): do stuff with the fee?
+			tx := &SBACTransaction{}
+			err := proto.Unmarshal(iter.TxData, tx)
+			if err != nil {
+				log.Error("Unable to unmarshal transaction data", fld.Err(err))
+				continue
+			}
+			e := &Event{
+				msg: &SBACMessage{
+					Op:       tx.Op,
+					Decision: SBACDecision_ACCEPT,
+					Tx:       tx,
+				},
+				peerID: 99,
+			}
+			// log.Info("new transaction broadcasted from consensus", fld.TxID(ID(tx.ID)))
+			s.pe.OnEvent(e)
+		}
 	}
-	e := &Event{
-		msg: &SBACMessage{
-			Op:       tx.Op,
-			Decision: SBACDecision_ACCEPT,
-			Tx:       tx,
-		},
-		peerID: 99,
-	}
-	log.Info("new transaction broadcasted from consensus", fld.TxID(ID(tx.ID)))
-	s.pe.OnEvent(e)
-}
-
-func (s *Service) DeliverEnd(round uint64) {
-	log.Info("DELIVER END", fld.Round(round))
 }
 
 func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message) (*service.Message, error) {
@@ -274,7 +275,7 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 	if err != nil {
 		return nil, fmt.Errorf("transactor: unable to marshal consensus tx: %v", err)
 	}
-	s.broadcaster.AddTransaction(&broadcast.TransactionData{Data: b})
+	s.broadcaster.AddTransaction(b, 0)
 
 	// block here while the statemachine does its job
 	txres := <-txdetails.Result
@@ -455,7 +456,7 @@ func New(cfg *Config) (*Service, error) {
 	}
 	s.pe = NewPendingEvents(s.consumeEvents)
 	s.table = s.makeStateTable()
-	s.broadcaster.Register(s)
+	s.broadcaster.Register(s.handleDeliver)
 	go s.pe.Run()
 	// go s.gcStateMachines()
 	return s, nil
