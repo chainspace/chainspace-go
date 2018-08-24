@@ -12,8 +12,8 @@ const (
 	TypeBools
 	TypeBytes
 	TypeBytesArray
-	TypeCombihash
-	TypeCombihashes
+	TypeDigest
+	TypeDigests
 	TypeDuration
 	TypeDurations
 	TypeErr
@@ -60,10 +60,10 @@ func (f fieldType) String() string {
 		return "Bytes"
 	case TypeBytesArray:
 		return "BytesArray"
-	case TypeCombihash:
-		return "Combihash"
-	case TypeCombihashes:
-		return "Combihashes"
+	case TypeDigest:
+		return "Digest"
+	case TypeDigests:
+		return "Digests"
 	case TypeDuration:
 		return "Duration"
 	case TypeDurations:
@@ -185,20 +185,20 @@ func BytesArray(key string, value [][]byte) Field {
 	}
 }
 
-// Combihash represents a field with a combihash digest value.
-func Combihash(key string, value []byte) Field {
+// Digest represents a field with a hash digest value.
+func Digest(key string, value []byte) Field {
 	return Field{
 		key:  key,
-		typ:  TypeCombihash,
+		typ:  TypeDigest,
 		xval: value,
 	}
 }
 
-// Combihashes represents a field with an array of combihash digest values.
-func Combihashes(key string, value [][]byte) Field {
+// Digests represents a field with an array of hash digest values.
+func Digests(key string, value [][]byte) Field {
 	return Field{
 		key:  key,
-		typ:  TypeCombihashes,
+		typ:  TypeDigests,
 		xval: value,
 	}
 }

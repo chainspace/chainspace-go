@@ -15,7 +15,7 @@ func Address(value string) log.Field {
 
 // BlockHash log field.
 func BlockHash(value []byte) log.Field {
-	return log.Combihash("block.hash", value)
+	return log.Digest("block.hash", value)
 }
 
 // BlockID log field.
@@ -70,7 +70,7 @@ func OK(value bool) log.Field {
 
 // ObjectID log field.
 func ObjectID(value []byte) log.Field {
-	return log.Combihash("object.id", value)
+	return log.Digest("object.id", value)
 }
 
 // Path log field.

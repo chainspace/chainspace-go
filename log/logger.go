@@ -111,6 +111,17 @@ func (l *Logger) StackTrace(text string) {
 	l.stacktrace(text)
 }
 
+// Warn logs the given text and fields at WarnLevel.
+func (l *Logger) Warn(text string, fields ...Field) {
+	l.log(WarnLevel, text, fields)
+}
+
+// Warnf formats similarly to Printf and logs the resulting output at the
+// WarnLevel.
+func (l *Logger) Warnf(format string, args ...interface{}) {
+	l.log(WarnLevel, fmt.Sprintf(format, args...), nil)
+}
+
 // With returns a new logger that comes preset with the given fields.
 func (l *Logger) With(fields ...Field) *Logger {
 	if l.fields == nil {

@@ -68,6 +68,17 @@ func StackTrace(text string) {
 	root.stacktrace(text)
 }
 
+// Warn logs the given text and fields at WarnLevel using the root logger.
+func Warn(text string, fields ...Field) {
+	root.Warn(text, fields...)
+}
+
+// Warnf formats similarly to Printf and logs the resulting output at the
+// WarnLevel using the root logger.
+func Warnf(format string, args ...interface{}) {
+	root.Warn(fmt.Sprintf(format, args...))
+}
+
 // With returns a new logger based off of the root logger that comes preset with
 // the given fields.
 func With(fields ...Field) *Logger {
