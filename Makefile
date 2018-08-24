@@ -1,11 +1,17 @@
 FILES=	service/types.proto\
 	broadcast/types.proto\
 	transactor/types.proto
+PKG := "./cmd/$(PROJECT_NAME)"
+PKG_LIST := $(shell go list ${PKG}/... | grep -v /vendor/)
+PROJECT_NAME := "chainspace"
 
 install: chainspace httptest ## install the chainspace binary
 
 chainspace:
 	go install chainspace.io/prototype/cmd/chainspace
+
+test: ## Run unit tests
+	go test -short ${PKG_LIST} -v
 
 httptest:
 	go install chainspace.io/prototype/cmd/httptest
