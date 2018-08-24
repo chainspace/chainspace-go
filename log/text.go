@@ -105,8 +105,8 @@ func writeTextBytes(b *buffer, s []byte) {
 	}
 }
 
-func writeTextCombihash(b *buffer, hash []byte) {
-	for _, v := range hash[6:12] {
+func writeTextDigest(b *buffer, hash []byte) {
+	for _, v := range hash[:6] {
 		b.buf = append(b.buf, hexUpper[v>>4], hexUpper[v&0x0f])
 	}
 }
@@ -161,14 +161,14 @@ func writeTextFields(b *buffer, fields []Field) {
 				}
 			}
 			b.buf = append(b.buf, ']')
-		case TypeCombihash:
-			writeTextCombihash(b, field.xval.([]byte))
-		case TypeCombihashes:
+		case TypeDigest:
+			writeTextDigest(b, field.xval.([]byte))
+		case TypeDigests:
 			val := field.xval.([][]byte)
 			last := len(val) - 1
 			b.buf = append(b.buf, '[')
 			for i, v := range val {
-				writeTextCombihash(b, v)
+				writeTextDigest(b, v)
 				if i != last {
 					b.buf = append(b.buf, ',', ' ')
 				}
