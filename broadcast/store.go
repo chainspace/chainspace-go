@@ -1,13 +1,13 @@
 package broadcast
 
 import (
+	"crypto/sha512"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
 
 	"chainspace.io/prototype/byzco"
-	"chainspace.io/prototype/combihash"
 	"chainspace.io/prototype/lexinum"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/log/fld"
@@ -910,11 +910,11 @@ func getBlockData(signed *SignedData) *blockData {
 	if err := proto.Unmarshal(signed.Data, block); err != nil {
 		log.Fatal("Unable to decode signed block", fld.Err(err))
 	}
-	hasher := combihash.New()
+	hasher := sha512.New512_256()
 	if _, err := hasher.Write(signed.Data); err != nil {
 		log.Fatal("Unable to hash signed block data", fld.Err(err))
 	}
-	hash := hasher.Digest()
+	hash := hasher.Sum(nil)
 	ref := &BlockReference{
 		Hash:  hash,
 		Node:  block.Node,

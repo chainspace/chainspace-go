@@ -374,16 +374,16 @@ func Run(cfg *Config) (*Server, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	bcfg := &broadcast.Config{
-		Broadcast:   cfg.Node.Broadcast,
-		Connections: cfg.Node.Connections,
-		Consensus:   cfg.Network.Consensus,
-		Directory:   dir,
-		Key:         key,
-		Keys:        keys,
-		MaxPayload:  maxPayload,
-		NodeID:      cfg.NodeID,
-		RateLimit:   cfg.Node.RateLimit,
-		Peers:       peers,
+		Broadcast:     cfg.Node.Broadcast,
+		Connections:   cfg.Node.Connections,
+		Directory:     dir,
+		Key:           key,
+		Keys:          keys,
+		MaxPayload:    maxPayload,
+		NetConsensus:  cfg.Network.Consensus,
+		NodeConsensus: cfg.Node.Consensus,
+		NodeID:        cfg.NodeID,
+		Peers:         peers,
 	}
 
 	broadcaster, err := broadcast.New(ctx, bcfg, top)

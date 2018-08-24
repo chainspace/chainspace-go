@@ -28,9 +28,8 @@ type Config struct {
 type Graph struct {
 	blocks     []*blockInfo
 	cb         func(*Interpreted)
-	cond       *sync.Cond // protects entries
 	ctx        context.Context
-	entries    []*entry
+	entries    chan *BlockGraph
 	max        map[BlockID]uint64
 	mu         sync.Mutex // protects blocks, max
 	nodeCount  int
@@ -94,23 +93,23 @@ func (g *Graph) deliverRound(round uint64, hashes map[uint64]string) {
 	delete(g.resolved, round)
 	g.mu.Lock()
 	consumed := g.blocks[0].data.Block.Round - 1
-	idx := 0
-	for i, info := range g.blocks {
-		if info.max > round {
-			break
-		}
-		delete(g.max, info.data.Block)
-		delete(g.states, info.data.Block)
-		for _, dep := range info.data.Deps {
-			delete(g.max, dep.Block)
-			delete(g.states, dep.Block)
-		}
-		consumed++
-		idx = i + 1
-	}
-	if idx > 0 {
-		g.blocks = g.blocks[idx:]
-	}
+	// idx := 0
+	// for i, info := range g.blocks {
+	// 	if info.max > round {
+	// 		break
+	// 	}
+	// 	delete(g.max, info.data.Block)
+	// 	delete(g.states, info.data.Block)
+	// 	for _, dep := range info.data.Deps {
+	// 		delete(g.max, dep.Block)
+	// 		delete(g.states, dep.Block)
+	// 	}
+	// 	consumed++
+	// 	idx = i + 1
+	// }
+	// if idx > 0 {
+	// 	g.blocks = g.blocks[idx:]
+	// }
 	g.round++
 	if log.AtDebug() {
 		log.Debug("Mem usage:", log.Int("g.max", len(g.max)), log.Int("g.states", len(g.states)),
@@ -139,7 +138,9 @@ func (g *Graph) process(e *entry) {
 		}
 	}
 
-	log.Debug("Interpreting block", fld.BlockID(e.block))
+	if log.AtDebug() {
+		log.Debug("Interpreting block", fld.BlockID(e.block))
+	}
 
 	node, round, hash := e.block.Node, e.block.Round, e.block.Hash
 	out := []message{preprepare{
@@ -224,9 +225,13 @@ func (g *Graph) process(e *entry) {
 	}
 
 	idx := len(out)
-	out = append(out, g.processMessages(s, node, node, e.block, out[:idx])...)
+	processed := map[message]bool{}
+	out = append(out, g.processMessages(s, processed, node, node, e.block, out[:idx])...)
 	for _, dep := range e.deps {
-		out = append(out, g.processMessages(s, dep.Node, node, e.block, g.states[dep].getOutput())...)
+		if log.AtDebug() {
+			log.Debug("Processing block dep", fld.BlockID(dep))
+		}
+		out = append(out, g.processMessages(s, processed, dep.Node, node, e.block, g.states[dep].getOutput())...)
 	}
 	s.out = out
 	g.states[e.block] = s
@@ -245,6 +250,9 @@ func (g *Graph) processMessage(s *state, sender uint64, receiver uint64, origin 
 		log.Debug("Processing message from block", fld.BlockID(origin),
 			log.String("message", msg.String()))
 	}
+
+	// log.Info("Processing message from block", fld.BlockID(origin),
+	// 	log.String("message", msg.String()))
 
 	switch m := msg.(type) {
 
@@ -281,6 +289,9 @@ func (g *Graph) processMessage(s *state, sender uint64, receiver uint64, origin 
 		// assert m.view == 0 || (nid, xround, xv, "HNV") in state
 		b := s.getBitset(g.nodeCount, m.pre())
 		b.setPrepare(m.sender)
+		if log.AtDebug() {
+			log.Debugf("Prepare count == %d", b.prepareCount())
+		}
 		if b.prepareCount() != g.quorum2f1 {
 			return nil
 		}
@@ -305,11 +316,12 @@ func (g *Graph) processMessage(s *state, sender uint64, receiver uint64, origin 
 		}
 		b := s.getBitset(g.nodeCount, m.pre())
 		b.setCommit(m.sender)
-		// log.Info(fmt.Sprintf("commitcount %d", b.commitCount()))
+		if log.AtDebug() {
+			log.Debugf("Commit count == %d", b.commitCount())
+		}
 		if b.commitCount() != g.quorum2f1 {
 			return nil
 		}
-		// log.Error("foo")
 		nr := noderound{node, round}
 		if _, exists := s.final[nr]; exists {
 			// assert value == m.hash
@@ -353,7 +365,7 @@ func (g *Graph) processMessage(s *state, sender uint64, receiver uint64, origin 
 				if hash != "" && hval != hash {
 					log.Fatal("Got multiple hashes in a view change",
 						fld.NodeID(node), fld.Round(round),
-						log.Combihash("hash", []byte(hash)), log.Combihash("hash.alt", []byte(hval)))
+						log.Digest("hash", []byte(hash)), log.Digest("hash.alt", []byte(hval)))
 				}
 				hash = hval
 			}
@@ -375,7 +387,7 @@ func (g *Graph) processMessage(s *state, sender uint64, receiver uint64, origin 
 		}
 		s.data[view{node: node, round: round}] = m.view
 		// TODO: timeout value could overflow uint64 if m.view is over 63 if using `1 << m.view`
-		tval := origin.Round + s.timeout + uint64(10*m.view)
+		tval := origin.Round + s.timeout + 5 // uint64(10*m.view)
 		s.timeouts[tval] = append(s.timeouts[tval], timeout{node: node, round: round, view: m.view})
 		s.data[key] = true
 		return preprepare{hash: m.hash, node: node, round: round, view: m.view}
@@ -388,16 +400,25 @@ func (g *Graph) processMessage(s *state, sender uint64, receiver uint64, origin 
 	return nil
 }
 
-func (g *Graph) processMessages(s *state, sender uint64, receiver uint64, origin BlockID, msgs []message) []message {
+func (g *Graph) processMessages(s *state, processed map[message]bool, sender uint64, receiver uint64, origin BlockID, msgs []message) []message {
 	var out []message
 	for _, msg := range msgs {
+		if processed[msg] {
+			continue
+		}
 		resp := g.processMessage(s, sender, receiver, origin, msg)
+		processed[msg] = true
 		if resp != nil {
 			out = append(out, resp)
 		}
 	}
 	for i := 0; i < len(out); i++ {
-		resp := g.processMessage(s, sender, receiver, origin, out[i])
+		msg := out[i]
+		if processed[msg] {
+			continue
+		}
+		resp := g.processMessage(s, sender, receiver, origin, msg)
+		processed[msg] = true
 		if resp != nil {
 			out = append(out, resp)
 		}
@@ -405,26 +426,79 @@ func (g *Graph) processMessages(s *state, sender uint64, receiver uint64, origin
 	return out
 }
 
-func (g *Graph) release() {
-	<-g.ctx.Done()
-	g.cond.Signal()
-}
-
 func (g *Graph) run() {
 	for {
-		g.cond.L.Lock()
-		for len(g.entries) == 0 {
-			g.cond.Wait()
-			select {
-			case <-g.ctx.Done():
-				return
-			default:
+		select {
+		case data := <-g.entries:
+			entries := make([]*entry, len(data.Deps))
+			g.mu.Lock()
+			max := data.Block.Round
+			round := g.round
+			for i, dep := range data.Deps {
+				if log.AtDebug() {
+					log.Debug("Dep:", fld.BlockID(dep.Block))
+				}
+				dmax := dep.Block.Round
+				e := &entry{
+					block: dep.Block,
+					prev:  dep.Prev,
+				}
+				if dep.Block.Round != 1 {
+					e.deps = make([]BlockID, len(dep.Deps)+1)
+					e.deps[0] = dep.Prev
+					copy(e.deps[1:], dep.Deps)
+					pmax := g.max[dep.Prev]
+					if pmax > dmax {
+						dmax = pmax
+					}
+				} else {
+					e.deps = dep.Deps
+				}
+				entries[i] = e
+				for _, link := range dep.Deps {
+					lmax := g.max[link]
+					if lmax > dmax {
+						dmax = lmax
+					}
+				}
+				if round > dmax {
+					dmax = round
+				}
+				g.max[dep.Block] = dmax
+				if dmax > max {
+					max = dmax
+				}
 			}
+			if data.Block.Round != 1 {
+				pmax := g.max[data.Prev]
+				if pmax > max {
+					max = pmax
+				}
+			}
+			if round > max {
+				max = round
+			}
+			g.blocks = append(g.blocks, &blockInfo{
+				data: data,
+				max:  max,
+			})
+			g.mu.Unlock()
+			for _, e := range entries {
+				g.process(e)
+			}
+			self := &entry{
+				block: data.Block,
+				prev:  data.Prev,
+			}
+			self.deps = make([]BlockID, len(data.Deps)+1)
+			self.deps[0] = data.Prev
+			for i, dep := range data.Deps {
+				self.deps[i+1] = dep.Block
+			}
+			g.process(self)
+		case <-g.ctx.Done():
+			return
 		}
-		e := g.entries[0]
-		g.entries = g.entries[1:]
-		g.cond.L.Unlock()
-		g.process(e)
 	}
 }
 
@@ -433,67 +507,7 @@ func (g *Graph) Add(data *BlockGraph) {
 	if log.AtDebug() {
 		log.Debug("Adding block to graph", fld.BlockID(data.Block))
 	}
-	entries := make([]*entry, len(data.Deps)+1)
-	g.mu.Lock()
-	max := data.Block.Round
-	round := g.round
-	for i, dep := range data.Deps {
-		if log.AtDebug() {
-			log.Debug("Dep:", fld.BlockID(dep.Block))
-		}
-		e := &entry{
-			block: dep.Block,
-			prev:  dep.Prev,
-		}
-		e.deps = make([]BlockID, len(dep.Deps)+1)
-		e.deps[0] = dep.Prev
-		copy(e.deps[1:], dep.Deps)
-		entries[i] = e
-		dmax := dep.Block.Round
-		for _, link := range dep.Deps {
-			lmax := g.max[link]
-			if lmax > dmax {
-				dmax = lmax
-			}
-		}
-		pmax := g.max[dep.Prev]
-		if pmax > dmax {
-			dmax = pmax
-		}
-		if round > dmax {
-			dmax = round
-		}
-		g.max[dep.Block] = dmax
-		if dmax > max {
-			max = dmax
-		}
-	}
-	pmax := g.max[data.Prev]
-	if pmax > max {
-		max = pmax
-	}
-	if round > max {
-		max = round
-	}
-	g.blocks = append(g.blocks, &blockInfo{
-		data: data,
-		max:  max,
-	})
-	g.mu.Unlock()
-	self := &entry{
-		block: data.Block,
-		prev:  data.Prev,
-	}
-	self.deps = make([]BlockID, len(data.Deps)+1)
-	self.deps[0] = data.Prev
-	for i, dep := range data.Deps {
-		self.deps[i+1] = dep.Block
-	}
-	entries[len(entries)-1] = self
-	g.cond.L.Lock()
-	g.entries = append(g.entries, entries...)
-	g.cond.L.Unlock()
-	g.cond.Signal()
+	g.entries <- data
 }
 
 // New instantiates a Graph for use by the broadcast/consensus mechanism.
@@ -502,9 +516,8 @@ func New(ctx context.Context, cfg *Config, cb func(*Interpreted)) *Graph {
 	g := &Graph{
 		blocks:     []*blockInfo{},
 		cb:         cb,
-		cond:       sync.NewCond(&sync.Mutex{}),
 		ctx:        ctx,
-		entries:    []*entry{},
+		entries:    make(chan *BlockGraph, 10000),
 		max:        map[BlockID]uint64{},
 		nodeCount:  len(cfg.Nodes),
 		nodes:      cfg.Nodes,
@@ -517,7 +530,6 @@ func New(ctx context.Context, cfg *Config, cb func(*Interpreted)) *Graph {
 		states:     map[BlockID]*state{},
 		totalNodes: cfg.TotalNodes,
 	}
-	go g.release()
 	go g.run()
 	return g
 }

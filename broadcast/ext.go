@@ -2,10 +2,10 @@ package broadcast
 
 import (
 	"bytes"
+	"crypto/sha512"
 	"encoding/binary"
 	"sort"
 
-	"chainspace.io/prototype/combihash"
 	"chainspace.io/prototype/log"
 	"github.com/gogo/protobuf/proto"
 )
@@ -22,18 +22,18 @@ type TransactionList []TransactionData
 // Sort orders the TransactionList in descending order of the transaction fee
 // and then hash if the fees are equal.
 func (t TransactionList) Sort() {
-	hasher := combihash.New()
+	hasher := sha512.New512_256()
 	sort.Slice(t, func(i, j int) bool {
 		if t[i].Fee == t[j].Fee {
 			if _, err := hasher.Write(t[i].Data); err != nil {
 				log.Fatal("Couldn't hash transaction data")
 			}
-			ihash := hasher.Digest()
+			ihash := hasher.Sum(nil)
 			hasher.Reset()
 			if _, err := hasher.Write(t[j].Data); err != nil {
 				log.Fatal("Couldn't hash transaction data")
 			}
-			jhash := hasher.Digest()
+			jhash := hasher.Sum(nil)
 			hasher.Reset()
 			return bytes.Compare(ihash, jhash) == 1
 		}
@@ -92,13 +92,13 @@ func (s *SignedData) Block() (*Block, error) {
 	return block, nil
 }
 
-// Digest returns the combihash of the underlying data.
+// Digest returns the hash of the underlying data.
 func (s *SignedData) Digest() []byte {
-	hasher := combihash.New()
+	hasher := sha512.New512_256()
 	if _, err := hasher.Write(s.Data); err != nil {
 		panic(err)
 	}
-	return hasher.Digest()
+	return hasher.Sum(nil)
 }
 
 // Size returns the rough size of the SignedData in bytes.

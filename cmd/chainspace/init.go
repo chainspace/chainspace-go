@@ -38,7 +38,7 @@ func cmdInit(args []string, usage string) {
 
 	announce := &config.Announce{}
 	bootstrap := &config.Bootstrap{}
-	consensus := &config.Consensus{
+	consensus := &config.NetConsensus{
 		BlockReferencesSizeLimit:   10 * config.MB,
 		BlockTransactionsSizeLimit: 100 * config.MB,
 		NonceExpiration:            30 * time.Second,
@@ -130,15 +130,22 @@ func cmdInit(args []string, usage string) {
 				Port:    8080,
 			}
 		}
+
+		consensus := &config.NodeConsensus{
+			DriftTolerance:      10 * time.Millisecond,
+			InitialWorkDuration: 100 * time.Millisecond,
+			RateLimit:           rateLimit,
+		}
+
 		// Create node.yaml
 		cfg := &config.Node{
 			Announce:    announce,
 			Bootstrap:   bootstrap,
 			Broadcast:   broadcast,
 			Connections: connections,
+			Consensus:   consensus,
 			HTTP:        httpcfg,
 			Logging:     logging,
-			RateLimit:   rateLimit,
 			Registries:  registries,
 			Storage:     storage,
 		}

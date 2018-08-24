@@ -226,6 +226,13 @@ type state struct {
 }
 
 func (s *state) clone(minround uint64) *state {
+	// TODO(tav): Remove once we're handling more than just the happy path
+	orimin := minround
+	if minround < 100 {
+		minround = 0
+	} else {
+		minround -= 100
+	}
 	if s == nil {
 		return &state{
 			timeouts: map[uint64][]timeout{},
@@ -271,8 +278,16 @@ func (s *state) clone(minround uint64) *state {
 		}
 		n.final = final
 	}
-	out := make([]message, len(s.out))
-	copy(out, s.out)
+	// out := make([]message, len(s.out))
+	// copy(out, s.out)
+	var out []message
+	for _, msg := range s.out {
+		_, r := msg.noderound()
+		if r < orimin {
+			continue
+		}
+		out = append(out, msg)
+	}
 	n.out = out
 	timeouts := map[uint64][]timeout{}
 	for k, v := range s.timeouts {

@@ -20,11 +20,6 @@ import (
 	"github.com/tav/golly/process"
 )
 
-var (
-	txmu   sync.RWMutex
-	txrate uint64
-)
-
 type loadTracker struct {
 	block  *broadcast.Block
 	mu     sync.Mutex
@@ -59,7 +54,6 @@ func cmdGenLoad(args []string, usage string) {
 	opts := newOpts("genload NETWORK_NAME NODE_ID [OPTIONS]", usage)
 	configRoot := opts.Flags("--config-root").Label("PATH").String("Path to the chainspace root directory [~/.chainspace]", defaultRootDir())
 	cpuProfile := opts.Flags("--cpu-profile").Label("PATH").String("Write a CPU profile to the given file before exiting")
-	generators := opts.Flags("--generators").Label("N").Int("Number of generator threads [1]")
 	initialRate := opts.Flags("--initial-rate").Label("TXS").Int("Initial number of transactions to send per second [10000]")
 	memProfile := opts.Flags("--mem-profile").Label("PATH").String("Write the memory profile to the given file before exiting")
 	rateDecrease := opts.Flags("--rate-decr").Label("FACTOR").Float("Multiplicative decrease factor of the queue size [0.8]")
@@ -120,8 +114,14 @@ func cmdGenLoad(args []string, usage string) {
 		pprof.StartCPUProfile(profileFile)
 	}
 
+	nodeCfg.Consensus.RateLimit = &config.RateLimit{
+		InitialRate:  *initialRate,
+		RateDecrease: *rateDecrease,
+		RateIncrease: *rateIncrease,
+	}
+
 	nodeCfg.DisableTransactor = true
-	nodeCfg.Logging.FileLevel = 0
+	nodeCfg.Logging.FileLevel = log.InfoLevel
 	log.ToConsole(log.InfoLevel)
 
 	if *txSize < 16 {
@@ -160,39 +160,20 @@ func cmdGenLoad(args []string, usage string) {
 		}
 	})
 
-	txrate = uint64(*initialRate / *generators)
-	if txrate == 0 {
-		txrate = 1
-	}
-
-	for i := 0; i < *generators; i++ {
-		go genLoad(s, nodeID, *txSize, uint64(*generators))
-	}
-
-	manageThroughput(app, netCfg.Shard.Size, uint64(*initialRate), uint64(*rateIncrease), *rateDecrease)
+	go genLoad(s, nodeID, *txSize)
+	logTPS(app, netCfg.Shard.Size, uint64(*initialRate), uint64(*rateIncrease), *rateDecrease)
 
 }
 
-func genLoad(s *node.Server, nodeID uint64, txSize int, generators uint64) {
-	tick := time.NewTicker(time.Second)
+func genLoad(s *node.Server, nodeID uint64, txSize int) {
 	tx := make([]byte, txSize)
 	binary.LittleEndian.PutUint32(tx, uint32(nodeID))
 	for {
-		<-tick.C
-		txmu.RLock()
-		rate := txrate
-		txmu.RUnlock()
-		rate = rate / generators
-		if rate == 0 {
-			rate = 1
-		}
-		for i := uint64(0); i < rate; i++ {
-			s.Broadcast.AddTransaction(tx, 0)
-		}
+		s.Broadcast.AddTransaction(tx, 0)
 	}
 }
 
-func manageThroughput(l *loadTracker, nodeCount int, startRate uint64, incr uint64, decr float64) {
+func logTPS(l *loadTracker, nodeCount int, startRate uint64, incr uint64, decr float64) {
 	var (
 		highest  uint64
 		maxCount uint64
@@ -204,7 +185,6 @@ func manageThroughput(l *loadTracker, nodeCount int, startRate uint64, incr uint
 		min = 1
 	}
 	highestAvg := 0.0
-	rate := startRate
 	recent := make([]float64, 10)
 	idx := 0
 	for {
@@ -220,18 +200,6 @@ func manageThroughput(l *loadTracker, nodeCount int, startRate uint64, incr uint
 			avg += val
 		}
 		avg /= 10
-		if total < min {
-			rate = uint64(float64(rate) * decr)
-			if rate < min {
-				rate = min
-			}
-		} else {
-			rate += incr
-		}
-		log.Info("Setting target generation rate for this node", log.Uint64("target.tps", rate))
-		txmu.Lock()
-		txrate = rate
-		txmu.Unlock()
 		log.Info("Current transactions/sec", log.Uint64("cur.tps", total))
 		if total > highest {
 			highest = total

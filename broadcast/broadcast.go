@@ -4,6 +4,7 @@ package broadcast // import "chainspace.io/prototype/broadcast"
 
 import (
 	"context"
+	"crypto/sha512"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -13,7 +14,6 @@ import (
 	"time"
 
 	"chainspace.io/prototype/byzco"
-	"chainspace.io/prototype/combihash"
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/log"
@@ -35,61 +35,58 @@ type Callback func(round uint64, blocks []*SignedData)
 
 // Config for the broadcast service.
 type Config struct {
-	Broadcast   *config.Broadcast
-	Connections *config.Connections
-	Consensus   *config.Consensus
-	Directory   string
-	Key         signature.KeyPair
-	Keys        map[uint64]signature.PublicKey
-	MaxPayload  int
-	NodeID      uint64
-	Peers       []uint64
-	RateLimit   *config.RateLimit
+	Broadcast     *config.Broadcast
+	Connections   *config.Connections
+	Directory     string
+	Key           signature.KeyPair
+	Keys          map[uint64]signature.PublicKey
+	MaxPayload    int
+	NetConsensus  *config.NetConsensus
+	NodeConsensus *config.NodeConsensus
+	NodeID        uint64
+	Peers         []uint64
 }
 
 // Service implements the broadcast and consensus system.
+//
+// TODO(tav): pad/re-order to minimise false sharing.
 type Service struct {
-	cb             Callback
-	ctx            context.Context
-	depgraph       *depgraph
-	graph          *byzco.Graph
-	imu            sync.Mutex // protects cb, interpreted, toDeliver
-	initialBackoff time.Duration
-	interpreted    uint64
-	interval       time.Duration
-	key            signature.KeyPair
-	keys           map[uint64]signature.PublicKey
-	lru            *lru
-	maxBackoff     time.Duration
-	maxBlocks      int
-	maxPayload     int
-	mu             sync.RWMutex // protects overloaded, previous, round, sent, signal, txCountLimit
-	nodeID         uint64
-	overloaded     bool
-	ownblocks      *ownblocks
-	peers          []uint64
-	prevhash       []byte
-	prevref        *SignedData
-	qcfg           *quic.Config
-	readTimeout    time.Duration
-	refSizeLimit   int
-	received       *receivedMap
-	round          uint64
-	sent           map[uint64]uint64
-	signal         chan struct{}
-	store          *store
-	toDeliver      []*byzco.Interpreted
-	top            *network.Topology
-	txCount        int
-	txCountLimit   int
-	txData         []byte
-	txDecr         float64
-	txIdx          int
-	txIncr         int
-	txInitial      int
-	txSizeLimit    int
-	txmu           sync.Mutex // protects txCount, txData, txIdx
-	writeTimeout   time.Duration
+	cb           Callback
+	cfg          *Config
+	ctx          context.Context
+	depgraph     *depgraph
+	graph        *byzco.Graph
+	imu          sync.Mutex // protects cb, interpreted, toDeliver
+	interpreted  uint64
+	interval     time.Duration
+	key          signature.KeyPair
+	keys         map[uint64]signature.PublicKey
+	lru          *lru
+	maxBlocks    int
+	maxPayload   int
+	mu           sync.RWMutex // protects previous, round, sent, signal, txCountLimit
+	nodeID       uint64
+	ownblocks    *ownblocks
+	peers        []uint64
+	prevhash     []byte
+	prevref      *SignedData
+	qcfg         *quic.Config
+	readTimeout  time.Duration
+	refSizeLimit int
+	received     *receivedMap
+	round        uint64
+	sent         map[uint64]uint64
+	signal       chan struct{}
+	store        *store
+	toDeliver    []*byzco.Interpreted
+	top          *network.Topology
+	txCount      int
+	txCountLimit int
+	txData       []byte
+	txIdx        int
+	txSizeLimit  int
+	txmu         sync.Mutex // protects txCount, txData, txIdx
+	writeTimeout time.Duration
 }
 
 func (s *Service) byzcoCallback(data *byzco.Interpreted) {
@@ -118,17 +115,19 @@ func (s *Service) fillMissingBlocks(peerID uint64) {
 		latest uint64
 		rounds []uint64
 	)
-	backoff := s.initialBackoff
+	initialBackoff := s.cfg.Broadcast.InitialBackoff
+	backoff := initialBackoff
 	getRounds := &GetRounds{}
 	getRoundsReq := &service.Message{Opcode: uint32(OP_GET_ROUNDS)}
 	list := &ListBlocks{}
 	l := log.With(fld.PeerID(peerID))
+	maxBackoff := s.cfg.Broadcast.MaxBackoff
 	retry := false
 	for {
 		if retry {
 			backoff *= 2
-			if backoff > s.maxBackoff {
-				backoff = s.maxBackoff
+			if backoff > maxBackoff {
+				backoff = maxBackoff
 			}
 			time.Sleep(backoff)
 			retry = false
@@ -140,7 +139,7 @@ func (s *Service) fillMissingBlocks(peerID uint64) {
 		}
 		conn, err := s.top.Dial(s.ctx, peerID, s.qcfg)
 		if err == nil {
-			backoff = s.initialBackoff
+			backoff = initialBackoff
 		} else {
 			retry = true
 			continue
@@ -250,24 +249,24 @@ func (s *Service) fillMissingBlocks(peerID uint64) {
 }
 
 func (s *Service) genBlocks() {
-	// TOOD(tav): Perhaps make these configurable
-	const (
-		startTolerance = 10 * time.Millisecond
-		workFraction   = 10
-	)
 	block := &Block{
 		Node:         s.nodeID,
 		Transactions: &Transactions{},
 	}
-	hasher := combihash.New()
+	driftTolerance := s.cfg.NodeConsensus.DriftTolerance
+	hasher := sha512.New512_256()
+	initialRate := s.cfg.NodeConsensus.RateLimit.InitialRate
 	interval := s.interval
 	overloaded := false
+	rate := initialRate
+	rateDecr := s.cfg.NodeConsensus.RateLimit.RateDecrease
+	rateIncr := s.cfg.NodeConsensus.RateLimit.RateIncrease
 	rootRef := &BlockReference{
 		Node: s.nodeID,
 	}
 	round := s.round
 	start := time.Now().Truncate(interval)
-	workDuration := interval / workFraction
+	workDuration := s.cfg.NodeConsensus.InitialWorkDuration
 	next := start.Add(interval)
 	workStart := next.Add(-workDuration)
 	time.Sleep(workStart.Sub(time.Now().Round(0)))
@@ -277,14 +276,25 @@ func (s *Service) genBlocks() {
 			return
 		default:
 		}
-		if time.Since(workStart) > startTolerance {
+		if time.Since(workStart) > driftTolerance {
+			rate = int(float64(rate) * rateDecr)
+			if rate < initialRate {
+				rate = initialRate
+			}
+			s.mu.Lock()
+			s.txCountLimit = rate
+			s.mu.Unlock()
 			if !overloaded {
-				log.Error("OVERLOADED")
+				log.Warn("Overloaded")
 				overloaded = true
 			}
 		} else {
+			rate += rateIncr
+			s.mu.Lock()
+			s.txCountLimit = rate
+			s.mu.Unlock()
 			if overloaded {
-				log.Error("NOT OVERLOADED")
+				log.Warn("Not overloaded")
 				overloaded = false
 			}
 		}
@@ -315,7 +325,7 @@ func (s *Service) genBlocks() {
 		if _, err := hasher.Write(data); err != nil {
 			log.Fatal("Could not hash encoded block", log.Err(err))
 		}
-		hash := hasher.Digest()
+		hash := hasher.Sum(nil)
 		rootRef.Hash = hash
 		rootRef.Round = round
 		refData, err := proto.Marshal(rootRef)
@@ -657,15 +667,17 @@ func (s *Service) loadState() {
 
 func (s *Service) maintainBroadcast(peerID uint64) {
 	ack := &AckBroadcast{}
-	backoff := s.initialBackoff
+	initialBackoff := s.cfg.Broadcast.InitialBackoff
+	backoff := initialBackoff
+	maxBackoff := s.cfg.Broadcast.MaxBackoff
 	msg := &service.Message{Opcode: uint32(OP_BROADCAST)}
 	list := &ListBlocks{}
 	retry := false
 	for {
 		if retry {
 			backoff *= 2
-			if backoff > s.maxBackoff {
-				backoff = s.maxBackoff
+			if backoff > maxBackoff {
+				backoff = maxBackoff
 			}
 			time.Sleep(backoff)
 			retry = false
@@ -677,7 +689,7 @@ func (s *Service) maintainBroadcast(peerID uint64) {
 		}
 		conn, err := s.top.Dial(s.ctx, peerID, s.qcfg)
 		if err == nil {
-			backoff = s.initialBackoff
+			backoff = initialBackoff
 		} else {
 			retry = true
 			continue
@@ -755,11 +767,11 @@ func (s *Service) processBlock(signed *SignedData) (uint64, error) {
 	if !exists {
 		return 0, fmt.Errorf("broadcast: unable to find signing.key for node %d", block.Node)
 	}
-	hasher := combihash.New()
+	hasher := sha512.New512_256()
 	if _, err := hasher.Write(signed.Data); err != nil {
 		return 0, fmt.Errorf("broadcast: unable to hash received signed block data: %s", err)
 	}
-	hash := hasher.Digest()
+	hash := hasher.Sum(nil)
 	ref := &BlockReference{
 		Hash:  hash,
 		Node:  block.Node,
@@ -818,6 +830,7 @@ func (s *Service) processBlock(signed *SignedData) (uint64, error) {
 			Round: ref.Round,
 		})
 	}
+	log.Warn("Received block", fld.NodeID(block.Node), fld.Round(block.Round))
 	if log.AtDebug() {
 		log.Debug("Received block", fld.NodeID(block.Node), fld.Round(block.Round))
 	}
@@ -935,7 +948,7 @@ func (s *Service) AddTransaction(txdata []byte, fee uint64) error {
 	}
 	for {
 		s.mu.RLock()
-		overloaded := s.overloaded
+		overloaded := s.txCount == s.txCountLimit
 		signal := s.signal
 		s.mu.RUnlock()
 		if overloaded {
@@ -1040,39 +1053,35 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		KeepAlive:        true,
 		IdleTimeout:      cfg.Connections.WriteTimeout,
 	}
-	refSizeLimit, err := cfg.Consensus.BlockReferencesSizeLimit.Int()
+	refSizeLimit, err := cfg.NetConsensus.BlockReferencesSizeLimit.Int()
 	if err != nil {
 		return nil, err
 	}
-	txSizeLimit, err := cfg.Consensus.BlockTransactionsSizeLimit.Int()
+	txSizeLimit, err := cfg.NetConsensus.BlockTransactionsSizeLimit.Int()
 	if err != nil {
 		return nil, err
 	}
 	s := &Service{
-		ctx:            ctx,
-		interval:       cfg.Consensus.RoundInterval,
-		key:            cfg.Key,
-		keys:           cfg.Keys,
-		initialBackoff: cfg.Broadcast.InitialBackoff,
-		lru:            lru,
-		maxBackoff:     cfg.Broadcast.MaxBackoff,
-		maxBlocks:      cfg.MaxPayload / (refSizeLimit + txSizeLimit + 100),
-		maxPayload:     cfg.MaxPayload,
-		nodeID:         cfg.NodeID,
-		ownblocks:      ownblocks,
-		peers:          cfg.Peers,
-		qcfg:           qcfg,
-		readTimeout:    cfg.Connections.ReadTimeout,
-		refSizeLimit:   refSizeLimit,
-		store:          store,
-		top:            top,
-		txCountLimit:   cfg.RateLimit.InitialRate,
-		txData:         make([]byte, txSizeLimit),
-		txDecr:         cfg.RateLimit.RateDecrease,
-		txInitial:      cfg.RateLimit.InitialRate,
-		txIncr:         cfg.RateLimit.RateIncrease,
-		txSizeLimit:    txSizeLimit,
-		writeTimeout:   cfg.Connections.WriteTimeout,
+		cfg:          cfg,
+		ctx:          ctx,
+		interval:     cfg.NetConsensus.RoundInterval,
+		key:          cfg.Key,
+		keys:         cfg.Keys,
+		lru:          lru,
+		maxBlocks:    cfg.MaxPayload / (refSizeLimit + txSizeLimit + 100),
+		maxPayload:   cfg.MaxPayload,
+		nodeID:       cfg.NodeID,
+		ownblocks:    ownblocks,
+		peers:        cfg.Peers,
+		qcfg:         qcfg,
+		readTimeout:  cfg.Connections.ReadTimeout,
+		refSizeLimit: refSizeLimit,
+		store:        store,
+		top:          top,
+		txCountLimit: cfg.NodeConsensus.RateLimit.InitialRate,
+		txData:       make([]byte, txSizeLimit),
+		txSizeLimit:  txSizeLimit,
+		writeTimeout: cfg.Connections.WriteTimeout,
 	}
 	s.loadState()
 	go s.genBlocks()
