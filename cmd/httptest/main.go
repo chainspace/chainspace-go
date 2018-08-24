@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"sync"
 	"time"
 
@@ -109,16 +110,18 @@ func objectsReady(ctx context.Context, workerID int, seed []string) {
 		client := http.Client{
 			Timeout: 15 * time.Second,
 		}
-
 		p := struct {
 			Data []string `json:"data"`
 		}{
 			Data: seed,
 		}
-
 		by, _ := json.Marshal(&p)
 		payload := bytes.NewBuffer(by)
 		req, err := http.NewRequest(http.MethodPost, url, payload)
+		if err != nil {
+			fmt.Printf("unable to create request")
+			continue
+		}
 		req = req.WithContext(ctx)
 		req.Header.Add("Content-Type", "application/json")
 		resp, err := client.Do(req)
@@ -154,6 +157,10 @@ func objectsReady(ctx context.Context, workerID int, seed []string) {
 }
 
 func worker(ctx context.Context, seed []string, wg *sync.WaitGroup, id int) {
+	seed, err := seedObjects()
+	if err != nil {
+		fmt.Printf("unable to create seed object: %v\n", err)
+	}
 	wg.Add(1)
 	defer wg.Done()
 
@@ -217,10 +224,12 @@ func worker(ctx context.Context, seed []string, wg *sync.WaitGroup, id int) {
 
 		mu.Lock()
 		metrics[id] = append(metrics[id], time.Since(start))
+		tot := len(metrics[id])
 		mu.Unlock()
 		// ensure objects are all ready baby
 		objectsReady(ctx, id, seed)
-		fmt.Printf("worker %v received new objects keys: %v\n", id, seed)
+		// fmt.Printf("worker %v received new objects keys: %v\n", id, seed)
+		fmt.Printf("worker %v received new objects keys: %v\n", id, tot)
 		// time.Sleep(2 * time.Second)
 	}
 	fmt.Printf("worker %v finished at: %v\n", id, time.Now().Format(time.Stamp))
@@ -234,15 +243,19 @@ func main() {
 	wg := &sync.WaitGroup{}
 	ctx, cancel := context.WithCancel(context.Background())
 	for i := 0; i < workers; i += 1 {
-		seeds, err := seedObjects()
-		if err != nil {
-			fmt.Println(err.Error())
-			cancel()
-			wg.Wait()
-			return
-		}
+		// i := i
+		/*
+			seeds, err := seedObjects()
+			if err != nil {
+				fmt.Println(err.Error())
+				cancel()
+				wg.Wait()
+				return
+			}
+		*/
 		fmt.Printf("starting worker %v\n", i)
-		go worker(ctx, seeds, wg, i)
+		go worker(ctx, []string{}, wg, i)
+
 	}
 
 	t := time.NewTimer(time.Duration(duration) * time.Second)
@@ -253,17 +266,38 @@ func main() {
 		wg.Wait()
 	}
 	durations := []time.Duration{}
-	for k, v := range metrics {
+	txcounts := orderResults()
+	var totaltx int
+	for _, v := range txcounts {
 		v := v
-		fmt.Printf("worker %v: %v txs\n", k, len(v))
+		fmt.Printf("worker %v: %v txs\n", v.id, v.count)
+		totaltx += v.count
+	}
+	for _, v := range metrics {
+		v := v
 		durations = append(durations, v...)
 	}
 	var total uint64
 	for _, v := range durations {
 		total += uint64(v)
 	}
+	fmt.Printf("total txs: %v\n", totaltx)
 	fmt.Printf("average duration per tx: %v\n", time.Duration(total/uint64(len(durations))))
 	fmt.Printf("testing finished at: %v\n", time.Now().Format(time.Stamp))
+}
+
+type WorkerTxCount struct {
+	id    int
+	count int
+}
+
+func orderResults() []WorkerTxCount {
+	out := []WorkerTxCount{}
+	for k, v := range metrics {
+		out = append(out, WorkerTxCount{k, len(v)})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].id < out[j].id })
+	return out
 }
 
 func init() {

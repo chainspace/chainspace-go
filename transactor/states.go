@@ -671,6 +671,7 @@ func (s *Service) toSucceeded(tx *TxDetails) (State, error) {
 
 func (s *Service) toAborted(tx *TxDetails) (State, error) {
 	// unlock any objects maybe related to this transaction.
+	log.Error("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ ABORTING")
 	objects, _ := s.inputObjectsForShard(s.shardID, tx.Tx)
 	err := UnlockObjects(s.store, objects)
 	if err != nil {
