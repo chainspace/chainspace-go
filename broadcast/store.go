@@ -583,8 +583,8 @@ func (s *store) isIncluded(id byzco.BlockID) (bool, error) {
 }
 
 func (s *store) setBlock(id byzco.BlockID, block *SignedData) error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.closed {
 		return errDBClosed
 	}
@@ -624,8 +624,8 @@ func (s *store) setBlock(id byzco.BlockID, block *SignedData) error {
 }
 
 func (s *store) setDeliverAcknowledged(round uint64) error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.closed {
 		return errDBClosed
 	}
@@ -639,8 +639,8 @@ func (s *store) setDeliverAcknowledged(round uint64) error {
 }
 
 func (s *store) setInterpreted(data *byzco.Interpreted) error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.closed {
 		return errDBClosed
 	}
@@ -674,8 +674,8 @@ func (s *store) setInterpreted(data *byzco.Interpreted) error {
 }
 
 func (s *store) setOwnBlock(block *SignedData, blockRef *SignedData, graph *byzco.BlockGraph) error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.closed {
 		return errDBClosed
 	}
@@ -743,8 +743,8 @@ func (s *store) setOwnBlock(block *SignedData, blockRef *SignedData, graph *byzc
 }
 
 func (s *store) setReceivedMap(data map[uint64]receivedInfo) error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.closed {
 		return errDBClosed
 	}
@@ -764,8 +764,8 @@ func (s *store) setReceivedMap(data map[uint64]receivedInfo) error {
 }
 
 func (s *store) setSentMap(data map[uint64]uint64) error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.closed {
 		return errDBClosed
 	}
