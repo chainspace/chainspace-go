@@ -86,7 +86,8 @@ func (s *Service) handleDeliver(round uint64, blocks []*broadcast.SignedData) {
 	}
 }
 
-func (s *Service) Handle(ctx context.Context, peerID uint64, m *service.Message) (*service.Message, error) {
+func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, error) {
+	ctx := context.TODO()
 	switch Opcode(m.Opcode) {
 	case Opcode_CHECK_TRANSACTION:
 		return s.checkTransaction(ctx, m.Payload)

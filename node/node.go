@@ -7,6 +7,7 @@ import (
 	"encoding/base32"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -23,7 +24,6 @@ import (
 	"chainspace.io/prototype/service"
 	"chainspace.io/prototype/transactor"
 	"github.com/gogo/protobuf/proto"
-	"github.com/lucas-clemente/quic-go"
 	"github.com/tav/golly/process"
 )
 
@@ -74,25 +74,13 @@ type Server struct {
 	writeTimeout    time.Duration
 }
 
-func (s *Server) handleConnection(conn quic.Session) {
-	for {
-		stream, err := conn.AcceptStream()
-		if err != nil {
-			if err := conn.Close(); err != nil {
-				log.Error("Unable to close connection from peer", fld.Err(err))
-			}
-			return
-		}
-		go s.handleStream(stream)
-	}
-}
-
-func (s *Server) handleStream(stream quic.Stream) {
-	c := network.NewConn(stream)
+func (s *Server) handleConnection(conn net.Conn) {
+	defer conn.Close()
+	c := network.NewConn(conn)
 	hello, err := c.ReadHello(s.maxPayload, s.readTimeout)
 	if err != nil {
 		if network.AbnormalError(err) {
-			log.Error("Unable to read hello message from stream", fld.Err(err))
+			log.Error("Unable to read hello message", fld.Err(err))
 		}
 		return
 	}
@@ -106,7 +94,6 @@ func (s *Server) handleStream(stream quic.Stream) {
 		peerID, err = s.verifyPeerID(hello)
 		if err != nil {
 			log.Error("Unable to verify peer ID from the hello message", fld.Err(err))
-			stream.Close()
 			return
 		}
 	case service.CONNECTION_TRANSACTOR:
@@ -114,15 +101,12 @@ func (s *Server) handleStream(stream quic.Stream) {
 		peerID, err = s.verifyPeerID(hello)
 		if err != nil {
 			log.Error("Unable to verify peer ID from the hello message", fld.Err(err))
-			stream.Close()
 			return
 		}
 	default:
 		log.Error("Unknown connection type", fld.ConnectionType(int32(hello.Type)))
-		stream.Close()
 		return
 	}
-	ctx := stream.Context()
 	for {
 		msg, err := c.ReadMessage(s.maxPayload, s.readTimeout)
 		if err != nil {
@@ -131,10 +115,10 @@ func (s *Server) handleStream(stream quic.Stream) {
 			}
 			return
 		}
-		resp, err := svc.Handle(ctx, peerID, msg)
+		resp, err := svc.Handle(peerID, msg)
 		if err != nil {
 			log.Error("Received error response", fld.Service(svc.Name()), fld.Err(err))
-			stream.Close()
+			conn.Close()
 			return
 		}
 		if resp != nil {
@@ -149,7 +133,7 @@ func (s *Server) handleStream(stream quic.Stream) {
 
 }
 
-func (s *Server) listen(l quic.Listener) {
+func (s *Server) listen(l net.Listener) {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
@@ -315,7 +299,7 @@ func Run(cfg *Config) (*Server, error) {
 	}
 
 	// Get a port to listen on.
-	port, err := freeport.UDP("")
+	port, err := freeport.TCP("")
 	if err != nil {
 		return nil, err
 	}
@@ -451,7 +435,7 @@ func Run(cfg *Config) (*Server, error) {
 	}
 
 	// Start listening on the given port.
-	l, err := quic.ListenAddr(fmt.Sprintf(":%d", port), tlsConf, nil)
+	l, err := tls.Listen("tcp", fmt.Sprintf(":%d", port), tlsConf)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("node: unable to listen on port %d: %s", port, err)

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,7 +23,6 @@ import (
 	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/x509certs"
 	"github.com/grandcat/zeroconf"
-	"github.com/lucas-clemente/quic-go"
 	"github.com/minio/highwayhash"
 )
 
@@ -66,7 +66,6 @@ type nodeConfig struct {
 // Topology represents a Chainspace network.
 type Topology struct {
 	contacts   *contacts
-	cxns       map[uint64]quic.Session
 	id         string
 	mu         sync.RWMutex
 	name       string
@@ -101,14 +100,10 @@ func (t *Topology) bootstrapMDNS(ctx context.Context) error {
 					addr := fmt.Sprintf("%s:%d", entry.AddrIPv4[0].String(), entry.Port)
 					oldAddr := t.contacts.get(nodeID)
 					if oldAddr != addr {
-						log.Debug("Found node address", fld.NodeID(nodeID), fld.Address(addr))
-						t.mu.Lock()
-						t.contacts.set(nodeID, addr)
-						if session, exists := t.cxns[nodeID]; exists {
-							delete(t.cxns, nodeID)
-							session.Close()
+						if log.AtDebug() {
+							log.Debug("Found node address", fld.NodeID(nodeID), fld.Address(addr))
 						}
-						t.mu.Unlock()
+						t.contacts.set(nodeID, addr)
 					}
 				}
 			case <-ctx.Done():
@@ -148,14 +143,10 @@ func (t *Topology) bootstrapRegistries(ctx context.Context, endpoint string, pay
 		oldAddr := t.contacts.get(v.NodeID)
 		addr := v.Addr + ":" + fmt.Sprintf("%v", v.Port)
 		if oldAddr != addr {
-			log.Debug("Found node address", fld.NodeID(v.NodeID), fld.Address(addr))
-			t.mu.Lock()
-			t.contacts.set(v.NodeID, addr)
-			if session, exists := t.cxns[v.NodeID]; exists {
-				delete(t.cxns, v.NodeID)
-				session.Close()
+			if log.AtDebug() {
+				log.Debug("Found node address", fld.NodeID(v.NodeID), fld.Address(addr))
 			}
-			t.mu.Unlock()
+			t.contacts.set(v.NodeID, addr)
 		}
 	}
 	return nil
@@ -222,36 +213,25 @@ func (t *Topology) BootstrapStatic(addresses map[uint64]string) error {
 
 // Dial opens a connection to a node in the given network. It will block if
 // unable to find a routing address for the given node.
-func (t *Topology) Dial(ctx context.Context, nodeID uint64, qcfg *quic.Config) (*Conn, error) {
+func (t *Topology) Dial(nodeID uint64, timeout time.Duration) (*Conn, error) {
 	t.mu.RLock()
 	cfg, cfgExists := t.nodes[nodeID]
-	conn, connExists := t.cxns[nodeID]
 	t.mu.RUnlock()
 	if !cfgExists {
 		return nil, fmt.Errorf("network: could not find config for node %d in the %s network", nodeID, t.name)
-	}
-	if connExists {
-		stream, err := conn.OpenStreamSync()
-		if err == nil {
-			return NewConn(stream), nil
-		}
 	}
 	addr := t.Lookup(nodeID)
 	if addr == "" {
 		return nil, fmt.Errorf("network: could not find address for node %d", nodeID)
 	}
-	conn, err := quic.DialAddrContext(ctx, addr, cfg.tls, qcfg)
+	dialer := &net.Dialer{
+		Timeout: timeout,
+	}
+	conn, err := tls.DialWithDialer(dialer, "tcp", addr, cfg.tls)
 	if err != nil {
 		return nil, fmt.Errorf("network: could not connect to node %d: %s", nodeID, err)
 	}
-	stream, err := conn.OpenStreamSync()
-	if err != nil {
-		return nil, fmt.Errorf("network: could not open a stream in the connection to %d: %s", nodeID, err)
-	}
-	t.mu.Lock()
-	t.cxns[nodeID] = conn
-	t.mu.Unlock()
-	return NewConn(stream), nil
+	return NewConn(conn), nil
 }
 
 // Lookup returns the latest host:port address for a given node ID.
@@ -352,7 +332,6 @@ func New(name string, cfg *config.Network) (*Topology, error) {
 	}
 	return &Topology{
 		contacts:   contacts,
-		cxns:       map[uint64]quic.Session{},
 		id:         cfg.ID,
 		name:       name,
 		nodes:      nodes,

@@ -2,7 +2,6 @@
 package service // import "chainspace.io/prototype/service"
 
 import (
-	"context"
 	"crypto/rand"
 	"time"
 
@@ -12,11 +11,12 @@ import (
 
 // Handler specifies the interface for a node service.
 type Handler interface {
-	Handle(ctx context.Context, peerID uint64, msg *Message) (*Message, error)
+	Handle(peerID uint64, msg *Message) (*Message, error)
 	Name() string
 }
 
-// BroadcastHello returns a signed payload for use as a Hello in a broadcast connection.
+// SignHello returns a signed payload for use as a Hello in a service
+// connection.
 func SignHello(clientID uint64, serverID uint64, key signature.KeyPair, c CONNECTION) (*Hello, error) {
 	nonce := make([]byte, 36)
 	if _, err := rand.Read(nonce); err != nil {
@@ -37,17 +37,4 @@ func SignHello(clientID uint64, serverID uint64, key signature.KeyPair, c CONNEC
 		Signature: key.Sign(payload),
 		Type:      c,
 	}, nil
-}
-
-// EncodeMessage takes a protobuf-compatible struct and encodes it into a
-// service Message.
-func EncodeMessage(opcode uint32, pb proto.Message) *Message {
-	payload, err := proto.Marshal(pb)
-	if err != nil {
-		panic(err)
-	}
-	return &Message{
-		Opcode:  opcode,
-		Payload: payload,
-	}
 }

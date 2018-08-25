@@ -1,16 +1,15 @@
 package network
 
 import (
-	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
+	"net"
 	"sync"
 	"time"
 
 	"chainspace.io/prototype/service"
 	"github.com/gogo/protobuf/proto"
-	"github.com/lucas-clemente/quic-go"
 )
 
 type timeoutError interface {
@@ -19,19 +18,15 @@ type timeoutError interface {
 
 // Conn represents a connection to a Chainspace node.
 type Conn struct {
+	buf    []byte
+	conn   net.Conn
 	lastID uint64
 	mu     sync.Mutex
-	stream quic.Stream
 }
 
 // Close closes the underlying connection.
 func (c *Conn) Close() error {
-	return c.stream.Close()
-}
-
-// Context returns the context associated with the underlying connection.
-func (c *Conn) Context() context.Context {
-	return c.stream.Context()
+	return c.conn.Close()
 }
 
 // ReadHello reads a service.Hello from the underlying connection.
@@ -59,45 +54,42 @@ func (c *Conn) ReadMessage(limit int, timeout time.Duration) (*service.Message, 
 // ReadPayload returns the next protobuf-marshalled payload from the underlying
 // connection.
 func (c *Conn) ReadPayload(limit int, timeout time.Duration) ([]byte, error) {
-	buf := make([]byte, 4)
+	buf := c.buf
 	need := 4
 	for need > 0 {
-		c.stream.SetReadDeadline(time.Now().Add(timeout))
-		n, err := c.stream.Read(buf[4-need:])
+		c.conn.SetReadDeadline(time.Now().Add(timeout))
+		n, err := c.conn.Read(buf[4-need : 4])
 		if err != nil {
-			c.stream.Close()
+			c.conn.Close()
 			return nil, err
 		}
 		need -= n
 	}
-	// TODO(tav): Fix for 32-bit systems.
-	size := int(binary.LittleEndian.Uint32(buf))
+	size := int(int32(binary.LittleEndian.Uint32(buf)))
+	if size < 0 {
+		c.conn.Close()
+		return nil, fmt.Errorf("network: payload size overflows an int32")
+	}
 	if size > limit {
-		c.stream.Close()
+		c.conn.Close()
 		return nil, fmt.Errorf("network: payload size %d exceeds max payload size", size)
 	}
-	buf = make([]byte, size)
+	if len(buf) < size {
+		buf = make([]byte, size)
+		c.buf = buf
+	}
+	buf = buf[:size]
 	need = size
 	for need > 0 {
-		c.stream.SetReadDeadline(time.Now().Add(timeout))
-		n, err := c.stream.Read(buf[size-need:])
+		c.conn.SetReadDeadline(time.Now().Add(timeout))
+		n, err := c.conn.Read(buf[size-need:])
 		if err != nil {
-			c.stream.Close()
+			c.conn.Close()
 			return nil, err
 		}
 		need -= n
 	}
 	return buf, nil
-}
-
-// StreamID returns the underlying StreamID.
-func (c *Conn) StreamID() quic.StreamID {
-	return c.stream.StreamID()
-}
-
-// Write writes the given bytes to the underlying connection.
-func (c *Conn) Write(p []byte) (int, error) {
-	return c.stream.Write(p)
 }
 
 // WritePayload encodes the given payload into protobuf and writes the
@@ -106,32 +98,32 @@ func (c *Conn) Write(p []byte) (int, error) {
 func (c *Conn) WritePayload(pb proto.Message, limit int, timeout time.Duration) error {
 	payload, err := proto.Marshal(pb)
 	if err != nil {
-		c.stream.Close()
+		c.conn.Close()
 		return err
 	}
 	size := len(payload)
 	if size > limit {
-		c.stream.Close()
+		c.conn.Close()
 		return fmt.Errorf("network: payload size %d exceeds max payload size", size)
 	}
-	buf := make([]byte, 4)
+	buf := c.buf[:4]
 	binary.LittleEndian.PutUint32(buf, uint32(size))
 	need := 4
 	for need > 0 {
-		c.stream.SetWriteDeadline(time.Now().Add(timeout))
-		n, err := c.stream.Write(buf)
+		c.conn.SetWriteDeadline(time.Now().Add(timeout))
+		n, err := c.conn.Write(buf)
 		if err != nil {
-			c.stream.Close()
+			c.conn.Close()
 			return err
 		}
 		buf = buf[n:]
 		need -= n
 	}
 	for size > 0 {
-		c.stream.SetWriteDeadline(time.Now().Add(timeout))
-		n, err := c.stream.Write(payload)
+		c.conn.SetWriteDeadline(time.Now().Add(timeout))
+		n, err := c.conn.Write(payload)
 		if err != nil {
-			c.stream.Close()
+			c.conn.Close()
 			return err
 		}
 		payload = payload[n:]
@@ -163,9 +155,10 @@ func AbnormalError(err error) bool {
 	return true
 }
 
-// NewConn instantiates a connection value with the given QUIC stream.
-func NewConn(stream quic.Stream) *Conn {
+// NewConn instantiates a Conn value with the given network connection.
+func NewConn(conn net.Conn) *Conn {
 	return &Conn{
-		stream: stream,
+		buf:  make([]byte, 1024),
+		conn: conn,
 	}
 }

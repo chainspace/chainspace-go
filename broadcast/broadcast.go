@@ -22,7 +22,6 @@ import (
 	"chainspace.io/prototype/service"
 	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
-	"github.com/lucas-clemente/quic-go"
 	"github.com/tav/golly/process"
 )
 
@@ -58,7 +57,6 @@ type Service struct {
 	graph        *byzco.Graph
 	imu          sync.Mutex // protects cb, interpreted, toDeliver
 	interpreted  uint64
-	interval     time.Duration
 	key          signature.KeyPair
 	keys         map[uint64]signature.PublicKey
 	lru          *lru
@@ -70,7 +68,6 @@ type Service struct {
 	peers        []uint64
 	prevhash     []byte
 	prevref      *SignedData
-	qcfg         *quic.Config
 	readTimeout  time.Duration
 	refSizeLimit int
 	received     *receivedMap
@@ -90,7 +87,6 @@ type Service struct {
 }
 
 func (s *Service) byzcoCallback(data *byzco.Interpreted) {
-	log.Info("Reached consensus", fld.Round(data.Round))
 	if log.AtInfo() {
 		blocks := make([]string, len(data.Blocks))
 		for i, block := range data.Blocks {
@@ -116,6 +112,7 @@ func (s *Service) fillMissingBlocks(peerID uint64) {
 		rounds []uint64
 	)
 	initialBackoff := s.cfg.Broadcast.InitialBackoff
+	interval := s.cfg.NetConsensus.RoundInterval
 	backoff := initialBackoff
 	getRounds := &GetRounds{}
 	getRoundsReq := &service.Message{Opcode: uint32(OP_GET_ROUNDS)}
@@ -137,7 +134,7 @@ func (s *Service) fillMissingBlocks(peerID uint64) {
 			return
 		default:
 		}
-		conn, err := s.top.Dial(s.ctx, peerID, s.qcfg)
+		conn, err := s.top.Dial(peerID, s.readTimeout)
 		if err == nil {
 			backoff = initialBackoff
 		} else {
@@ -166,7 +163,7 @@ func (s *Service) fillMissingBlocks(peerID uint64) {
 			if rounds == nil {
 				info := s.received.get(peerID)
 				if info.latest == info.sequence {
-					time.Sleep(s.interval)
+					time.Sleep(interval)
 					continue
 				}
 				rounds, latest, err = s.store.getMissing(peerID, info.sequence, s.maxBlocks)
@@ -256,7 +253,7 @@ func (s *Service) genBlocks() {
 	driftTolerance := s.cfg.NodeConsensus.DriftTolerance
 	hasher := sha512.New512_256()
 	initialRate := s.cfg.NodeConsensus.RateLimit.InitialRate
-	interval := s.interval
+	interval := s.cfg.NetConsensus.RoundInterval
 	overloaded := false
 	rate := initialRate
 	rateDecr := s.cfg.NodeConsensus.RateLimit.RateDecrease
@@ -285,7 +282,9 @@ func (s *Service) genBlocks() {
 			s.txCountLimit = rate
 			s.mu.Unlock()
 			if !overloaded {
-				log.Warn("Overloaded")
+				if log.AtDebug() {
+					log.Debug("Overloaded")
+				}
 				overloaded = true
 			}
 		} else {
@@ -294,7 +293,9 @@ func (s *Service) genBlocks() {
 			s.txCountLimit = rate
 			s.mu.Unlock()
 			if overloaded {
-				log.Warn("Not overloaded")
+				if log.AtDebug() {
+					log.Debug("Not overloaded")
+				}
 				overloaded = false
 			}
 		}
@@ -668,6 +669,7 @@ func (s *Service) loadState() {
 func (s *Service) maintainBroadcast(peerID uint64) {
 	ack := &AckBroadcast{}
 	initialBackoff := s.cfg.Broadcast.InitialBackoff
+	interval := s.cfg.NetConsensus.RoundInterval
 	backoff := initialBackoff
 	maxBackoff := s.cfg.Broadcast.MaxBackoff
 	msg := &service.Message{Opcode: uint32(OP_BROADCAST)}
@@ -687,7 +689,7 @@ func (s *Service) maintainBroadcast(peerID uint64) {
 			return
 		default:
 		}
-		conn, err := s.top.Dial(s.ctx, peerID, s.qcfg)
+		conn, err := s.top.Dial(peerID, s.readTimeout)
 		if err == nil {
 			backoff = initialBackoff
 		} else {
@@ -718,7 +720,7 @@ func (s *Service) maintainBroadcast(peerID uint64) {
 				return
 			}
 			if len(blocks) == 0 {
-				time.Sleep(s.interval)
+				time.Sleep(interval)
 				continue
 			}
 			list.Blocks = blocks
@@ -897,7 +899,7 @@ func (s *Service) setOwnBlock(block *SignedData, blockRef *SignedData, graph *by
 }
 
 func (s *Service) writeReceivedMap() {
-	ticker := time.NewTicker(20 * s.interval)
+	ticker := time.NewTicker(20 * s.cfg.NetConsensus.RoundInterval)
 	for {
 		select {
 		case <-ticker.C:
@@ -915,7 +917,7 @@ func (s *Service) writeReceivedMap() {
 }
 
 func (s *Service) writeSentMap() {
-	ticker := time.NewTicker(20 * s.interval)
+	ticker := time.NewTicker(20 * s.cfg.NetConsensus.RoundInterval)
 	for {
 		select {
 		case <-ticker.C:
@@ -973,7 +975,7 @@ func (s *Service) AddTransaction(txdata []byte, fee uint64) error {
 
 // Handle implements the service Handler interface for handling messages
 // received over a connection.
-func (s *Service) Handle(ctx context.Context, peerID uint64, msg *service.Message) (*service.Message, error) {
+func (s *Service) Handle(peerID uint64, msg *service.Message) (*service.Message, error) {
 	switch OP(msg.Opcode) {
 	case OP_BROADCAST:
 		return s.handleBroadcastList(peerID, msg)
@@ -1048,11 +1050,6 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 			log.Error("Could not close the broadcast DB successfully", fld.Err(err))
 		}
 	})
-	qcfg := &quic.Config{
-		HandshakeTimeout: cfg.Connections.WriteTimeout,
-		KeepAlive:        true,
-		IdleTimeout:      cfg.Connections.WriteTimeout,
-	}
 	refSizeLimit, err := cfg.NetConsensus.BlockReferencesSizeLimit.Int()
 	if err != nil {
 		return nil, err
@@ -1064,7 +1061,6 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 	s := &Service{
 		cfg:          cfg,
 		ctx:          ctx,
-		interval:     cfg.NetConsensus.RoundInterval,
 		key:          cfg.Key,
 		keys:         cfg.Keys,
 		lru:          lru,
@@ -1073,7 +1069,6 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		nodeID:       cfg.NodeID,
 		ownblocks:    ownblocks,
 		peers:        cfg.Peers,
-		qcfg:         qcfg,
 		readTimeout:  cfg.Connections.ReadTimeout,
 		refSizeLimit: refSizeLimit,
 		store:        store,
