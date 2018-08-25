@@ -10,10 +10,6 @@
   name = "gopkg.in/yaml.v2"
   version = "2.2.1"
 
-[[constraint]]
-  name = "github.com/lucas-clemente/quic-go"
-  branch = "master"
-
 [prune]
   go-tests = true
   non-go = true
