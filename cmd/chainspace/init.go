@@ -72,7 +72,7 @@ func cmdInit(args []string, usage string) {
 
 	network := &config.Network{
 		Consensus:  consensus,
-		MaxPayload: 1280 * config.MB,
+		MaxPayload: 128 * config.MB,
 		Shard:      shard,
 		SeedNodes:  peers,
 	}
@@ -83,8 +83,8 @@ func cmdInit(args []string, usage string) {
 	}
 
 	connections := &config.Connections{
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 5 * time.Second,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
 	}
 
 	logging := &config.Logging{

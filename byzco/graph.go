@@ -93,23 +93,23 @@ func (g *Graph) deliverRound(round uint64, hashes map[uint64]string) {
 	delete(g.resolved, round)
 	g.mu.Lock()
 	consumed := g.blocks[0].data.Block.Round - 1
-	// idx := 0
-	// for i, info := range g.blocks {
-	// 	if info.max > round {
-	// 		break
-	// 	}
-	// 	delete(g.max, info.data.Block)
-	// 	delete(g.states, info.data.Block)
-	// 	for _, dep := range info.data.Deps {
-	// 		delete(g.max, dep.Block)
-	// 		delete(g.states, dep.Block)
-	// 	}
-	// 	consumed++
-	// 	idx = i + 1
-	// }
-	// if idx > 0 {
-	// 	g.blocks = g.blocks[idx:]
-	// }
+	idx := 0
+	for i, info := range g.blocks {
+		if info.max > round {
+			break
+		}
+		delete(g.max, info.data.Block)
+		delete(g.states, info.data.Block)
+		for _, dep := range info.data.Deps {
+			delete(g.max, dep.Block)
+			delete(g.states, dep.Block)
+		}
+		consumed++
+		idx = i + 1
+	}
+	if idx > 0 {
+		g.blocks = g.blocks[idx:]
+	}
 	g.round++
 	if log.AtDebug() {
 		log.Debug("Mem usage:", log.Int("g.max", len(g.max)), log.Int("g.states", len(g.states)),
@@ -250,9 +250,6 @@ func (g *Graph) processMessage(s *state, sender uint64, receiver uint64, origin 
 		log.Debug("Processing message from block", fld.BlockID(origin),
 			log.String("message", msg.String()))
 	}
-
-	// log.Info("Processing message from block", fld.BlockID(origin),
-	// 	log.String("message", msg.String()))
 
 	switch m := msg.(type) {
 

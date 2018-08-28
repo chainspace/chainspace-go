@@ -59,7 +59,6 @@ type Service struct {
 	interpreted  uint64
 	key          signature.KeyPair
 	keys         map[uint64]signature.PublicKey
-	lru          *lru
 	maxBlocks    int
 	maxPayload   int
 	mu           sync.RWMutex // protects previous, round, sent, signal, txCountLimit
@@ -386,9 +385,8 @@ func (s *Service) genBlocks() {
 		if log.AtDebug() {
 			log.Debug("Created block", fld.Round(block.Round))
 		}
-		if round%1000 == 0 {
-			s.lru.prune(len(s.peers) * 1000)
-			s.ownblocks.prune(1000)
+		if round%50 == 0 {
+			s.ownblocks.prune(50)
 		}
 		now := time.Now().Round(0)
 		workDuration = now.Sub(workStart)
@@ -399,58 +397,22 @@ func (s *Service) genBlocks() {
 }
 
 func (s *Service) getBlock(nodeID uint64, round uint64, hash []byte) *SignedData {
-	id := byzco.BlockID{
+	block, err := s.store.getBlock(byzco.BlockID{
 		Hash:  string(hash),
 		Node:  nodeID,
 		Round: round,
-	}
-	info := s.lru.get(id)
-	if info != nil {
-		return info
-	}
-	block, err := s.store.getBlock(id)
+	})
 	if err != nil {
 		log.Error("Could not retrieve block", fld.NodeID(nodeID), fld.Round(round), log.Err(err))
 		return nil
 	}
-	s.lru.set(byzco.BlockID{
-		Hash:  string(hash),
-		Node:  nodeID,
-		Round: round,
-	}, block)
-	return info
+	return block
 }
 
 func (s *Service) getBlocks(ids []byzco.BlockID) []*SignedData {
-	var missing []byzco.BlockID
-	blocks := make([]*SignedData, len(ids))
-	for i, id := range ids {
-		block := s.lru.get(id)
-		if block == nil {
-			missing = append(missing, id)
-		} else {
-			blocks[i] = block
-		}
-	}
-	if len(missing) > 0 {
-		if log.AtDebug() {
-			xs := make([]string, len(missing))
-			for i, id := range missing {
-				xs[i] = id.String()
-			}
-			log.Debug("Getting missing blocks from store", log.Strings("blocks", xs))
-		}
-		res, err := s.store.getBlocks(missing)
-		if err != nil {
-			log.Fatal("Unable to retrieve blocks", log.Err(err))
-		}
-		used := 0
-		for i, block := range blocks {
-			if block == nil {
-				blocks[i] = res[used]
-				used++
-			}
-		}
+	blocks, err := s.store.getBlocks(ids)
+	if err != nil {
+		log.Fatal("Unable to retrieve blocks", log.Err(err))
 	}
 	return blocks
 }
@@ -833,7 +795,6 @@ func (s *Service) processBlock(signed *SignedData) (uint64, error) {
 			Round: ref.Round,
 		})
 	}
-	log.Warn("Received block", fld.NodeID(block.Node), fld.Round(block.Round))
 	if log.AtDebug() {
 		log.Debug("Received block", fld.NodeID(block.Node), fld.Round(block.Round))
 	}
@@ -886,21 +847,16 @@ func (s *Service) replayGraphChanges(from uint64) {
 }
 
 func (s *Service) setBlock(id byzco.BlockID, block *SignedData) error {
-	if err := s.store.setBlock(id, block); err != nil {
-		return err
-	}
-	s.lru.set(id, block)
-	return nil
+	return s.store.setBlock(id, block)
 }
 
 func (s *Service) setOwnBlock(block *SignedData, blockRef *SignedData, graph *byzco.BlockGraph) error {
-	s.lru.set(graph.Block, block)
 	s.ownblocks.set(graph.Block.Round, block)
 	return s.store.setOwnBlock(block, blockRef, graph)
 }
 
 func (s *Service) writeReceivedMap() {
-	ticker := time.NewTicker(20 * s.cfg.NetConsensus.RoundInterval)
+	ticker := time.NewTicker(5 * s.cfg.NetConsensus.RoundInterval)
 	for {
 		select {
 		case <-ticker.C:
@@ -918,7 +874,7 @@ func (s *Service) writeReceivedMap() {
 }
 
 func (s *Service) writeSentMap() {
-	ticker := time.NewTicker(20 * s.cfg.NetConsensus.RoundInterval)
+	ticker := time.NewTicker(5 * s.cfg.NetConsensus.RoundInterval)
 	for {
 		select {
 		case <-ticker.C:
@@ -1029,9 +985,6 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 	if err != nil {
 		return nil, err
 	}
-	lru := &lru{
-		data: map[byzco.BlockID]*lruData{},
-	}
 	ownblocks := &ownblocks{
 		data: map[uint64]*SignedData{},
 	}
@@ -1064,7 +1017,6 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		ctx:          ctx,
 		key:          cfg.Key,
 		keys:         cfg.Keys,
-		lru:          lru,
 		maxBlocks:    cfg.MaxPayload / (refSizeLimit + txSizeLimit + 100),
 		maxPayload:   cfg.MaxPayload,
 		nodeID:       cfg.NodeID,

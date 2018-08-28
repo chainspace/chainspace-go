@@ -32,7 +32,7 @@ func (c *Conn) Close() error {
 
 // ReadHello reads a service.Hello from the underlying connection.
 func (c *Conn) ReadHello(limit int, timeout time.Duration) (*service.Hello, error) {
-	payload, err := c.ReadPayload(limit, timeout)
+	payload, err := c.readPayload(limit, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +43,7 @@ func (c *Conn) ReadHello(limit int, timeout time.Duration) (*service.Hello, erro
 
 // ReadMessage reads a service.Message from the underlying connection.
 func (c *Conn) ReadMessage(limit int, timeout time.Duration) (*service.Message, error) {
-	payload, err := c.ReadPayload(limit, timeout)
+	payload, err := c.readPayload(limit, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -52,9 +52,9 @@ func (c *Conn) ReadMessage(limit int, timeout time.Duration) (*service.Message, 
 	return msg, err
 }
 
-// ReadPayload returns the next protobuf-marshalled payload from the underlying
+// readPayload returns the next protobuf-marshalled payload from the underlying
 // connection.
-func (c *Conn) ReadPayload(limit int, timeout time.Duration) ([]byte, error) {
+func (c *Conn) readPayload(limit int, timeout time.Duration) ([]byte, error) {
 	buf := c.buf
 	need := 4
 	for need > 0 {
