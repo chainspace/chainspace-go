@@ -54,12 +54,12 @@ type TxIterator struct {
 // Next moves the iterator forward. The TxData and TxFee values of the iterator
 // are only valid until the next call to Next().
 func (t *TxIterator) Next() {
+	t.TxFee = binary.LittleEndian.Uint64(t.data[t.idx : t.idx+8])
+	t.idx += 8
 	size := int(binary.LittleEndian.Uint32(t.data[t.idx : t.idx+4]))
 	t.idx += 4
 	t.TxData = t.data[t.idx : t.idx+size]
 	t.idx += size
-	t.TxFee = binary.LittleEndian.Uint64(t.data[t.idx : t.idx+8])
-	t.idx += 8
 	t.cur++
 }
 
