@@ -315,7 +315,7 @@ func New(name string, cfg *config.Network) (*Topology, error) {
 			key: key,
 			tls: &tls.Config{
 				RootCAs:    pool,
-				ServerName: fmt.Sprintf("%s/%d", name, id),
+				ServerName: fmt.Sprintf("node-%d.net-%s.chainspace", id, name),
 			},
 		}
 	}

@@ -61,7 +61,7 @@ func GenCert(t CertType, networkID string, nodeID uint64) (cert *Cert, err error
 			NotBefore:             time.Now(),
 			SerialNumber:          big.NewInt(1),
 			SignatureAlgorithm:    x509.ECDSAWithSHA512,
-			Subject:               pkix.Name{CommonName: fmt.Sprintf("%s/%d", networkID, nodeID)},
+			Subject:               pkix.Name{CommonName: fmt.Sprintf("node-%d.net-%s.chainspace", nodeID, networkID)},
 		}
 		cert, err := x509.CreateCertificate(
 			rand.Reader, tmpl, tmpl, &key.PublicKey, key,
