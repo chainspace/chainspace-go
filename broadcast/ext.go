@@ -68,7 +68,8 @@ func (t *TxIterator) Next() {
 }
 
 // Valid returns whether the iterator is still valid and has more elements to
-// iterate over.
+// iterate over. On first call, it also moves the iterator forward, so as to
+// simplify the for loop used by consumers.
 func (t *TxIterator) Valid() bool {
 	if t.cur == 0 {
 		if t.cur >= t.total {
