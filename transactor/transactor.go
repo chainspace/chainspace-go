@@ -64,10 +64,12 @@ func (s *Service) handleDeliver(round uint64, blocks []*broadcast.SignedData) {
 		if err != nil {
 			log.Fatal("Unable to decode delivered block", fld.Round(round), fld.Err(err))
 		}
-		for iter := block.Iter(); iter.Valid(); iter.Next() {
+		it := block.Iter()
+		for it.Valid() {
+			it.Next()
 			// TODO(): do stuff with the fee?
 			tx := &SBACTransaction{}
-			err := proto.Unmarshal(iter.TxData, tx)
+			err := proto.Unmarshal(it.TxData, tx)
 			if err != nil {
 				log.Error("Unable to unmarshal transaction data", fld.Err(err))
 				continue

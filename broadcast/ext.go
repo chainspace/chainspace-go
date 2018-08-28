@@ -51,7 +51,9 @@ type TxIterator struct {
 	TxFee  uint64
 }
 
-func (t *TxIterator) next() {
+// Next moves the iterator forward. The TxData and TxFee values of the iterator
+// are only valid until the next call to Next().
+func (t *TxIterator) Next() {
 	size := int(binary.LittleEndian.Uint32(t.data[t.idx : t.idx+4]))
 	t.idx += 4
 	t.TxData = t.data[t.idx : t.idx+size]
@@ -61,23 +63,9 @@ func (t *TxIterator) next() {
 	t.cur++
 }
 
-// Next moves the iterator forward. The TxData and TxFee values of the iterator
-// are only valid until the next call to Next().
-func (t *TxIterator) Next() {
-	t.next()
-}
-
 // Valid returns whether the iterator is still valid and has more elements to
-// iterate over. On first call, it also moves the iterator forward, so as to
-// simplify the for loop used by consumers.
+// iterate over.
 func (t *TxIterator) Valid() bool {
-	if t.cur == 0 {
-		if t.cur >= t.total {
-			return false
-		}
-		t.next()
-		return true
-	}
 	return t.cur < t.total
 }
 
