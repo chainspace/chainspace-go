@@ -23,7 +23,7 @@ The `chainspace init <networkname>` command, by default, creates a network consi
 
 The setup you get from that is at present heavily skewed towards convenient development rather than production use. It will change as we get closer to production.
 
-Have a look at the config files for the network you've generated (stored by default in `~/.chainspace/<networkname>`). The `network.yaml` file details the overall network topology, and contains public signing keys and transport encryption certificates for each node in the network. Everything in `network.yaml` is public, and for the moment it defines network topology.
+Have a look at the config files for the network you've generated (stored by default in `~/.chainspace/<networkname>`). The `network.yaml` file contains public signing keys and transport encryption certificates for each node in the network. Everything in `network.yaml` is public, and for the moment it defines network topology.
 
 Each node also gets its own named configuration directory, containing:
 
