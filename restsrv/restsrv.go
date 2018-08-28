@@ -274,7 +274,7 @@ func (s *Service) objectsReady(rw http.ResponseWriter, r *http.Request) {
 			// errorr(rw, http.StatusInternalServerError, err.Error())
 			return
 		}
-		fmt.Printf("tx: %v\n", objs)
+		// fmt.Printf("tx: %v\n", objs)
 		if uint64(len(objs)) != s.top.ShardSize() {
 			success(rw, http.StatusOK, false)
 			return

@@ -673,7 +673,7 @@ func (s *Service) maintainBroadcast(peerID uint64) {
 	interval := s.cfg.NetConsensus.RoundInterval
 	backoff := initialBackoff
 	maxBackoff := s.cfg.Broadcast.MaxBackoff
-	msg := &service.Message{Opcode: uint32(OP_BROADCAST)}
+	msg := &service.Message{Opcode: int32(OP_BROADCAST)}
 	list := &ListBlocks{}
 	retry := false
 	for {

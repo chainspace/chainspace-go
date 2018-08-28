@@ -68,8 +68,8 @@ func (s *Service) handleDeliver(round uint64, blocks []*broadcast.SignedData) {
 		for it.Valid() {
 			it.Next()
 			// TODO(): do stuff with the fee?
-			tx := &SBACTransaction{}
-			err := proto.Unmarshal(it.TxData, tx)
+			tx := SBACTransaction{}
+			err := proto.Unmarshal(it.TxData, &tx)
 			if err != nil {
 				log.Error("Unable to unmarshal transaction data", fld.Err(err))
 				continue
@@ -78,7 +78,7 @@ func (s *Service) handleDeliver(round uint64, blocks []*broadcast.SignedData) {
 				msg: &SBACMessage{
 					Op:       tx.Op,
 					Decision: SBACDecision_ACCEPT,
-					Tx:       tx,
+					Tx:       &tx,
 				},
 				peerID: 99,
 			}

@@ -184,6 +184,7 @@ func NewStateMachine(table *StateTable, txDetails *TxDetails, initialState State
 	if log.AtDebug() {
 		log.Debug("starting new statemachine", fld.TxID(txDetails.HashID))
 	}
+	log.Info("starting new statemachine", fld.TxID(txDetails.HashID))
 	sm := &StateMachine{
 		state:     initialState,
 		table:     table,
