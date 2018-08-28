@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"chainspace.io/prototype/service"
+
 	"github.com/gogo/protobuf/proto"
 )
 

@@ -46,11 +46,12 @@ type NodeIDConnPair struct {
 }
 
 func New(cfg *Config) Client {
-	return &client{
+	c := &client{
 		maxPaylod: cfg.MaxPayload,
 		top:       cfg.Top,
 		nodesConn: map[uint64][]NodeIDConnPair{},
 	}
+	return c
 }
 
 func (c *client) Close() {

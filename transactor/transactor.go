@@ -155,7 +155,11 @@ func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64,
 	s.pe.OnEvent(e)
 	res := SBACMessageAck{LastID: msgID}
 	payloadres, err := proto.Marshal(&res)
-	return &service.Message{Opcode: 42, Payload: payloadres}, nil
+	if err != nil {
+		log.Error("unable to marshall handleSBAC response", fld.Err(err))
+		return nil, err
+	}
+	return &service.Message{Opcode: int32(Opcode_SBAC), Payload: payloadres}, nil
 }
 
 func (s *Service) checkTransaction(ctx context.Context, payload []byte) (*service.Message, error) {

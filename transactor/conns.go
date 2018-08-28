@@ -96,6 +96,7 @@ func (c *ConnsCache) WriteRequest(nodeID uint64, msg *service.Message, timeout t
 		c.release(nodeID)
 		return c.WriteRequest(nodeID, msg, timeout, ack)
 	}
+
 	if ack {
 		c.addMessageAck(nodeID, msg, timeout, id)
 	}

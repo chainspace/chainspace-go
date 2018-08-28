@@ -34,13 +34,14 @@ const (
 	procedure  = "dummy_check_ok"
 )
 
-func seedObjects() ([]string, error) {
+func seedObjects(i int) ([]string, error) {
 	out := []string{}
 	url := (&url.URL{
 		Scheme: "http",
 		Host:   address,
 		Path:   "object",
 	}).String()
+	fmt.Printf("seeding objects for worker %v\n", i)
 	for i := 0; i < objects; i += 1 {
 		client := http.Client{
 			Timeout: 15 * time.Second,
@@ -157,10 +158,12 @@ func objectsReady(ctx context.Context, workerID int, seed []string) {
 }
 
 func worker(ctx context.Context, seed []string, wg *sync.WaitGroup, id int) {
-	seed, err := seedObjects()
-	if err != nil {
-		fmt.Printf("unable to create seed object: %v\n", err)
-	}
+	/*
+		seed, err := seedObjects()
+		if err != nil {
+			fmt.Printf("unable to create seed object: %v\n", err)
+		}
+	*/
 	wg.Add(1)
 	defer wg.Done()
 
@@ -242,20 +245,23 @@ func main() {
 	}
 	wg := &sync.WaitGroup{}
 	ctx, cancel := context.WithCancel(context.Background())
+	seeds := [][]string{}
+	// create seeds
 	for i := 0; i < workers; i += 1 {
-		// i := i
-		/*
-			seeds, err := seedObjects()
-			if err != nil {
-				fmt.Println(err.Error())
-				cancel()
-				wg.Wait()
-				return
-			}
-		*/
+		s, err := seedObjects(i)
+		if err != nil {
+			fmt.Println(err.Error())
+			cancel()
+			wg.Wait()
+			return
+		}
+		seeds = append(seeds, s)
+	}
+	fmt.Printf("seeds generated successfully\n")
+	// start txs
+	for i := 0; i < workers; i += 1 {
 		fmt.Printf("starting worker %v\n", i)
-		go worker(ctx, []string{}, wg, i)
-
+		go worker(ctx, seeds[i], wg, i)
 	}
 
 	t := time.NewTimer(time.Duration(duration) * time.Second)
