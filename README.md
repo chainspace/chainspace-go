@@ -1,21 +1,17 @@
 ## Chainspace
 
-This is a pre-alpha system comprising two main components:
+This is a pre-alpha smart contract system comprising two main components:
 
 * the `transactor` is a sharding component. It provides an implementation of the Sharded Byzantine Atomic Commit (S-BAC) protocol detailed in the Chainspace academic paper.
 * the consensus component, which implements the leaderless consensus protocol detailed in the Blockmania paper.
 
-Eventually, it's likely that we will split these two components. A project wanting only fast consensus, but no sharding, should be able use Blockmania by itself. For projects that need the added horizontal scalability of sharding, and are willing to pay the complexity cost, the S-BAC component can be added.
+Eventually, it's likely that we will split these two components. A project wanting only fast consensus, but no sharding, should be able use Blockmania by itself. For projects that need the added horizontal scalability of sharding, the S-BAC component would be added. But for the moment, the two components co-exist in the same codebase.
 
 ### Development Setup
 
-Prerequisites:
+You'll need Go `1.11`.
 
-* the `dep` package manager, see: https://golang.github.io/dep/docs/introduction.html. Dependencies are currently vendored, so there should be no need to run `dep ensure` before building.
-
-Building:
-
-Run `make install`. This will install the `chainspace` binary as well as the `httptest` load generator. You can generate a new set of shards, start the nodes, and hit them with a load test. See the help documentation (`chainspace -h` and `httptest -h`).
+Run `make install`. This will build and install the `chainspace` binary as well as the `httptest` load generator. You can generate a new set of shards, start the nodes, and hit them with a load test. See the help documentation (`chainspace -h` and `httptest -h`) for each binary.
 
 ### Setting up and running nodes
 
@@ -31,18 +27,61 @@ Each node also gets its own named configuration directory, containing:
 * a node configuration file
 * log output
 
-As we have not yet implemented a directory server, seed nodes, or cryptographically secure peer discovery, nodes currently find each other on the local machine or local network using mDNS discovery. This is purely to aid in the development process (it means we don't need to manually configure a dozen ports for running several shards locally).
-
 In the default setup, nodes 1, 4, 7, and 10 comprise shard 1. Run those node numbers if you're only interested in seeing consensus working. Otherwise, start all nodes to see sharding working as well.
+
+### Peer discovery
+
+We have not yet implemented seed nodes, or cryptographically secure method of peer discovery. This is for future development and the details aren't yet clear. So we have implemented some simple methods for stitching together networks until we are ready to commit to a final system.
+
+Nodes currently find each other in two ways:
+
+1. mDNS discovery
+1. registry
+
+#### mDNS discovery
+
+In development or on private networks, nodes can discover each other using mDNS broadcast. This allows zero-configuration setups for nodes that are all on the same subnet.
+
+Use the Registry when configuring nodes across the public internet. We run a public registry at https://registry.chainspace.io
+
+You can run your own Registry if you want. Init your network with the `--registry` flag if you plan to use a Registry server:
+
+`chainspace init kickass --registry registry.chainspace.io`
+
+The Registry will then appear in each node's `node.yaml`:
+
+```yaml
+registries:
+- host: registry.chainspace.io
+  token: 05b16f5d45377baff52c25e2c154a00b126f7b75b7345794d3e15535b49a03f955b9c355
+```
+
+The randomly-generated registry `token` ensures that unique shared secret is used on a per-network basis so that multiple networks can share the same registry without any additional setup.
+
+Nodes will automatically register themselves with the network's registry server when they start up.
+
+It is possible to use both the Registry and mDNS discovery at the same time.
 
 ### Sending transactions to consensus
 
-TODO
+At the moment, there is no externally-exposed network interface for using the consensus component by itself. You can however access it programmatically using Go, e.g.
+
+```go
+import "chainspace.io/prototype/node"
+
+s, err := node.Run(cfg)
+if err != nil {
+  log.Fatal(err)
+}
+s.Broadcast.AddTransaction(txdata, fee)
+```
+
+[DAVE TODO: check that code can actually run]
 
 ### Sending transactions to shards
 
-TODO
 
-### Known Issues
 
-* we're not cleaning up after ourselves by discarding objects used during consensus rounds. RAM usage correspondingly grows infinitely, and semi-prolonged usage will wipe out your machine. This is top of our list to fix once consensus is stable.
+### Adding dependencies
+
+Dependency management is done via `go mod`. See the latest Go docs for a primer on that if you're doing development. `go mod help` should give you the basics.
