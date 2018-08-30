@@ -14,7 +14,12 @@ import (
 )
 
 func cmdInit(args []string, usage string) {
-	opts := newOpts("init NETWORK_NAME [OPTIONS]", usage)
+	opts := newOpts("init NETWORK_NAME [OPTIONS]", usage+`.
+
+  If the --registry host is specified, then a 36-byte token is randomly
+  generated and the hex-encoded form is set as a shared secret across
+  all of the initialised nodes.
+`)
 
 	configRoot := opts.Flags("--config-root").Label("PATH").String("Path to the Chainspace root directory [~/.chainspace]", defaultRootDir())
 	registry := opts.Flags("--registry").Label("HOST").String("Address of the network registry")
