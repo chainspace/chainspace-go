@@ -436,6 +436,7 @@ func (g *Graph) run() {
 					log.Debug("Dep:", fld.BlockID(dep.Block))
 				}
 				dmax := dep.Block.Round
+				rcheck := false
 				e := &entry{
 					block: dep.Block,
 					prev:  dep.Prev,
@@ -444,8 +445,10 @@ func (g *Graph) run() {
 					e.deps = make([]BlockID, len(dep.Deps)+1)
 					e.deps[0] = dep.Prev
 					copy(e.deps[1:], dep.Deps)
-					pmax := g.max[dep.Prev]
-					if pmax > dmax {
+					pmax, exists := g.max[dep.Prev]
+					if !exists {
+						rcheck = true
+					} else if pmax > dmax {
 						dmax = pmax
 					}
 				} else {
@@ -453,12 +456,14 @@ func (g *Graph) run() {
 				}
 				entries[i] = e
 				for _, link := range dep.Deps {
-					lmax := g.max[link]
-					if lmax > dmax {
+					lmax, exists := g.max[link]
+					if !exists {
+						rcheck = true
+					} else if lmax > dmax {
 						dmax = lmax
 					}
 				}
-				if round > dmax {
+				if rcheck && round > dmax {
 					dmax = round
 				}
 				g.max[dep.Block] = dmax
@@ -466,15 +471,19 @@ func (g *Graph) run() {
 					max = dmax
 				}
 			}
+			rcheck := false
 			if data.Block.Round != 1 {
-				pmax := g.max[data.Prev]
-				if pmax > max {
+				pmax, exists := g.max[data.Prev]
+				if !exists {
+					rcheck = true
+				} else if pmax > max {
 					max = pmax
 				}
 			}
-			if round > max {
+			if rcheck && round > max {
 				max = round
 			}
+			g.max[data.Block] = max
 			g.blocks = append(g.blocks, &blockInfo{
 				data: data,
 				max:  max,
