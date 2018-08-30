@@ -12,7 +12,7 @@ enum CONNECTION {
 
 message Hello {
   string agent = 1;
-  bytes payload = 2;
+  bytes payload = 2; # Either nil, or a protobuf encoded HelloInfo
   bytes signature = 3;
   CONNECTION type = 4;
 }
