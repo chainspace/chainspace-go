@@ -12,19 +12,23 @@ import (
 	"strings"
 
 	"chainspace.io/prototype/config"
+	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/transactor"
 	"chainspace.io/prototype/transactor/client"
+	transactorclient2 "chainspace.io/prototype/transactor/client2"
 	"github.com/rs/cors"
 )
 
 type Config struct {
 	Addr       string
+	Key        signature.KeyPair
 	Port       int
 	Top        *network.Topology
 	MaxPayload config.ByteSize
+	SelfID     uint64
 }
 
 type Service struct {
@@ -32,6 +36,7 @@ type Service struct {
 	srv        *http.Server
 	top        *network.Topology
 	maxPayload config.ByteSize
+	client     transactorclient2.Client
 }
 
 type resp struct {
@@ -252,9 +257,9 @@ func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
-	defer txclient.Close()
-	objects, err := txclient.SendTransaction(req.ToTransactor())
+	// txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
+	// defer txclient.Close()
+	objects, err := s.client.SendTransaction(req.ToTransactor())
 	if err != nil {
 		errorr(rw, http.StatusInternalServerError, err.Error())
 		return
@@ -341,10 +346,18 @@ func (s *Service) makeServ(addr string, port int) *http.Server {
 }
 
 func New(cfg *Config) *Service {
+	clcfg := transactorclient2.Config{
+		NodeID:     cfg.SelfID,
+		Top:        cfg.Top,
+		MaxPayload: cfg.MaxPayload,
+		Key:        cfg.Key,
+	}
+	txclient := transactorclient2.New(&clcfg)
 	s := &Service{
 		port:       cfg.Port,
 		top:        cfg.Top,
 		maxPayload: cfg.MaxPayload,
+		client:     txclient,
 	}
 	s.srv = s.makeServ(cfg.Addr, cfg.Port)
 	go func() {

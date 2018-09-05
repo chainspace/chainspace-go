@@ -1,4 +1,4 @@
-package transactor
+package transactor // import "chainspace.io/prototype/transactor"
 
 import (
 	"sync"
@@ -21,7 +21,12 @@ type PendingAck struct {
 	msg     *service.Message
 	sentAt  time.Time
 	timeout time.Duration
-	cb      func(*service.Message)
+	cb      func(uint64, *service.Message)
+}
+
+type AckID struct {
+	NodeID    uint64
+	RequestID uint64
 }
 
 type ConnsCache struct {
@@ -33,7 +38,7 @@ type ConnsCache struct {
 	selfID     uint64
 	top        *network.Topology
 
-	pendingAcks   map[uint64]PendingAck
+	pendingAcks   map[AckID]PendingAck
 	pendingAcksMu sync.Mutex
 }
 
@@ -63,7 +68,7 @@ func (c *ConnsCache) dial(nodeID uint64) (*MuConn, error) {
 		return nil, err
 	}
 	cc = &MuConn{conn: conn, die: make(chan bool)}
-	go c.readAckMessage(cc.conn, cc.die)
+	go c.readAckMessage(nodeID, cc.conn, cc.die)
 	c.conns[nodeID] = cc
 	return cc, nil
 }
@@ -77,7 +82,7 @@ func (c *ConnsCache) release(nodeID uint64) {
 }
 
 func (c *ConnsCache) WriteRequest(
-	nodeID uint64, msg *service.Message, timeout time.Duration, ack bool) (uint64, error) {
+	nodeID uint64, msg *service.Message, timeout time.Duration, ack bool, cb func(uint64, *service.Message)) (uint64, error) {
 	c.mu.Lock()
 	mc, err := c.dial(nodeID)
 	if err != nil {
@@ -85,50 +90,51 @@ func (c *ConnsCache) WriteRequest(
 		c.release(nodeID)
 		c.mu.Unlock()
 		time.Sleep(100 * time.Millisecond)
-		return c.WriteRequest(nodeID, msg, timeout, ack)
+		return c.WriteRequest(nodeID, msg, timeout, ack, cb)
 	}
 	id, err := mc.conn.WriteRequest(msg, c.maxPayload, timeout)
 	if err != nil {
 		c.release(nodeID)
 		c.mu.Unlock()
-		return c.WriteRequest(nodeID, msg, timeout, ack)
+		return c.WriteRequest(nodeID, msg, timeout, ack, cb)
 	}
 	c.mu.Unlock()
 	if ack {
-		c.addPendingAck(nodeID, msg, timeout, id)
+		c.addPendingAck(nodeID, msg, timeout, id, cb)
 	}
 	return id, nil
 }
 
-func (c *ConnsCache) addPendingAck(nodeID uint64, msg *service.Message, timeout time.Duration, id uint64) {
+func (c *ConnsCache) addPendingAck(nodeID uint64, msg *service.Message, timeout time.Duration, id uint64, cb func(uint64, *service.Message)) {
 	ack := PendingAck{
 		sentAt:  time.Now(),
 		nodeID:  nodeID,
 		msg:     msg,
 		timeout: timeout,
-		cb:      nil,
+		cb:      cb,
 	}
 	c.pendingAcksMu.Lock()
-	c.pendingAcks[id] = ack
+	c.pendingAcks[AckID{nodeID, id}] = ack
 	c.pendingAcksMu.Unlock()
 }
 
-func (c *ConnsCache) processAckMessage(msg *service.Message) {
+func (c *ConnsCache) processAckMessage(nodeID uint64, msg *service.Message) {
 	c.pendingAcksMu.Lock()
 	defer c.pendingAcksMu.Unlock()
-	if m, ok := c.pendingAcks[msg.ID]; ok {
+	if m, ok := c.pendingAcks[AckID{nodeID, msg.ID}]; ok {
 		if m.cb != nil {
-			m.cb(msg)
+			m.cb(m.nodeID, msg)
 		}
-		delete(c.pendingAcks, msg.ID)
+		delete(c.pendingAcks, AckID{nodeID, msg.ID})
 	} else {
+		log.Error("unknown lastID", log.Uint64("lastid", msg.ID))
 		if log.AtDebug() {
 			log.Debug("unknown lastID", log.Uint64("lastid", msg.ID))
 		}
 	}
 }
 
-func (c *ConnsCache) readAckMessage(conn *network.Conn, die chan bool) {
+func (c *ConnsCache) readAckMessage(nodeID uint64, conn *network.Conn, die chan bool) {
 	for {
 		select {
 		case _ = <-die:
@@ -137,7 +143,7 @@ func (c *ConnsCache) readAckMessage(conn *network.Conn, die chan bool) {
 			msg, err := conn.ReadMessage(int(c.maxPayload), 5*time.Second)
 			// if we can read some message, try to process it.
 			if err == nil {
-				go c.processAckMessage(msg)
+				go c.processAckMessage(nodeID, msg)
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
@@ -157,7 +163,7 @@ func (c *ConnsCache) retryRequests() {
 		}
 		c.pendingAcksMu.Unlock()
 		for _, v := range redolist {
-			c.WriteRequest(v.nodeID, v.msg, v.timeout, true)
+			c.WriteRequest(v.nodeID, v.msg, v.timeout, true, v.cb)
 		}
 	}
 }
@@ -170,7 +176,7 @@ func NewConnsCache(nodeID uint64, top *network.Topology, maxPayload int, key sig
 		selfID:      nodeID,
 		top:         top,
 		key:         key,
-		pendingAcks: map[uint64]PendingAck{},
+		pendingAcks: map[AckID]PendingAck{},
 	}
 	go c.retryRequests()
 

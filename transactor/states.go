@@ -456,11 +456,12 @@ func makeMessage(m *SBACMessage) (*service.Message, error) {
 
 func (s *Service) sendToAllShardInvolved(tx *TxDetails, msg *service.Message) error {
 	shards := s.shardsInvolvedWithoutSelf(tx.Tx)
+	conns := s.conns.Borrow()
 	for _, shard := range shards {
 		nodes := s.top.NodesInShard(shard)
 		for _, node := range nodes {
 			// TODO: proper timeout ?
-			_, err := s.conns.WriteRequest(node, msg, time.Hour, true)
+			_, err := conns.WriteRequest(node, msg, time.Hour, true, nil)
 			if err != nil {
 				log.Error("unable to connect to node", fld.TxID(tx.HashID), fld.PeerID(node))
 				return fmt.Errorf("unable to connect to node(%v): %v", node, err)
@@ -703,11 +704,12 @@ func (s *Service) toAborted(tx *TxDetails) (State, error) {
 }
 
 func (s *Service) sendToShards(shards []uint64, tx *TxDetails, msg *service.Message) error {
+	conns := s.conns.Borrow()
 	for _, shard := range shards {
 		nodes := s.top.NodesInShard(shard)
 		for _, node := range nodes {
 			// TODO: proper timeout ?
-			_, err := s.conns.WriteRequest(node, msg, 5*time.Second, true)
+			_, err := conns.WriteRequest(node, msg, 5*time.Second, true, nil)
 			if err != nil {
 				log.Error("unable to connect to node", fld.TxID(tx.HashID), fld.PeerID(node))
 				return fmt.Errorf("unable to connect to node(%v): %v", node, err)

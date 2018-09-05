@@ -411,8 +411,10 @@ func Run(cfg *Config) (*Server, error) {
 			}
 			restsrvcfg := &restsrv.Config{
 				Addr:       "",
+				Key:        key,
 				Port:       rport,
 				Top:        top,
+				SelfID:     cfg.NodeID,
 				MaxPayload: config.ByteSize(maxPayload),
 			}
 			rstsrv = restsrv.New(restsrvcfg)

@@ -44,7 +44,7 @@ type Config struct {
 type Service struct {
 	broadcaster *broadcast.Service
 	checkers    CheckersMap
-	conns       *ConnsCache
+	conns       *ConnsPool
 	nodeID      uint64
 	pe          *pendingEvents
 	privkey     signature.PrivateKey
@@ -92,9 +92,9 @@ func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, e
 	ctx := context.TODO()
 	switch Opcode(m.Opcode) {
 	case Opcode_CHECK_TRANSACTION:
-		return s.checkTransaction(ctx, m.Payload)
+		return s.checkTransaction(ctx, m.Payload, m.ID)
 	case Opcode_ADD_TRANSACTION:
-		return s.addTransaction(ctx, m.Payload)
+		return s.addTransaction(ctx, m.Payload, m.ID)
 	case Opcode_QUERY_OBJECT:
 		return s.queryObject(ctx, m.Payload)
 	case Opcode_DELETE_OBJECT:
@@ -163,7 +163,7 @@ func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64,
 	return &service.Message{ID: msgID, Opcode: int32(Opcode_SBAC), Payload: payloadres}, nil
 }
 
-func (s *Service) checkTransaction(ctx context.Context, payload []byte) (*service.Message, error) {
+func (s *Service) checkTransaction(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
 	req := &CheckTransactionRequest{}
 	err := proto.Unmarshal(payload, req)
 	if err != nil {
@@ -199,6 +199,7 @@ func (s *Service) checkTransaction(ctx context.Context, payload []byte) (*servic
 		log.Debug("transactor: transaction checked successfully", fld.TxID(ID(ids.TxID)))
 	}
 	return &service.Message{
+		ID:      id,
 		Opcode:  int32(Opcode_ADD_TRANSACTION),
 		Payload: b,
 	}, nil
@@ -263,7 +264,7 @@ func (s *Service) gcStateMachines() {
 	}
 }
 
-func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.Message, error) {
+func (s *Service) addTransaction(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
 	req := &AddTransactionRequest{}
 	err := proto.Unmarshal(payload, req)
 	if err != nil {
@@ -321,6 +322,7 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 	}
 	log.Info("transactor: transaction added successfully")
 	return &service.Message{
+		ID:      id,
 		Opcode:  int32(Opcode_ADD_TRANSACTION),
 		Payload: b,
 	}, nil
@@ -496,7 +498,7 @@ func New(cfg *Config) (*Service, error) {
 
 	s := &Service{
 		broadcaster: cfg.Broadcaster,
-		conns:       NewConnsCache(cfg.NodeID, cfg.Top, cfg.MaxPayload, cfg.Key),
+		conns:       NewConnsPool(10, cfg.NodeID, cfg.Top, cfg.MaxPayload, cfg.Key),
 		checkers:    checkers,
 		nodeID:      cfg.NodeID,
 		privkey:     privkey,
