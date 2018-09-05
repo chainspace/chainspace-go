@@ -128,6 +128,7 @@ func (s *Service) makeStateTable() *StateTable {
 		{StateCommitObjectsBroadcasted, StateSucceeded}:      s.toSucceeded,
 
 		{StateWaitingForCommit, StateConsensusCommitTriggered}:          s.toConsensusCommitTriggered,
+		{StateWaitingForCommit, StateAborted}:                           s.toAborted,
 		{StateConsensusCommitTriggered, StateWaitingForConsensusCommit}: s.toWaitingForConsensusCommit,
 		{StateWaitingForConsensusCommit, StateObjectsCreated}:           s.toObjectsCreated,
 		{StateWaitingForConsensusCommit, StateAborted}:                  s.toAborted,
@@ -162,6 +163,7 @@ func (s *Service) onEvent(tx *TxDetails, event *Event) error {
 	case SBACOpcode_CONSENSUS_COMMIT:
 		tx.ConsensusCommitTx = event.msg.Tx
 	default:
+		log.Error("----------------------- UNKNOWN SBAC OPCODE--------------------------------")
 	}
 	return nil
 }
@@ -671,18 +673,18 @@ func (s *Service) toSucceeded(tx *TxDetails) (State, error) {
 
 func (s *Service) toAborted(tx *TxDetails) (State, error) {
 	// unlock any objects maybe related to this transaction.
-	log.Error("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ ABORTING")
 	objects, _ := s.inputObjectsForShard(s.shardID, tx.Tx)
 	err := UnlockObjects(s.store, objects)
 	if err != nil {
 		log.Error("unable to unlock objects", fld.TxID(tx.HashID), fld.Err(err))
 	}
 	log.Error("finishing transaction", fld.TxID(tx.HashID))
+
 	err = FinishTransaction(s.store, tx.ID)
 	if err != nil {
 		log.Error("unable to finish transaction", fld.TxID(tx.HashID), fld.Err(err))
 	}
-	// tx.Result <- false
+
 	return StateAborted, nil
 }
 
@@ -691,7 +693,7 @@ func (s *Service) sendToShards(shards []uint64, tx *TxDetails, msg *service.Mess
 		nodes := s.top.NodesInShard(shard)
 		for _, node := range nodes {
 			// TODO: proper timeout ?
-			_, err := s.conns.WriteRequest(node, msg, time.Hour, true)
+			_, err := s.conns.WriteRequest(node, msg, 5*time.Second, true)
 			if err != nil {
 				log.Error("unable to connect to node", fld.TxID(tx.HashID), fld.PeerID(node))
 				return fmt.Errorf("unable to connect to node(%v): %v", node, err)

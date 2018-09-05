@@ -109,15 +109,17 @@ func (s *Server) handleConnection(conn net.Conn) {
 	}
 	for {
 		msg, err := c.ReadMessage(s.maxPayload, s.readTimeout)
+
 		if err != nil {
 			if network.AbnormalError(err) {
 				log.Error("Could not decode message from an incoming stream", fld.Err(err))
 			}
 			return
 		}
+
 		resp, err := svc.Handle(peerID, msg)
 		if err != nil {
-			log.Error("Received error response", fld.Service(svc.Name()), fld.Err(err))
+			// log.Error("Received error response", fld.Service(svc.Name()), fld.Err(err))
 			conn.Close()
 			return
 		}

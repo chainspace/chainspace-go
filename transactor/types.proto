@@ -10,7 +10,8 @@ enum Opcode {
   QUERY_OBJECT = 3;
   CREATE_OBJECT = 4;
   DELETE_OBJECT = 5;
-  SBAC = 6;
+  STATES = 6;
+  SBAC = 7;
 }
 
 enum ObjectStatus {
@@ -65,6 +66,20 @@ message ObjectList {
 
 message AddTransactionResponse {
   map<string, ObjectList> objects = 1;
+}
+
+message StateReport {
+  uint32 hashID = 1;
+  map<uint64, bool> commitDecisions = 2;
+  map<uint64, bool> phase1Decisions = 3;
+  map<uint64, bool> phase2Decisions = 4;
+  string state = 5;
+  int32 pendingEvents = 6;
+}
+
+message StatesReportResponse {
+  repeated StateReport states = 1;
+  int32 eventsInQueue = 2;
 }
 
 message QueryObjectRequest {

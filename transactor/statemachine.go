@@ -71,6 +71,28 @@ func (sm *StateMachine) Reset() {
 	sm.state = StateWaitingForConsensus1
 }
 
+func (sm *StateMachine) StateReport() *StateReport {
+	s := StateReport{
+		HashID:          sm.txDetails.HashID,
+		State:           sm.State().String(),
+		CommitDecisions: map[uint64]bool{},
+		Phase1Decisions: map[uint64]bool{},
+		Phase2Decisions: map[uint64]bool{},
+		PendingEvents:   int32(sm.events.Len()),
+	}
+	for k, v := range sm.txDetails.CommitDecisions {
+		log.Error("STATE", fld.TxID(sm.txDetails.HashID), log.Int("commit", len(sm.txDetails.CommitDecisions)))
+		s.CommitDecisions[k] = v.Decision == SBACDecision_ACCEPT
+	}
+	for k, v := range sm.txDetails.Phase1Decisions {
+		s.Phase1Decisions[k] = v.Decision == SBACDecision_ACCEPT
+	}
+	for k, v := range sm.txDetails.Phase2Decisions {
+		s.Phase2Decisions[k] = v.Decision == SBACDecision_ACCEPT
+	}
+	return &s
+}
+
 func (sm *StateMachine) State() State {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -120,7 +142,7 @@ func (sm *StateMachine) moveState() error {
 		action, ok := sm.table.actions[curState]
 		if !ok {
 			log.Error("unable to find an action to map with the current state",
-				log.String("state", curState.String()))
+				log.String("state", curState.String()), fld.TxID(sm.txDetails.HashID))
 			return nil
 		}
 		log.Info("applying action",

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"sort"
 	"strings"
 
 	"chainspace.io/prototype/config"
@@ -193,6 +194,39 @@ func (s *Service) deleteObject(rw http.ResponseWriter, r *http.Request) {
 	success(rw, http.StatusOK, obj)
 }
 
+func (s *Service) states(rw http.ResponseWriter, r *http.Request) {
+	if !strings.EqualFold(r.Header.Get("Content-Type"), "application/json") {
+		fail(rw, http.StatusBadRequest, "unsupported content-type")
+		return
+	}
+	if r.Method != http.MethodPost {
+		fail(rw, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	req := struct {
+		Id uint64 `json:"id"`
+	}{}
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to read request: %v", err))
+		return
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to unmarshal: %v", err))
+		return
+	}
+	txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
+	defer txclient.Close()
+	states, err := txclient.States(req.Id)
+	if err != nil {
+		errorr(rw, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	sort.Slice(states.States, func(i, j int) bool { return states.States[i].HashID < states.States[j].HashID })
+	success(rw, http.StatusOK, states)
+}
+
 func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		fail(rw, http.StatusMethodNotAllowed, "method not allowed")
@@ -293,6 +327,7 @@ func (s *Service) makeServ(addr string, port int) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/object", s.object)
 	mux.HandleFunc("/object/ready", s.objectsReady)
+	mux.HandleFunc("/states", s.states)
 	mux.HandleFunc("/transaction", s.transaction)
 	handler := cors.Default().Handler(mux)
 	h := &http.Server{

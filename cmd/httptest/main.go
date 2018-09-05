@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -16,17 +17,24 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/api/compute/v1"
+
+	"golang.org/x/oauth2/google"
+
 	"chainspace.io/prototype/restsrv"
 )
 
 var (
 	address  string
+	port     string
 	workers  int
 	objects  int
 	duration int
 
 	metrics = map[int][]time.Duration{}
 	mu      sync.Mutex
+
+	addresses []string
 )
 
 const (
@@ -34,11 +42,18 @@ const (
 	procedure  = "dummy_check_ok"
 )
 
+func getAddress(workerID int) string {
+	if len(address) > 0 {
+		return address
+	}
+	return addresses[workerID%len(addresses)]
+}
+
 func seedObjects(i int) ([]string, error) {
 	out := []string{}
 	url := (&url.URL{
 		Scheme: "http",
-		Host:   address,
+		Host:   getAddress(i),
 		Path:   "object",
 	}).String()
 	fmt.Printf("seeding objects for worker %v\n", i)
@@ -98,7 +113,7 @@ func makeTransactionPayload(seed []string) []byte {
 func objectsReady(ctx context.Context, workerID int, seed []string) {
 	url := (&url.URL{
 		Scheme: "http",
-		Host:   address,
+		Host:   getAddress(workerID),
 		Path:   "object/ready",
 	}).String()
 
@@ -153,7 +168,7 @@ func objectsReady(ctx context.Context, workerID int, seed []string) {
 			fmt.Printf("worker %v all objects created and queryable with success\n", workerID)
 			return
 		}
-		fmt.Printf("worker %v some object still unavailable\n", workerID)
+		// fmt.Printf("worker %v some object still unavailable\n", workerID)
 	}
 }
 
@@ -169,7 +184,7 @@ func worker(ctx context.Context, seed []string, wg *sync.WaitGroup, id int) {
 
 	url := (&url.URL{
 		Scheme: "http",
-		Host:   address,
+		Host:   getAddress(id),
 		Path:   "transaction",
 	}).String()
 
@@ -238,16 +253,56 @@ func worker(ctx context.Context, seed []string, wg *sync.WaitGroup, id int) {
 	fmt.Printf("worker %v finished at: %v\n", id, time.Now().Format(time.Stamp))
 }
 
+func getAddressesFromGCP() {
+	ctx := context.Background()
+
+	c, err := google.DefaultClient(ctx, compute.CloudPlatformScope)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	computeService, err := compute.New(c)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Project ID for this request.
+	project := "acoustic-atom-211511" // TODO: Update placeholder value.
+
+	req := computeService.Instances.List(project, "europe-west2-b")
+	if err := req.Pages(ctx, func(page *compute.InstanceList) error {
+		for _, v := range page.Items {
+			addresses = append(addresses, v.NetworkInterfaces[0].AccessConfigs[0].NatIP+":"+port)
+		}
+		return nil
+	}); err != nil {
+		log.Fatal(err)
+	}
+}
+
 func main() {
-	if len(address) <= 0 {
-		fmt.Println("missing address parameter")
+	if len(address) <= 0 && len(port) <= 0 {
+		fmt.Println("missing address or port parameter")
 		os.Exit(1)
 	}
+	if len(address) > 0 && len(port) > 0 {
+		fmt.Println("cannot specify address and port parameter together")
+		os.Exit(1)
+	}
+	if len(port) > 0 {
+		getAddressesFromGCP()
+	}
+
 	wg := &sync.WaitGroup{}
 	ctx, cancel := context.WithCancel(context.Background())
-	seeds := [][]string{}
+	seeds := make([][]string, workers)
 	// create seeds
+	// var wg1 sync.WaitGroup
 	for i := 0; i < workers; i += 1 {
+		//	wg1.Add(1)
+		//	i := i
+		//	go func() {
+		//		defer wg1.Done()
 		s, err := seedObjects(i)
 		if err != nil {
 			fmt.Println(err.Error())
@@ -255,8 +310,12 @@ func main() {
 			wg.Wait()
 			return
 		}
-		seeds = append(seeds, s)
+		//fmt.Printf("I: %v", i)
+		seeds[i] = s
+
+		//	}()
 	}
+	//	wg1.Wait()
 	fmt.Printf("seeds generated successfully\n")
 	// start txs
 	for i := 0; i < workers; i += 1 {
@@ -308,6 +367,7 @@ func orderResults() []WorkerTxCount {
 
 func init() {
 	flag.StringVar(&address, "addr", "", "address of the node http server to use")
+	flag.StringVar(&port, "port", "", "port to connect in order to send transactions (use with gcp)")
 	flag.IntVar(&workers, "workers", 1, "number of workers used to send transactions default=1")
 	flag.IntVar(&objects, "objects", 1, "number of objects to be used as inputs in the transaction default=1")
 	flag.IntVar(&duration, "duration", 5, "duration of the test")

@@ -101,6 +101,8 @@ func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, e
 		return s.deleteObject(ctx, m.Payload)
 	case Opcode_CREATE_OBJECT:
 		return s.createObject(ctx, m.Payload)
+	case Opcode_STATES:
+		return s.handleStates(ctx, m.Payload)
 	case Opcode_SBAC:
 		return s.handleSBAC(ctx, m.Payload, peerID, m.ID)
 	default:
@@ -118,12 +120,11 @@ func (s *Service) consumeEvents(e *Event) bool {
 		return true
 	}
 	if ok {
-		log.Error("event for a finished transaction, skipping it", fld.NodeID(s.nodeID))
+		log.Error("event for a finished transaction, skipping it", fld.TxID(ID(e.msg.GetTx().ID)), log.Uint64("PEERID", e.peerID))
 		// txn already finished. move on
 		return true
 	}
 
-	// log.Error("PROCESSING EVENT BABY")
 	sm, ok := s.getSateMachine(e.msg.Tx.ID)
 	if ok {
 		if log.AtDebug() {
@@ -159,7 +160,7 @@ func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64,
 		log.Error("unable to marshall handleSBAC response", fld.Err(err))
 		return nil, err
 	}
-	return &service.Message{Opcode: int32(Opcode_SBAC), Payload: payloadres}, nil
+	return &service.Message{ID: msgID, Opcode: int32(Opcode_SBAC), Payload: payloadres}, nil
 }
 
 func (s *Service) checkTransaction(ctx context.Context, payload []byte) (*service.Message, error) {
@@ -366,6 +367,27 @@ func (s *Service) queryObject(ctx context.Context, payload []byte) (*service.Mes
 	}, nil
 }
 
+func (s *Service) handleStates(ctx context.Context, payload []byte) (*service.Message, error) {
+	sr := []*StateReport{}
+	s.txstatesmu.Lock()
+	for _, v := range s.txstates {
+		sr = append(sr, v.StateReport())
+	}
+	s.txstatesmu.Unlock()
+	res := &StatesReportResponse{
+		States:        sr,
+		EventsInQueue: int32(s.pe.Len()),
+	}
+	b, err := proto.Marshal(res)
+	if err != nil {
+		return nil, fmt.Errorf("transactor: unable to marshal states reports response")
+	}
+	return &service.Message{
+		Opcode:  int32(Opcode_STATES),
+		Payload: b,
+	}, nil
+}
+
 func (s *Service) deleteObject(ctx context.Context, payload []byte) (*service.Message, error) {
 	req := &DeleteObjectRequest{}
 	err := proto.Unmarshal(payload, req)
@@ -481,7 +503,7 @@ func New(cfg *Config) (*Service, error) {
 
 	s := &Service{
 		broadcaster: cfg.Broadcaster,
-		conns:       NewConnsCache(context.TODO(), cfg.NodeID, cfg.Top, cfg.MaxPayload, cfg.Key),
+		conns:       NewConnsCache(cfg.NodeID, cfg.Top, cfg.MaxPayload, cfg.Key),
 		checkers:    checkers,
 		nodeID:      cfg.NodeID,
 		privkey:     privkey,
@@ -496,7 +518,7 @@ func New(cfg *Config) (*Service, error) {
 	s.table = s.makeStateTable()
 	s.broadcaster.Register(s.handleDeliver)
 	go s.pe.Run()
-	go s.gcStateMachines()
+	// go s.gcStateMachines()
 	return s, nil
 }
 

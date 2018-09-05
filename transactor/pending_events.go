@@ -15,6 +15,12 @@ type pendingEvents struct {
 	cb     func(*Event) bool
 }
 
+func (pe *pendingEvents) Len() int {
+	pe.mu.Lock()
+	defer pe.mu.Unlock()
+	return len(pe.events)
+}
+
 func (pe *pendingEvents) Close() {
 	pe.cancel()
 	// just sending a nil event, this will get canceled directly

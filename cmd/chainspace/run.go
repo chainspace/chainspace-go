@@ -7,6 +7,9 @@ import (
 	"runtime/pprof"
 	"strconv"
 
+	"net/http"
+	_ "net/http/pprof"
+
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/log/fld"
@@ -103,6 +106,10 @@ func cmdRun(args []string, usage string) {
 			log.Fatal("Unknown --file-log level: " + *fileLog)
 		}
 	}
+
+	go func() {
+		http.ListenAndServe("0.0.0.0:6060", nil)
+	}()
 
 	s, err := node.Run(cfg)
 	if err != nil {

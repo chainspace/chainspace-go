@@ -30,6 +30,7 @@ type Client interface {
 	Create(obj []byte) ([][]byte, error)
 	Query(key []byte) ([]*transactor.Object, error)
 	Delete(key []byte) ([]*transactor.Object, error)
+	States(states uint64) (*transactor.StatesReportResponse, error)
 	Close()
 }
 
@@ -317,6 +318,52 @@ func (c *client) Delete(key []byte) ([]*transactor.Object, error) {
 	return objs, nil
 }
 
+func (c *client) States(nodeID uint64) (*transactor.StatesReportResponse, error) {
+	shardID := c.top.ShardForNode(nodeID)
+	log.Error("CALLING SHARD AND NODE", log.Uint64("NODE", nodeID), log.Uint64("SHARD", shardID))
+	if err := c.dialNodes(map[uint64]struct{}{shardID: struct{}{}}); err != nil {
+		return nil, err
+	}
+	if err := c.helloNodes(); err != nil {
+		return nil, err
+	}
+
+	msg := &service.Message{
+		Opcode: int32(transactor.Opcode_STATES),
+	}
+
+	var nc NodeIDConnPair
+	var ok bool
+	for _, v := range c.nodesConn[shardID] {
+		if v.NodeID == nodeID {
+			nc = v
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return nil, fmt.Errorf("node with id(%v) do not exists", nodeID)
+	}
+	_, err := nc.Conn.WriteRequest(msg, int(c.maxPaylod), 5*time.Second)
+	if err != nil {
+		log.Error("unable to write request", fld.PeerShard(shardID), fld.PeerID(nodeID), fld.Err(err))
+		return nil, err
+	}
+	rmsg, err := nc.Conn.ReadMessage(int(c.maxPaylod), 15*time.Second)
+	if err != nil {
+		return nil, err
+	}
+
+	res := &transactor.StatesReportResponse{}
+	err = proto.Unmarshal(rmsg.Payload, res)
+	if err != nil {
+		log.Error("unable to unmarshal input message", fld.PeerShard(shardID), fld.PeerID(nodeID), fld.Err(err))
+		return nil, err
+	}
+
+	return res, nil
+}
+
 func (c *client) sendMessages(msg *service.Message, f func(uint64, uint64, *service.Message) error) error {
 	wg, _ := errgroup.WithContext(context.TODO())
 	for s, nc := range c.nodesConn {
@@ -332,7 +379,7 @@ func (c *client) sendMessages(msg *service.Message, f func(uint64, uint64, *serv
 				}
 				rmsg, err := v.Conn.ReadMessage(int(c.maxPaylod), 15*time.Second)
 				if err != nil {
-					log.Error("unable to read message", fld.PeerShard(s), fld.PeerID(v.NodeID), fld.Err(err))
+					// log.Error("unable to read message", fld.PeerShard(s), fld.PeerID(v.NodeID), fld.Err(err))
 					return err
 				}
 				err = f(s, v.NodeID, rmsg)
