@@ -28,6 +28,7 @@ type TxDetails struct {
 	Consensus2Tx      *SBACTransaction
 	ConsensusCommitTx *SBACTransaction
 
+	Mu              sync.Mutex
 	CommitDecisions map[uint64]SignedDecision
 	Phase1Decisions map[uint64]SignedDecision
 	Phase2Decisions map[uint64]SignedDecision
@@ -72,6 +73,8 @@ func (sm *StateMachine) Reset() {
 }
 
 func (sm *StateMachine) StateReport() *StateReport {
+	sm.txDetails.Mu.Lock()
+	defer sm.txDetails.Mu.Unlock()
 	s := StateReport{
 		HashID:          sm.txDetails.HashID,
 		State:           sm.State().String(),
@@ -81,7 +84,6 @@ func (sm *StateMachine) StateReport() *StateReport {
 		PendingEvents:   int32(sm.events.Len()),
 	}
 	for k, v := range sm.txDetails.CommitDecisions {
-		log.Error("STATE", fld.TxID(sm.txDetails.HashID), log.Int("commit", len(sm.txDetails.CommitDecisions)))
 		s.CommitDecisions[k] = v.Decision == SBACDecision_ACCEPT
 	}
 	for k, v := range sm.txDetails.Phase1Decisions {

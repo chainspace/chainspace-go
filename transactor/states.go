@@ -148,6 +148,9 @@ func (s *Service) onEvent(tx *TxDetails, event *Event) error {
 			log.String("decision", SBACDecision_name[int32(event.msg.Decision)]),
 			fld.PeerID(event.peerID))
 	}
+
+	tx.Mu.Lock()
+	defer tx.Mu.Unlock()
 	switch event.msg.Op {
 	case SBACOpcode_PHASE1:
 		tx.Phase1Decisions[event.peerID] = SignedDecision{event.msg.Decision, event.msg.Tx.GetSignature()}
@@ -163,9 +166,20 @@ func (s *Service) onEvent(tx *TxDetails, event *Event) error {
 	case SBACOpcode_CONSENSUS_COMMIT:
 		tx.ConsensusCommitTx = event.msg.Tx
 	default:
-		log.Error("----------------------- UNKNOWN SBAC OPCODE--------------------------------")
+		log.Error("unknown SBAC opcode", log.Int32("bad.opcode", int32(event.msg.Op)))
 	}
 	return nil
+}
+
+func (s *Service) shardsInvolvedWithoutSelf(tx *Transaction) []uint64 {
+	shards := s.shardsInvolvedInTx(tx)
+	for i, _ := range shards {
+		if shards[i] == s.shardID {
+			shards = append(shards[:i], shards[i+1:]...)
+			break
+		}
+	}
+	return shards
 }
 
 // shardsInvolvedInTx return a list of IDs of all shards involved in the transaction either by
@@ -214,7 +228,7 @@ func (s *Service) verifySignature(tx *Transaction, signature []byte, nodeID uint
 }
 
 func (s *Service) onWaitingFor(tx *TxDetails, decisions map[uint64]SignedDecision, phaseName string) WaitingDecisionResult {
-	shards := s.shardsInvolvedInTx(tx.Tx)
+	shards := s.shardsInvolvedWithoutSelf(tx.Tx)
 	var somePending bool
 	// for each shards, get the nodes id, and checks if they answered
 	vtwotplusone := twotplusone(s.shardSize)
@@ -441,7 +455,7 @@ func makeMessage(m *SBACMessage) (*service.Message, error) {
 }
 
 func (s *Service) sendToAllShardInvolved(tx *TxDetails, msg *service.Message) error {
-	shards := s.shardsInvolvedInTx(tx.Tx)
+	shards := s.shardsInvolvedWithoutSelf(tx.Tx)
 	for _, shard := range shards {
 		nodes := s.top.NodesInShard(shard)
 		for _, node := range nodes {

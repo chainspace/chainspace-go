@@ -311,12 +311,6 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 	if s.isNodeInitiatingBroadcast(ID(ids.TxID)) {
 		s.broadcaster.AddTransaction(b, 0)
 	}
-	// block here while the statemachine does its job
-	// log.Error("waiting for result", fld.NodeID(s.nodeID))
-	// txres := <-txdetails.Result
-	// if !txres {
-	// return nil, errors.New("unable to execute the transaction")
-	//}
 	res := &AddTransactionResponse{
 		Objects: objects,
 	}
@@ -326,7 +320,6 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte) (*service.
 		return nil, fmt.Errorf("transactor: unable to marshal add_transaction response, %v", err)
 	}
 	log.Info("transactor: transaction added successfully")
-
 	return &service.Message{
 		Opcode:  int32(Opcode_ADD_TRANSACTION),
 		Payload: b,
