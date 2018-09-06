@@ -1,4 +1,4 @@
-package transactorclient // import "chainspace.io/prototype/transactor/client2"
+package transactorclient // import "chainspace.io/prototype/transactor/client"
 
 import (
 	"encoding/base64"

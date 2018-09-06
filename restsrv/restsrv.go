@@ -17,7 +17,7 @@ import (
 	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/transactor"
-	transactorclient2 "chainspace.io/prototype/transactor/client2"
+	"chainspace.io/prototype/transactor/client"
 	"github.com/rs/cors"
 )
 
@@ -35,7 +35,7 @@ type Service struct {
 	srv        *http.Server
 	top        *network.Topology
 	maxPayload config.ByteSize
-	client     transactorclient2.Client
+	client     transactorclient.Client
 }
 
 type resp struct {
@@ -328,13 +328,13 @@ func (s *Service) makeServ(addr string, port int) *http.Server {
 }
 
 func New(cfg *Config) *Service {
-	clcfg := transactorclient2.Config{
+	clcfg := transactorclient.Config{
 		NodeID:     cfg.SelfID,
 		Top:        cfg.Top,
 		MaxPayload: cfg.MaxPayload,
 		Key:        cfg.Key,
 	}
-	txclient := transactorclient2.New(&clcfg)
+	txclient := transactorclient.New(&clcfg)
 	s := &Service{
 		port:       cfg.Port,
 		top:        cfg.Top,
