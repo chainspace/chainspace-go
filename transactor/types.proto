@@ -88,6 +88,7 @@ message QueryObjectRequest {
 
 message QueryObjectResponse {
   Object object = 1;
+  string error = 2;
 }
 
 message DeleteObjectRequest {
@@ -96,6 +97,7 @@ message DeleteObjectRequest {
 
 message DeleteObjectResponse {
   Object object = 1;
+  string error = 2;
 }
 
 message NewObjectRequest {
@@ -104,6 +106,7 @@ message NewObjectRequest {
 
 message NewObjectResponse {
   bytes id = 1 [(gogoproto.customname) = "ID"];
+  string error = 2;
 }
 
 // SBAC

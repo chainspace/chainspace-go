@@ -96,13 +96,13 @@ func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, e
 	case Opcode_ADD_TRANSACTION:
 		return s.addTransaction(ctx, m.Payload, m.ID)
 	case Opcode_QUERY_OBJECT:
-		return s.queryObject(ctx, m.Payload)
+		return s.queryObject(ctx, m.Payload, m.ID)
 	case Opcode_DELETE_OBJECT:
-		return s.deleteObject(ctx, m.Payload)
+		return s.deleteObject(ctx, m.Payload, m.ID)
 	case Opcode_CREATE_OBJECT:
-		return s.createObject(ctx, m.Payload)
+		return s.createObject(ctx, m.Payload, m.ID)
 	case Opcode_STATES:
-		return s.handleStates(ctx, m.Payload)
+		return s.handleStates(ctx, m.Payload, m.ID)
 	case Opcode_SBAC:
 		return s.handleSBAC(ctx, m.Payload, peerID, m.ID)
 	default:
@@ -328,41 +328,40 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte, id uint64)
 	}, nil
 }
 
-func (s *Service) queryObject(ctx context.Context, payload []byte) (*service.Message, error) {
-	req := &QueryObjectRequest{}
-	err := proto.Unmarshal(payload, req)
-	if err != nil {
-		return nil, fmt.Errorf("transactor: query_object unmarshaling error: %v", err)
-	}
-
-	if req.ObjectKey == nil {
-		return nil, fmt.Errorf("transactor: nil object key")
-	}
-	objects, err := GetObjects(s.store, [][]byte{req.ObjectKey})
-	if err != nil {
-		return nil, err
-	}
-	if len(objects) != 1 {
-		return nil, fmt.Errorf("transactor: invalid number of objects found, expected %v found %v", 1, len(objects))
-	}
-
-	if err != nil {
-		return nil, err
-	}
-	res := &QueryObjectResponse{
-		Object: objects[0],
-	}
-	b, err := proto.Marshal(res)
-	if err != nil {
-		return nil, fmt.Errorf("transactor: unable to marshal query_object response")
-	}
+func queryPayload(id uint64, res *QueryObjectResponse) (*service.Message, error) {
+	b, _ := proto.Marshal(res)
 	return &service.Message{
+		ID:      id,
 		Opcode:  int32(Opcode_QUERY_OBJECT),
 		Payload: b,
 	}, nil
 }
 
-func (s *Service) handleStates(ctx context.Context, payload []byte) (*service.Message, error) {
+func (s *Service) queryObject(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
+	req := &QueryObjectRequest{}
+	err := proto.Unmarshal(payload, req)
+	res := &QueryObjectResponse{}
+	if err != nil {
+		res.Error = fmt.Errorf("transactor: query_object unmarshaling error: %v", err).Error()
+		return queryPayload(id, res)
+	}
+
+	if req.ObjectKey == nil {
+		res.Error = fmt.Errorf("transactor: nil object key").Error()
+		return queryPayload(id, res)
+	}
+	objects, err := GetObjects(s.store, [][]byte{req.ObjectKey})
+	if err != nil {
+		res.Error = err.Error()
+	} else if len(objects) != 1 {
+		res.Error = fmt.Errorf("transactor: invalid number of objects found, expected %v found %v", 1, len(objects)).Error()
+	} else {
+		res.Object = objects[0]
+	}
+	return queryPayload(id, res)
+}
+
+func (s *Service) handleStates(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
 	sr := []*StateReport{}
 	s.txstatesmu.Lock()
 	for _, v := range s.txstates {
@@ -378,58 +377,70 @@ func (s *Service) handleStates(ctx context.Context, payload []byte) (*service.Me
 		return nil, fmt.Errorf("transactor: unable to marshal states reports response")
 	}
 	return &service.Message{
+		ID:      id,
 		Opcode:  int32(Opcode_STATES),
 		Payload: b,
 	}, nil
 }
 
-func (s *Service) deleteObject(ctx context.Context, payload []byte) (*service.Message, error) {
-	req := &DeleteObjectRequest{}
-	err := proto.Unmarshal(payload, req)
-	if err != nil {
-		return nil, fmt.Errorf("transactor: remove_object unmarshaling error: %v", err)
-	}
-
-	if req.ObjectKey == nil {
-		return nil, fmt.Errorf("transactor: nil object key")
-	}
-	err = DeleteObjects(s.store, [][]byte{req.ObjectKey})
-	if err != nil {
-		return nil, err
-	}
-	objects, err := GetObjects(s.store, [][]byte{req.ObjectKey})
-	if err != nil {
-		return nil, err
-	}
-	if len(objects) != 1 {
-		return nil, fmt.Errorf("transactor: invalid number of objects removed, expected %v found %v", 1, len(objects))
-	}
-
-	if err != nil {
-		return nil, err
-	}
-	res := &DeleteObjectResponse{
-		Object: objects[0],
-	}
-	b, err := proto.Marshal(res)
-	if err != nil {
-		return nil, fmt.Errorf("transactor: unable to marshal remove_object response")
-	}
+func deletePayload(id uint64, res *DeleteObjectResponse) (*service.Message, error) {
+	b, _ := proto.Marshal(res)
 	return &service.Message{
+		ID:      id,
 		Opcode:  int32(Opcode_DELETE_OBJECT),
 		Payload: b,
 	}, nil
 }
 
-func (s *Service) createObject(ctx context.Context, payload []byte) (*service.Message, error) {
-	req := &NewObjectRequest{}
+func (s *Service) deleteObject(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
+	req := &DeleteObjectRequest{}
+	res := &DeleteObjectResponse{}
 	err := proto.Unmarshal(payload, req)
 	if err != nil {
-		return nil, fmt.Errorf("transactor: new_object unmarshaling error: %v", err)
+		res.Error = fmt.Errorf("transactor: remove_object unmarshaling error: %v", err).Error()
+		return deletePayload(id, res)
+	}
+
+	if req.ObjectKey == nil {
+		res.Error = fmt.Errorf("transactor: nil object key").Error()
+		return deletePayload(id, res)
+	}
+	err = DeleteObjects(s.store, [][]byte{req.ObjectKey})
+	if err != nil {
+		res.Error = err.Error()
+	}
+	objects, err := GetObjects(s.store, [][]byte{req.ObjectKey})
+	if err != nil {
+		res.Error = err.Error()
+	} else if len(objects) != 1 {
+		res.Error = fmt.Errorf("transactor: invalid number of objects removed, expected %v found %v", 1, len(objects)).Error()
+	} else {
+		res.Object = objects[0]
+	}
+	return deletePayload(id, res)
+}
+
+func createPayload(id uint64, res *NewObjectResponse) (*service.Message, error) {
+	b, _ := proto.Marshal(res)
+	return &service.Message{
+		ID:      id,
+		Opcode:  int32(Opcode_CREATE_OBJECT),
+		Payload: b,
+	}, nil
+}
+
+func (s *Service) createObject(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
+	req := &NewObjectRequest{}
+	err := proto.Unmarshal(payload, req)
+	res := &NewObjectResponse{}
+	if err != nil {
+		res.Error = fmt.Errorf("transactor: new_object unmarshaling error: %v", err).Error()
+		return createPayload(id, res)
 	}
 
 	if req.Object == nil || len(req.Object) <= 0 {
-		return nil, fmt.Errorf("transactor: nil object key")
+		res.Error = fmt.Errorf("transactor: nil object key").Error()
+		return createPayload(id, res)
 	}
 	ch := combihash.New()
 	ch.Write([]byte(req.Object))
@@ -442,18 +453,11 @@ func (s *Service) createObject(ctx context.Context, payload []byte) (*service.Me
 		if log.AtDebug() {
 			log.Debug("transactor: unable to create object", log.String("objet", string(req.Object)), log.Uint32("object.id", ID(key)), fld.Err(err))
 		}
-		return nil, err
+		res.Error = err.Error()
+	} else {
+		res.ID = o.Key
 	}
-
-	res := &NewObjectResponse{
-		ID: o.Key,
-	}
-	b, err := proto.Marshal(res)
-	if err != nil {
-		log.Error("unable to marshal NewObject reponse", fld.Err(err))
-		return nil, fmt.Errorf("transactor: unable to marshal new_object response")
-	}
-	return &service.Message{Opcode: int32(Opcode_CREATE_OBJECT), Payload: b}, nil
+	return createPayload(id, res)
 }
 
 func (s *Service) Name() string {
@@ -498,7 +502,7 @@ func New(cfg *Config) (*Service, error) {
 
 	s := &Service{
 		broadcaster: cfg.Broadcaster,
-		conns:       NewConnsPool(10, cfg.NodeID, cfg.Top, cfg.MaxPayload, cfg.Key),
+		conns:       NewConnsPool(20, cfg.NodeID, cfg.Top, cfg.MaxPayload, cfg.Key),
 		checkers:    checkers,
 		nodeID:      cfg.NodeID,
 		privkey:     privkey,

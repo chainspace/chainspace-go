@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"chainspace.io/prototype/combihash"
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/log"
@@ -27,6 +28,10 @@ type Config struct {
 
 type Client interface {
 	SendTransaction(t *transactor.Transaction) ([]*transactor.Object, error)
+	Query(key []byte) ([]*transactor.Object, error)
+	Create(obj []byte) ([][]byte, error)
+	Delete(key []byte) ([]*transactor.Object, error)
+	States(nodeID uint64) (*transactor.StatesReportResponse, error)
 	Close()
 }
 
@@ -35,6 +40,10 @@ type client struct {
 	top          *network.Topology
 	checkerconns *transactor.ConnsPool
 	txconns      *transactor.ConnsPool
+	queryconns   *transactor.ConnsPool
+	createconns  *transactor.ConnsPool
+	deleteconns  *transactor.ConnsPool
+	statesconns  *transactor.ConnsPool
 }
 
 func New(cfg *Config) Client {
@@ -42,9 +51,17 @@ func New(cfg *Config) Client {
 		maxPaylod: cfg.MaxPayload,
 		top:       cfg.Top,
 		txconns: transactor.NewConnsPool(
-			10, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
+			20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
 		checkerconns: transactor.NewConnsPool(
-			10, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
+			20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
+		queryconns: transactor.NewConnsPool(
+			20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
+		createconns: transactor.NewConnsPool(
+			20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
+		deleteconns: transactor.NewConnsPool(
+			5, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
+		statesconns: transactor.NewConnsPool(
+			5, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
 	}
 	return c
 }
@@ -185,6 +202,153 @@ func (c *client) SendTransaction(tx *transactor.Transaction) ([]*transactor.Obje
 	objs, err := c.addTransaction(nodes, tx)
 	log.Info("add transaction finished", log.Duration("time_taken", time.Since(start)))
 	return objs, err
+}
+
+func (c *client) Query(key []byte) ([]*transactor.Object, error) {
+	nodes := c.top.NodesInShard(c.top.ShardForKey(key))
+	req := &transactor.QueryObjectRequest{
+		ObjectKey: key,
+	}
+	bytes, err := proto.Marshal(req)
+	if err != nil {
+		log.Error("unable to marshal QueryObject request", fld.Err(err))
+		return nil, err
+	}
+	msg := &service.Message{
+		Opcode:  int32(transactor.Opcode_QUERY_OBJECT),
+		Payload: bytes,
+	}
+
+	mu := sync.Mutex{}
+	objs := []*transactor.Object{}
+	wg := &sync.WaitGroup{}
+	f := func(n uint64, msg *service.Message) {
+		defer wg.Done()
+		res := transactor.QueryObjectResponse{}
+		err = proto.Unmarshal(msg.Payload, &res)
+		if err != nil {
+			return
+		}
+		if res.Object == nil {
+			return
+		}
+		mu.Lock()
+		objs = append(objs, res.Object)
+		mu.Unlock()
+		return
+	}
+	conns := c.queryconns.Borrow()
+	for _, nid := range nodes {
+		nid := nid
+		wg.Add(1)
+		conns.WriteRequest(nid, msg, 5*time.Second, true, f)
+	}
+	wg.Wait()
+	return objs, nil
+}
+
+func (c *client) Create(obj []byte) ([][]byte, error) {
+	ch := combihash.New()
+	ch.Write(obj)
+	key := ch.Digest()
+	nodes := c.top.NodesInShard(c.top.ShardForKey(key))
+
+	req := &transactor.NewObjectRequest{
+		Object: obj,
+	}
+	bytes, err := proto.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	msg := &service.Message{
+		Opcode:  int32(transactor.Opcode_CREATE_OBJECT),
+		Payload: bytes,
+	}
+
+	mu := sync.Mutex{}
+	wg := sync.WaitGroup{}
+	objs := [][]byte{}
+	f := func(n uint64, msg *service.Message) {
+		defer wg.Done()
+		res := transactor.NewObjectResponse{}
+		err = proto.Unmarshal(msg.Payload, &res)
+		if err != nil {
+			return
+		}
+		mu.Lock()
+		objs = append(objs, res.ID)
+		mu.Unlock()
+		return
+	}
+	conns := c.createconns.Borrow()
+	for _, nid := range nodes {
+		nid := nid
+		wg.Add(1)
+		conns.WriteRequest(nid, msg, 5*time.Second, true, f)
+	}
+	wg.Wait()
+
+	return objs, nil
+}
+
+func (c *client) Delete(key []byte) ([]*transactor.Object, error) {
+	nodes := c.top.NodesInShard(c.top.ShardForKey(key))
+	req := &transactor.DeleteObjectRequest{
+		ObjectKey: key,
+	}
+	bytes, err := proto.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	msg := &service.Message{
+		Opcode:  int32(transactor.Opcode_DELETE_OBJECT),
+		Payload: bytes,
+	}
+
+	mu := sync.Mutex{}
+	wg := &sync.WaitGroup{}
+	objs := []*transactor.Object{}
+	f := func(n uint64, msg *service.Message) {
+		defer wg.Done()
+		res := &transactor.DeleteObjectResponse{}
+		err = proto.Unmarshal(msg.Payload, res)
+		if err != nil {
+			return
+		}
+		mu.Lock()
+		objs = append(objs, res.Object)
+		mu.Unlock()
+	}
+	conns := c.deleteconns.Borrow()
+	for _, nid := range nodes {
+		nid := nid
+		wg.Add(1)
+		conns.WriteRequest(nid, msg, 5*time.Second, true, f)
+	}
+	wg.Wait()
+
+	return objs, nil
+}
+
+func (c *client) States(nodeID uint64) (*transactor.StatesReportResponse, error) {
+	msg := &service.Message{
+		Opcode: int32(transactor.Opcode_STATES),
+	}
+
+	wg := &sync.WaitGroup{}
+	res := &transactor.StatesReportResponse{}
+	f := func(n uint64, msg *service.Message) {
+		defer wg.Done()
+		err := proto.Unmarshal(msg.Payload, res)
+		if err != nil {
+			return
+		}
+	}
+
+	wg.Add(1)
+	conns := c.statesconns.Borrow()
+	conns.WriteRequest(nodeID, msg, 5*time.Second, true, f)
+	return res, nil
 }
 
 func b64(data []byte) string {

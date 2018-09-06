@@ -17,7 +17,6 @@ import (
 	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/transactor"
-	"chainspace.io/prototype/transactor/client"
 	transactorclient2 "chainspace.io/prototype/transactor/client2"
 	"github.com/rs/cors"
 )
@@ -136,9 +135,7 @@ func (s *Service) createObject(rw http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
-	defer txclient.Close()
-	ids, err := txclient.Create(rawObject)
+	ids, err := s.client.Create(rawObject)
 	if err != nil {
 		errorr(rw, http.StatusInternalServerError, err.Error())
 		return
@@ -162,9 +159,7 @@ func (s *Service) queryObject(rw http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
-	defer txclient.Close()
-	objs, err := txclient.Query(key)
+	objs, err := s.client.Query(key)
 	if err != nil {
 		errorr(rw, http.StatusInternalServerError, err.Error())
 		return
@@ -183,9 +178,7 @@ func (s *Service) deleteObject(rw http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
-	defer txclient.Close()
-	objs, err := txclient.Delete(key)
+	objs, err := s.client.Delete(key)
 	if err != nil {
 		errorr(rw, http.StatusInternalServerError, err.Error())
 		return
@@ -220,9 +213,7 @@ func (s *Service) states(rw http.ResponseWriter, r *http.Request) {
 		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to unmarshal: %v", err))
 		return
 	}
-	txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
-	defer txclient.Close()
-	states, err := txclient.States(req.Id)
+	states, err := s.client.States(req.Id)
 	if err != nil {
 		errorr(rw, http.StatusInternalServerError, err.Error())
 		return
@@ -257,8 +248,6 @@ func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
-	// defer txclient.Close()
 	objects, err := s.client.SendTransaction(req.ToTransactor())
 	if err != nil {
 		errorr(rw, http.StatusInternalServerError, err.Error())
@@ -298,22 +287,17 @@ func (s *Service) objectsReady(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// defer
 	for _, v := range req.Data {
 		key, err := base64.StdEncoding.DecodeString(v)
 		if err != nil {
 			fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to b64decode: %v", err))
 			return
 		}
-		txclient := transactorclient.New(&transactorclient.Config{Top: s.top, MaxPayload: s.maxPayload})
-		txclient.Close()
-		objs, err := txclient.Query(key)
+		objs, err := s.client.Query(key)
 		if err != nil {
 			success(rw, http.StatusOK, false)
-			// errorr(rw, http.StatusInternalServerError, err.Error())
 			return
 		}
-		// fmt.Printf("tx: %v\n", objs)
 		if uint64(len(objs)) != s.top.ShardSize() {
 			success(rw, http.StatusOK, false)
 			return
@@ -338,8 +322,6 @@ func (s *Service) makeServ(addr string, port int) *http.Server {
 	h := &http.Server{
 		Addr:    fmt.Sprintf("%v:%v", addr, port),
 		Handler: handler,
-		//ReadTimeout:  10 * time.Second,
-		//WriteTimeout: 10 * time.Second,
 	}
 	h.SetKeepAlivesEnabled(false)
 	return h

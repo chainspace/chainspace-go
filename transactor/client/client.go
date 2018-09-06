@@ -264,6 +264,9 @@ func (c *client) Query(key []byte) ([]*transactor.Object, error) {
 			log.Error("unable to unmarshal input message", fld.PeerShard(s), fld.PeerID(n), fld.Err(err))
 			return err
 		}
+		if res.Object == nil {
+			return fmt.Errorf("lol")
+		}
 		mu.Lock()
 		objs = append(objs, res.Object)
 		mu.Unlock()
