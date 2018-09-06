@@ -1,6 +1,7 @@
 module chainspace.io/prototype
 
 require (
+	cloud.google.com/go v0.27.0 // indirect
 	github.com/AndreasBriese/bbloom v0.0.0-20170702084017-28f7e881ca57 // indirect
 	github.com/cenkalti/backoff v2.0.0+incompatible // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -23,8 +24,10 @@ require (
 	github.com/tav/golly v0.0.0-20180823113506-ad032321f11e
 	golang.org/x/crypto v0.0.0-20180820150726-614d502a4dac
 	golang.org/x/net v0.0.0-20180824152047-4bcd98cce591
+	golang.org/x/oauth2 v0.0.0-20180821212333-d2e6202438be
 	golang.org/x/sync v0.0.0-20180314180146-1d60e4601c6f
 	golang.org/x/sys v0.0.0-20180824143301-4910a1d54f87 // indirect
+	google.golang.org/api v0.0.0-20180906000440-49a9310a9145
 	google.golang.org/appengine v1.1.0
 	gopkg.in/yaml.v2 v2.2.1
 )
