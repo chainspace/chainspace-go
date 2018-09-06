@@ -14,7 +14,7 @@ import (
 	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/restsrv"
-	"chainspace.io/prototype/transactor/client"
+	"chainspace.io/prototype/transactor/client2"
 	"github.com/tav/golly/optparse"
 )
 
