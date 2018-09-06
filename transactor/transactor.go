@@ -82,7 +82,6 @@ func (s *Service) handleDeliver(round uint64, blocks []*broadcast.SignedData) {
 				},
 				peerID: 99,
 			}
-			// log.Info("new transaction broadcasted from consensus", fld.TxID(ID(tx.ID)))
 			s.pe.OnEvent(e)
 		}
 	}

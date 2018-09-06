@@ -5,27 +5,23 @@ PKG := "./cmd/$(PROJECT_NAME)"
 PKG_LIST := $(shell go list ${PKG}/... | grep -v /vendor/)
 PROJECT_NAME := "chainspace"
 
-install: chainspace httptest ## install the chainspace binary
+install: chainspace httptest ## install the chainspace/httptest binaries
 
-chainspace:
+chainspace: ## build the chainspace binary
 	go install chainspace.io/prototype/cmd/chainspace
 
 test: ## Run unit tests
 	go test -short ${PKG_LIST} -v
 
-httptest:
+httptest: ## build the httptest binary
 	go install chainspace.io/prototype/cmd/httptest
 
-docker-all: docker docker-push
+docker-all: docker docker-push ## build the docker image and push it to the gcp registry
 
-docker:
+docker: ## build the docker image
 	docker build -t chainspace.io/chainspace:v0.1 -t gcr.io/acoustic-atom-211511/chainspace:latest -t gcr.io/acoustic-atom-211511/chainspace:v0.1 .
 
-docker-push:
-	docker push gcr.io/acoustic-atom-211511/chainspace:latest
-	docker push gcr.io/acoustic-atom-211511/chainspace:v0.1
-
-push:
+docker-push: ## push the docker image to the gcp registry
 	docker push gcr.io/acoustic-atom-211511/chainspace:latest
 	docker push gcr.io/acoustic-atom-211511/chainspace:v0.1
 
