@@ -25,6 +25,7 @@ func cmdInit(args []string, usage string) {
 	registry := opts.Flags("--registry").Label("HOST").String("Address of the network registry")
 	shardCount := opts.Flags("--shard-count").Label("N").Int("Number of shards in the network [3]")
 	shardSize := opts.Flags("--shard-size").Label("N").Int("Number of nodes in each shard [4]")
+	httpPort := opts.Flags("--http-port").Label("PORT").Int("HTTP port to use with the shards")
 
 	params := opts.Parse(args)
 
@@ -129,7 +130,12 @@ func cmdInit(args []string, usage string) {
 		}
 
 		var httpcfg config.HTTP
-		if i == 1 {
+		if httpPort != nil && *httpPort != 0 {
+			httpcfg = config.HTTP{
+				Enabled: true,
+				Port:    *httpPort,
+			}
+		} else if i == 1 {
 			httpcfg = config.HTTP{
 				Enabled: true,
 				Port:    8080,
