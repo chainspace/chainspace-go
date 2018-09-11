@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# $1 i the number of shard we want to run.
+
+if (( $# != 1 )); then
+    echo "missing shards count";
+    exit 1;
+fi
+
+tot="$((${1} * 4))";
+for i in $(seq 1 $tot)
+do
+    chainspace run testnet $i --console-log error --file-log error &
+done

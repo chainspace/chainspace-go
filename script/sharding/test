@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# $1 is the number of workers to start
+# $2 is the number of objects to use in the transactions
+# $3 is the duration you want the tests to run for
+
+if (( $# != 3 )); then
+    echo "missing $1(workers count), $2(object count), $3(duration in sec)";
+    exit 1;
+fi
+
+httptest -addr "0.0.0.0:8080" -workers $1 -objects $2 -duration $3

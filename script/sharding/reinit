@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# $1 argument is the number of shards to create
+# initialized with the default number of node per shards which is 4
+
+if (( $# != 1 )); then
+    echo "missing shards count";
+    exit 1;
+fi
+
+./clear;
+chainspace init testnet --shard-count ${1};
+#chainspace init testnet -u https://acoustic-atom-211511.appspot.com --shard-count ${1};
+./start ${1};
