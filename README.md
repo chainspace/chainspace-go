@@ -29,9 +29,30 @@ Each node also gets its own named configuration directory, containing:
 
 In the default setup, nodes 1, 4, 7, and 10 comprise shard 1. Run those node numbers if you're only interested in seeing consensus working. Otherwise, start all nodes to see sharding working as well.
 
+```bash
+rm -rf ~/.chainspace # destroy any old configs, make you sad in production
+chainspace init foonet
+chainspace run foonet 1
+chainspace run foonet 4
+chainspace run foonet 7
+chainspace run foonet 10
+```
+
+
+
+A convenient script runner is included. The short way to run it is:
+
+```bash
+rm -rf ~/.chainspace # clear previous configs, superbad idea in production
+chainspace init foonet
+script/run-testnet foonet
+```
+
+This will fire up a single shard which runs consensus, and make it available for use.
+
 ### Peer discovery
 
-We have not yet implemented seed nodes, or cryptographically secure method of peer discovery. This is for future development and the details aren't yet clear. So we have implemented some simple methods for stitching together networks until we are ready to commit to a final system.
+We have not yet implemented seed nodes, or a cryptographically secure method of peer discovery. This is for future development and the details aren't yet clear (although we're working on it). So we have implemented some simple methods for stitching together networks until we are ready to commit to a final system.
 
 Nodes currently find each other in two ways:
 
@@ -46,7 +67,7 @@ Use the Registry when configuring nodes across the public internet. We run a pub
 
 You can run your own Registry if you want. Init your network with the `--registry` flag if you plan to use a Registry server:
 
-`chainspace init kickass --registry registry.chainspace.io`
+`chainspace init foonet --registry registry.chainspace.io`
 
 The Registry will then appear in each node's `node.yaml`:
 
@@ -78,16 +99,42 @@ s.Broadcast.AddTransaction(txdata, fee)
 
 [DAVE TODO: check that code can actually run]
 
-### Sending transactions to shards
-
 
 ### Consensus load generator
 
-The `chainspace genload <networkname> <nodenumber>` command starts up the specified node, and additionally a client which floods the consensus interface (in Go) with transactions (100 bytes by default). The client keeps increasing load until it detects that the node is unable to handle the transaction rate, based on timing drift when waking up to generate epochs. At that point the client backs off, and in general a stable equilibrium is reached. The `genload` console logs then report on average, current, and highest transactions per second throughput.
+The `chainspace genload <networkname> <nodenumber>` command starts up the specified node, and additionally a client which floods the consensus interface (in Go) with simulated transactions (100 bytes by default).
+
+To get some consensus performance numbers, run this in 4 separate terminals:
+
+```bash
+rm -rf ~/.chainspace
+chainspace init foonet
+chainspace genload foonet 1
+chainspace genload foonet 4
+chainspace genload foonet 7
+chainspace genload foonet 10
+```
+
+The client keeps increasing load until it detects that the node is unable to handle the transaction rate, based on timing drift when waking up to generate epochs. At that point the client backs off, and in general a stable equilibrium is reached. The `genload` console logs then report on average, current, and highest transactions per second throughput.
+
+A convenient script runner is included. The short way to run it is:
+
+```bash
+rm -rf ~/.chainspace
+chainspace init foonet
+script/genload-testnet foonet
+```
+
+This will start nodes 1, 4, 7 and 10 in `tmux` terminals, pumping transactions through automatically.
 
 *NOTE: to get valid results, turn off all other applications when doing performance testing. Also disable swap on your system, turn off CPI BIOS thermal controls, disable power management, and don't run it on battery power.*
 
 Running `chainspace genload` with swap enabled can cause system lockups on Linux, as the system thinks much more RAM is available than is in fact the case, write latencies increase drastically once swapping starts, and the system freaks out. `sudo swapoff -a` is your friend, with `sudo swapon -a` to get your swap back when you're done running Chainspace.
+
+### Sending transactions to shards
+
+
+
 
 ### Adding dependencies
 
