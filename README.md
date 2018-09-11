@@ -9,7 +9,7 @@ Eventually, it's likely that we will split these two components. A project wanti
 
 ### Development Setup
 
-You'll need Go `1.11`.
+You'll need Go `1.11`. This is relatively new, don't try to use anything older.
 
 Run `make install`. This will build and install the `chainspace` binary as well as the `httptest` load generator. You can generate a new set of shards, start the nodes, and hit them with a load test. See the help documentation (`chainspace -h` and `httptest -h`) for each binary.
 
