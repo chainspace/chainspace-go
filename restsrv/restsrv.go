@@ -17,7 +17,7 @@ import (
 	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/transactor"
-	"chainspace.io/prototype/transactor/client"
+	"chainspace.io/prototype/transactor/transactorclient"
 	"github.com/rs/cors"
 )
 
