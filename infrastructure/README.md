@@ -32,6 +32,9 @@ $ ./scripts/rungenload 7
 $ ./scripts/rungenloadmulti 7
 ```
 
+You can stop the nodes and re-run the genload, you do not need to re-run terraform for this.
+You will need to destroy / re-create the infrastructure if you want to deploy more node, or nodes in different zones.
+
 Then to destroy the infrastructure just run:
 ```
 $ terraform destroy
