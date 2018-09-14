@@ -13,11 +13,11 @@ session="genload-${1}"
 echo ">> Setting up tmux session"
 tmux new-session -d -s $session
 tmux select-window -t $session:0
-tmux send-keys "chainspace genload ${1} 1" "C-l" "C-m"
+tmux send-keys "chainspace genload ${1} 1 --fixed-tps 10000" "C-l" "C-m"
 tmux split-window -h
-tmux send-keys "chainspace genload ${1} 4" "C-l" "C-m"
+tmux send-keys "chainspace genload ${1} 4 --fixed-tps 10000" "C-l" "C-m"
 tmux split-window -v -t 0
-tmux send-keys "chainspace genload ${1} 7" "C-l" "C-m"
+tmux send-keys "chainspace genload ${1} 7 --fixed-tps 10000" "C-l" "C-m"
 tmux split-window -v -t 2
-tmux send-keys "chainspace genload ${1} 10" "C-l" "C-m"
+tmux send-keys "chainspace genload ${1} 10 --fixed-tps 10000" "C-l" "C-m"
 tmux attach-session -t $session

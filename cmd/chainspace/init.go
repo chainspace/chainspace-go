@@ -26,6 +26,7 @@ func cmdInit(args []string, usage string) {
 	shardCount := opts.Flags("--shard-count").Label("N").Int("Number of shards in the network [3]")
 	shardSize := opts.Flags("--shard-size").Label("N").Int("Number of nodes in each shard [4]")
 	httpPort := opts.Flags("--http-port").Label("PORT").Int("HTTP port to use with the shards")
+	disableTransactor := opts.Flags("--disable-transactor").Label("BOOL").Bool("Disable transactor")
 
 	params := opts.Parse(args)
 
@@ -109,9 +110,11 @@ func cmdInit(args []string, usage string) {
 		Type: "badger",
 	}
 
-	if ((3 * (*shardSize / 3)) + 1) != *shardSize {
-		log.Fatal("The given --shard-size does not satisfy the 3f+1 requirement", fld.ShardSize(uint64(*shardSize)))
-	}
+	/*
+		if ((3 * (*shardSize / 3)) + 1) != *shardSize {
+			log.Fatal("The given --shard-size does not satisfy the 3f+1 requirement", fld.ShardSize(uint64(*shardSize)))
+		}
+	*/
 
 	totalNodes := *shardCount * *shardSize
 	for i := 1; i <= totalNodes; i++ {
@@ -148,17 +151,23 @@ func cmdInit(args []string, usage string) {
 			RateLimit:           rateLimit,
 		}
 
+		var disableTxtor bool
+		if disableTransactor != nil {
+			disableTxtor = *disableTransactor
+		}
+
 		// Create node.yaml
 		cfg := &config.Node{
-			Announce:    announce,
-			Bootstrap:   bootstrap,
-			Broadcast:   broadcast,
-			Connections: connections,
-			Consensus:   consensus,
-			HTTP:        httpcfg,
-			Logging:     logging,
-			Registries:  registries,
-			Storage:     storage,
+			Announce:          announce,
+			Bootstrap:         bootstrap,
+			Broadcast:         broadcast,
+			Connections:       connections,
+			Consensus:         consensus,
+			DisableTransactor: disableTxtor,
+			HTTP:              httpcfg,
+			Logging:           logging,
+			Registries:        registries,
+			Storage:           storage,
 		}
 
 		if err := writeYAML(filepath.Join(nodeDir, "node.yaml"), cfg); err != nil {

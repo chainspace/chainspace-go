@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"unsafe"
 
 	"chainspace.io/prototype/broadcast"
 	"chainspace.io/prototype/config"
@@ -20,11 +22,54 @@ import (
 	"github.com/tav/golly/process"
 )
 
+type txTimeTracker struct {
+	mu  sync.Mutex
+	tot int64
+	txc int64
+}
+
+func (t *txTimeTracker) handleTxTime(round uint64, blocks []*broadcast.SignedData) {
+	var u uint32
+	usize := unsafe.Sizeof(u)
+	now := time.Now()
+	minDuration := time.Hour
+
+	t.mu.Lock()
+	for _, signed := range blocks {
+		block, err := signed.Block()
+		if err != nil {
+			log.Fatal("Unable to decode delivered block", fld.Err(err))
+		}
+		it := block.Iter()
+		for it.Valid() {
+			t.txc += 1
+			it.Next()
+			wsize := binary.LittleEndian.Uint32(it.TxData[usize : usize+usize])
+			ti, err := time.Parse(time.RFC3339Nano, string(it.TxData[usize+usize:uint32(usize)+uint32(usize)+wsize]))
+			if err != nil {
+				log.Fatal("Unable to parse date", fld.Err(err))
+			}
+			since := now.Sub(ti)
+			if minDuration > since {
+				minDuration = since
+			}
+			t.tot += int64(since)
+			break
+		}
+	}
+	if t.txc > 0 {
+		log.Info("CUR DURATION OF TX", log.String("cur.duration", minDuration.String()))
+		log.Info("AVG DURATION OF TX", log.String("avg.duration", time.Duration(t.tot/t.txc).String()))
+	}
+	t.mu.Unlock()
+}
+
 type loadTracker struct {
 	block  *broadcast.Block
 	mu     sync.Mutex
 	server *node.Server
 	total  uint64
+	txtt   *txTimeTracker
 }
 
 func (l *loadTracker) handleDeliver(round uint64, blocks []*broadcast.SignedData) {
@@ -38,6 +83,7 @@ func (l *loadTracker) handleDeliver(round uint64, blocks []*broadcast.SignedData
 		}
 		l.total += block.Transactions.Count
 	}
+	l.txtt.handleTxTime(round, blocks)
 	l.mu.Unlock()
 	l.server.Broadcast.Acknowledge(round)
 }
@@ -55,6 +101,7 @@ func cmdGenLoad(args []string, usage string) {
 	configRoot := opts.Flags("--config-root").Label("PATH").String("Path to the chainspace root directory [~/.chainspace]", defaultRootDir())
 	cpuProfile := opts.Flags("--cpu-profile").Label("PATH").String("Write a CPU profile to the given file before exiting")
 	initialRate := opts.Flags("--initial-rate").Label("TXS").Int("Initial number of transactions to send per second [10000]")
+	fixedTPS := opts.Flags("--fixed-tps").Label("TXS").Int("Max number of transactions to send per seconds [10000]")
 	memProfile := opts.Flags("--mem-profile").Label("PATH").String("Write the memory profile to the given file before exiting")
 	rateDecrease := opts.Flags("--rate-decr").Label("FACTOR").Float("Multiplicative decrease factor of the queue size [0.8]")
 	rateIncrease := opts.Flags("--rate-incr").Label("FACTOR").Int("Additive increase factor of the queue size [1000]")
@@ -138,6 +185,7 @@ func cmdGenLoad(args []string, usage string) {
 			Transactions: &broadcast.Transactions{},
 		},
 		server: s,
+		txtt:   &txTimeTracker{},
 	}
 
 	s.Broadcast.Register(app.handleDeliver)
@@ -160,17 +208,48 @@ func cmdGenLoad(args []string, usage string) {
 		}
 	})
 
-	go genLoad(s, nodeID, *txSize)
+	fTPS := 0
+	if fixedTPS != nil {
+		fTPS = *fixedTPS
+	}
+	go genLoad(s, nodeID, *txSize, fTPS)
 	logTPS(app, netCfg.Shard.Size, uint64(*initialRate), uint64(*rateIncrease), *rateDecrease)
 
 }
 
-func genLoad(s *node.Server, nodeID uint64, txSize int) {
+func genLoad(s *node.Server, nodeID uint64, txSize int, fixedTPS int) {
 	tx := make([]byte, txSize)
 	binary.LittleEndian.PutUint32(tx, uint32(nodeID))
-	for {
-		s.Broadcast.AddTransaction(tx, 0)
+	var u uint32
+	usize := unsafe.Sizeof(u)
+	w := bytes.NewBuffer(tx[usize+usize:])
+	if fixedTPS == 0 {
+		for {
+			now := []byte(time.Now().Format(time.RFC3339Nano))
+			w.Reset()
+			binary.LittleEndian.PutUint32(tx[usize:usize+usize], uint32(len(now)))
+			_, err := w.Write(now)
+			if err != nil {
+				log.Fatal("Could not write in buffer", fld.Err(err))
+			}
+			s.Broadcast.AddTransaction(tx, 0)
+		}
+	} else {
+		for {
+			for i := 0; i < fixedTPS; i += 1 {
+				now := []byte(time.Now().Format(time.RFC3339Nano))
+				w.Reset()
+				binary.LittleEndian.PutUint32(tx[usize:usize+usize], uint32(len(now)))
+				_, err := w.Write(now)
+				if err != nil {
+					log.Fatal("Could not write in buffer", fld.Err(err))
+				}
+				s.Broadcast.AddTransaction(tx, 0)
+			}
+			time.Sleep(time.Second)
+		}
 	}
+
 }
 
 func logTPS(l *loadTracker, nodeCount int, startRate uint64, incr uint64, decr float64) {

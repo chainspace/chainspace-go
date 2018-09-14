@@ -2,8 +2,13 @@ variable "project_name" {}
 variable "node_count" {}
 variable "conf_path" {}
 variable "run_path" {}
+variable "chainspace_path" {}
 variable "private_key_path" {}
 variable "username" {}
+variable "zones" {
+  type    = "list"
+  default = ["asia-east1-b", "europe-west2-b", "northamerica-northeast1-b", "us-west2-b"]
+}
 
 provider "google" {
   credentials = "${file("./account.json")}"
@@ -74,9 +79,9 @@ resource "google_compute_instance_template" "default" {
   }
 }
 
-resource "google_compute_instance_from_template" "genload" {
-  name = "node-genload-${format("%d", count.index+1)}"
-  zone = "europe-west2-b"
+resource "google_compute_instance_from_template"  "genloadmulti" {
+  name = "node-genload-multi-${format("%d", count.index+1)}"
+  zone = "${element(var.zones, count.index)}"
   source_instance_template = "${google_compute_instance_template.default.self_link}"
 
   provisioner "remote-exec" {
@@ -92,14 +97,7 @@ resource "google_compute_instance_from_template" "genload" {
      sudo chmod -R 777 /etc/chainspace
      sudo chmod -R 777 /etc/chainspace/node_id
      sudo echo ${count.index+1} > /etc/chainspace/node_id
-     sudo apt-get update
-     sudo apt-get install -y apt-transport-https ca-certificates wget software-properties-common
-     wget https://download.docker.com/linux/debian/gpg
-     sudo apt-key add gpg
-     echo "deb [arch=amd64] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | sudo tee -a /etc/apt/sources.list.d/docker.list
-     sudo apt-get update
-     sudo apt-get -y install docker-ce
-     sudo gcloud docker -- pull ${data.google_container_registry_image.chainspace.image_url}
+     sudo apt-get install -y upx htop
      EOF
     ]
   }
@@ -126,6 +124,17 @@ resource "google_compute_instance_from_template" "genload" {
     destination = "/etc/chainspace/run.sh"
   }
 
+  provisioner "file" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    source      = "${var.chainspace_path}"
+    destination = "/etc/chainspace/chainspace.upx"
+  }
+
   provisioner "remote-exec" {
     connection {
       type = "ssh"
@@ -134,8 +143,84 @@ resource "google_compute_instance_from_template" "genload" {
     }
 
     inline = [<<EOF
+     upx -d -o /etc/chainspace/chainspace /etc/chainspace/chainspace.upx
      sudo chmod -R 777 /etc/chainspace/run.sh
-     /etc/chainspace/run.sh ${data.google_container_registry_image.chainspace.image_url}
+     sudo chmod -R 777 /etc/chainspace/chainspace
+     EOF
+    ]
+  }
+
+  count = "${var.node_count}"
+
+}
+
+resource "google_compute_instance_from_template" "genload" {
+  name = "node-genload-${format("%d", count.index+1)}"
+  zone = "europe-west2-b"
+  source_instance_template = "${google_compute_instance_template.default.self_link}"
+
+  provisioner "remote-exec" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    inline = [<<EOF
+     sudo mkdir -p /etc/chainspace/conf/
+     sudo touch /etc/chainspace/node_id
+     sudo chmod -R 777 /etc/chainspace
+     sudo chmod -R 777 /etc/chainspace/node_id
+     sudo echo ${count.index+1} > /etc/chainspace/node_id
+     sudo apt-get install -y upx htop
+     EOF
+    ]
+  }
+
+  provisioner "file" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    source      = "${var.conf_path}"
+    destination = "/etc/chainspace"
+  }
+
+  provisioner "file" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    source      = "${var.run_path}"
+    destination = "/etc/chainspace/run.sh"
+  }
+
+  provisioner "file" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    source      = "${var.chainspace_path}"
+    destination = "/etc/chainspace/chainspace.upx"
+  }
+
+  provisioner "remote-exec" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    inline = [<<EOF
+     upx -d -o /etc/chainspace/chainspace /etc/chainspace/chainspace.upx
+     sudo chmod -R 777 /etc/chainspace/run.sh
+     sudo chmod -R 777 /etc/chainspace/chainspace
      EOF
     ]
   }

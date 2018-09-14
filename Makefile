@@ -59,9 +59,13 @@ proto: ## recompile all protobuf definitions
 		./genproto.sh $(f);\
 	)
 
+
 test: ## Run unit tests
 	go test -short ${PKG_LIST} -v
 
-.PHONY: help
+gcp: ## build and compress in order to send to gcp
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w" chainspace.io/prototype/cmd/chainspace
+	rm -rf ./infrastructure/chainspace.upx
+	upx -o ./infrastructure/chainspace.upx chainspace
 
-.SILENT:
+.PHONY: help
