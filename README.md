@@ -1,6 +1,6 @@
 ## Chainspace
 
-[![pipeline status](https://code.constructiveproof.com/chainspace/prototype/badges/master/pipeline.svg)](https://code.constructiveproof.com/chainspace/prototype/commits/master)
+[![pipeline status](https://code.constructiveproof.com/chainspace/prototype/badges/master/pipeline.svg)](https://code.constructiveproof.com/chainspace/prototype/commits/master) [![coverage report](https://code.constructiveproof.com/chainspace/prototype/badges/master/coverage.svg)](https://code.constructiveproof.com/chainspace/prototype/commits/master)
 
 This is a pre-alpha smart contract system comprising two main components:
 
