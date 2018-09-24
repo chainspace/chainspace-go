@@ -2,6 +2,8 @@ variable "project_name" {}
 variable "node_count" {}
 variable "conf_path" {}
 variable "run_path" {}
+variable "runtmux_path" {}
+variable "runshardingtmux_path" {}
 variable "chainspace_path" {}
 variable "private_key_path" {}
 variable "username" {}
@@ -60,7 +62,7 @@ resource "google_compute_instance_template" "default" {
     source_image = "debian-cloud/debian-9"
     // source_image = "cos-cloud/cos-stable"
     type = "pd-ssd"
-    disk_size_gb = 375
+    disk_size_gb = 100
     auto_delete = true
     boot = true
   }
@@ -77,6 +79,93 @@ resource "google_compute_instance_template" "default" {
   service_account {
     scopes = ["userinfo-email", "compute-rw", "storage-ro"]
   }
+}
+
+resource "google_compute_instance_from_template"  "genloadmultilong" {
+  name = "node-genload-multi-long-${format("%d", count.index+1)}"
+  zone = "${element(var.zones, count.index)}"
+  source_instance_template = "${google_compute_instance_template.default.self_link}"
+
+  provisioner "remote-exec" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    inline = [<<EOF
+     sudo mkdir -p /etc/chainspace/conf/
+     sudo touch /etc/chainspace/node_id
+     sudo chmod -R 777 /etc/chainspace
+     sudo chmod -R 777 /etc/chainspace/node_id
+     sudo echo ${count.index+1} > /etc/chainspace/node_id
+     sudo apt-get install -y upx htop tmux
+     EOF
+    ]
+  }
+
+  provisioner "file" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    source      = "${var.conf_path}"
+    destination = "/etc/chainspace"
+  }
+
+  provisioner "file" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    source      = "${var.run_path}"
+    destination = "/etc/chainspace/run.sh"
+  }
+
+  provisioner "file" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    source      = "${var.runtmux_path}"
+    destination = "/etc/chainspace/runtmux.sh"
+  }
+
+  provisioner "file" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    source      = "${var.chainspace_path}"
+    destination = "/etc/chainspace/chainspace.upx"
+  }
+
+  provisioner "remote-exec" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    inline = [<<EOF
+     upx -d -o /etc/chainspace/chainspace /etc/chainspace/chainspace.upx
+     sudo chmod -R 777 /etc/chainspace/run.sh
+     sudo chmod -R 777 /etc/chainspace/runtmux.sh
+     sudo chmod -R 777 /etc/chainspace/chainspace
+     EOF
+    ]
+  }
+
+  count = "${var.node_count}"
+
 }
 
 resource "google_compute_instance_from_template"  "genloadmulti" {
@@ -228,38 +317,11 @@ resource "google_compute_instance_from_template" "genload" {
   count = "${var.node_count}"
 }
 
-resource "google_compute_instance" "sharding" {
-  name = "node-${format("%d", count.index+1)}"
-  // machine_type = "f1-micro"
-  machine_type = "n1-standard-32"
+resource "google_compute_instance_from_template" "sharding" {
+  name = "node-sharding-${format("%d", count.index+1)}"
   zone = "europe-west2-b"
   tags = ["node"]
-  min_cpu_platform = "Intel Skylake"
-
-  scheduling {
-    preemptible = true
-    automatic_restart = false
-  }
-
-  boot_disk {
-    initialize_params {
-      image = "debian-cloud/debian-9"
-      type = "pd-ssd"
-      size = "375"
-    }
-  }
-
-  network_interface {
-    network = "default"
-
-    access_config {
-      // Ephemeral IP
-    }
-  }
-
-  service_account {
-    scopes = ["userinfo-email", "compute-rw", "storage-ro"]
-  }
+  source_instance_template = "${google_compute_instance_template.default.self_link}"
 
   provisioner "remote-exec" {
     connection {
@@ -274,14 +336,7 @@ resource "google_compute_instance" "sharding" {
      sudo chmod -R 777 /etc/chainspace
      sudo chmod -R 777 /etc/chainspace/node_id
      sudo echo ${count.index+1} > /etc/chainspace/node_id
-     sudo apt-get update
-     sudo apt-get install -y apt-transport-https ca-certificates wget software-properties-common
-     wget https://download.docker.com/linux/debian/gpg
-     sudo apt-key add gpg
-     echo "deb [arch=amd64] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | sudo tee -a /etc/apt/sources.list.d/docker.list
-     sudo apt-get update
-     sudo apt-get -y install docker-ce
-     sudo gcloud docker -- pull ${data.google_container_registry_image.chainspace.image_url}
+     sudo apt-get install -y upx htop tmux psmisc
      EOF
     ]
   }
@@ -297,6 +352,28 @@ resource "google_compute_instance" "sharding" {
     destination = "/etc/chainspace"
   }
 
+  provisioner "file" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    source      = "${var.runshardingtmux_path}"
+    destination = "/etc/chainspace/runshardingtmux.sh"
+  }
+
+  provisioner "file" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    source      = "${var.chainspace_path}"
+    destination = "/etc/chainspace/chainspace.upx"
+  }
+
   provisioner "remote-exec" {
     connection {
       type = "ssh"
@@ -305,10 +382,13 @@ resource "google_compute_instance" "sharding" {
     }
 
     inline = [<<EOF
-     sudo docker run -d --name chainspace --volume=/etc/chainspace/conf:/conf --network=host ${data.google_container_registry_image.chainspace.image_url} run --console-log error --file-log error --config-root /conf testnet `cat /etc/chainspace/node_id`
-     EOF
+     upx -d -o /etc/chainspace/chainspace /etc/chainspace/chainspace.upx
+     sudo chmod -R 777 /etc/chainspace/runshardingtmux.sh
+     sudo chmod -R 777 /etc/chainspace/chainspace
+      EOF
     ]
   }
+//    /etc/chainspace/runshardingtmux.sh
 
   count = "${var.node_count}"
 }

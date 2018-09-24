@@ -51,12 +51,13 @@ func getAddress(workerID int) string {
 
 func seedObjects(i int) ([]string, error) {
 	out := []string{}
+	_addr := getAddress(i)
 	url := (&url.URL{
 		Scheme: "http",
-		Host:   getAddress(i),
+		Host:   _addr,
 		Path:   "object",
 	}).String()
-	fmt.Printf("seeding objects for worker %v\n", i)
+	fmt.Printf("seeding objects for worker %v with %v\n", i, _addr)
 	for i := 0; i < objects; i += 1 {
 		client := http.Client{
 			Timeout: 15 * time.Second,

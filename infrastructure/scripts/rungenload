@@ -9,7 +9,7 @@ fi
 initialrate=10000
 decrate=0.9
 incrate=7000
-fixedtps=20000
+fixedtps=10000
 session=genload-gcp-$1
 
 echo ">> Setting up tmux session ${session}"
