@@ -25,7 +25,6 @@ before_script:
   - cp -r ${CI_PROJECT_DIR}/* /tmp/src/${GO_PROJECT}/
   - ln -s /tmp/src/${GO_PROJECT} /go/src/_/builds/${GO_PROJECT}
   - cd /tmp/src/${GO_PROJECT}
-  - go mod download
   - export ARTIFACTS_BIN=${ARTIFACTS_BIN}
 
 unit_tests:
