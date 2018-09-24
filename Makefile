@@ -1,3 +1,10 @@
+GO_CMD=go
+GO_TEST=$(GO_CMD) test
+
+COVERAGE_FILE=coverage.txt
+COVERHTML_FILE=coverhtml.txt
+COVERAGE_SOURCES=$(shell find * -name '*.go' -not -path "testutil/*" -not -path "*testcases/*" | grep -v 'doc.go')
+
 FILES=	service/types.proto\
 	broadcast/types.proto\
 	transactor/types.proto
@@ -8,13 +15,29 @@ PROJECT_NAME := "chainspace"
 install: chainspace httptest ## install the chainspace/httptest binaries
 
 chainspace: ## build the chainspace binary
-	go install chainspace.io/prototype/cmd/chainspace
+	$(GO_CMD) install chainspace.io/prototype/cmd/chainspace
 
-test: ## Run unit tests
-	go test -short ${PKG_LIST} -v
+coverage: $(COVERAGE_FILE)
 
-httptest: ## build the httptest binary
-	go install chainspace.io/prototype/cmd/httptest
+$(COVERAGE_FILE): $(COVERAGE_SOURCES)
+	@for d in $(PKG_LIST); do \
+	    $(GO_TEST) -coverprofile=profile.out -covermode=atomic $$d || exit 1; \
+	    if [ -f profile.out ]; then \
+	        cat profile.out >> $(COVERAGE_FILE); \
+	        rm profile.out; \
+	    fi \
+		done
+
+coverhtml:
+	echo 'mode: set' > $(COVERHTML_FILE)
+	@for d in $(PKG_LIST); do \
+	    $(GO_TEST) -coverprofile=profile.out $$d || exit 1; \
+	    if [ -f profile.out ]; then \
+	        tail -n +2 profile.out >> $(COVERHTML_FILE); \
+	        rm profile.out; \
+	    fi \
+	done
+	$(GO_CMD) tool cover -html $(COVERHTML_FILE)
 
 docker-all: docker docker-push ## build the docker image and push it to the gcp registry
 
@@ -25,14 +48,20 @@ docker-push: ## push the docker image to the gcp registry
 	docker push gcr.io/acoustic-atom-211511/chainspace:latest
 	docker push gcr.io/acoustic-atom-211511/chainspace:v0.1
 
+help:
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+
+httptest: ## build the httptest binary
+	go install chainspace.io/prototype/cmd/httptest
+
 proto: ## recompile all protobuf definitions
 	$(foreach f,$(FILES),\
 		./genproto.sh $(f);\
 	)
 
-.PHONY: help
+test: ## Run unit tests
+	go test -short ${PKG_LIST} -v
 
-help:
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+.PHONY: help
 
 .SILENT:

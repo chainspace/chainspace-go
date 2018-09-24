@@ -1,2 +1,4 @@
+coverage.txt
+coverhtml.txt
 /Gopkg.lock
 /cmd/chainspace/chainspace
