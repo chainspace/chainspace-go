@@ -4,12 +4,13 @@ variable "conf_path" {}
 variable "run_path" {}
 variable "runtmux_path" {}
 variable "runshardingtmux_path" {}
+variable "runadapt_path" {}
 variable "chainspace_path" {}
 variable "private_key_path" {}
 variable "username" {}
 variable "zones" {
   type    = "list"
-  default = ["asia-east1-b", "europe-west2-b", "northamerica-northeast1-b", "us-west2-b"]
+  default = ["asia-east1-b", "europe-west2-b", "northamerica-northeast1-b", "us-west2-b", "australia-southeast1-b", "europe-north1-b", "southamerica-east1-b"]
 }
 
 provider "google" {
@@ -51,7 +52,7 @@ resource "google_compute_instance_template" "default" {
   name = "template"
   machine_type = "n1-standard-4"
   tags = ["node"]
-  min_cpu_platform = "Intel Skylake"
+  min_cpu_platform = "Intel Broadwell"
 
   scheduling {
     preemptible = true
@@ -241,6 +242,154 @@ resource "google_compute_instance_from_template"  "genloadmulti" {
 
   count = "${var.node_count}"
 
+}
+
+resource "google_compute_instance_from_template" "genloadmultiadapt" {
+  name = "node-genload-multi-adapt-${format("%d", count.index+1)}"
+  zone = "${element(var.zones, count.index)}"
+  source_instance_template = "${google_compute_instance_template.default.self_link}"
+
+  provisioner "remote-exec" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    inline = [<<EOF
+     sudo mkdir -p /etc/chainspace/conf/
+     sudo touch /etc/chainspace/node_id
+     sudo chmod -R 777 /etc/chainspace
+     sudo chmod -R 777 /etc/chainspace/node_id
+     sudo echo ${count.index+1} > /etc/chainspace/node_id
+     sudo apt-get install -y upx htop tmux psmisc
+     EOF
+    ]
+  }
+
+  provisioner "file" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    source      = "${var.conf_path}"
+    destination = "/etc/chainspace"
+  }
+
+  provisioner "file" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    source      = "./runadapttmux.sh"
+    destination = "/etc/chainspace/runadapt.sh"
+  }
+
+  provisioner "file" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    source      = "${var.chainspace_path}"
+    destination = "/etc/chainspace/chainspace.upx"
+  }
+
+  provisioner "remote-exec" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    inline = [<<EOF
+     upx -d -o /etc/chainspace/chainspace /etc/chainspace/chainspace.upx
+     sudo chmod -R 777 /etc/chainspace/runadapt.sh
+     sudo chmod -R 777 /etc/chainspace/chainspace
+     EOF
+    ]
+  }
+
+  count = "${var.node_count}"
+}
+
+resource "google_compute_instance_from_template" "genloadadapt" {
+  name = "node-genload-adapt-${format("%d", count.index+1)}"
+  zone = "europe-west2-b"
+  source_instance_template = "${google_compute_instance_template.default.self_link}"
+
+  provisioner "remote-exec" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    inline = [<<EOF
+     sudo mkdir -p /etc/chainspace/conf/
+     sudo touch /etc/chainspace/node_id
+     sudo chmod -R 777 /etc/chainspace
+     sudo chmod -R 777 /etc/chainspace/node_id
+     sudo echo ${count.index+1} > /etc/chainspace/node_id
+     sudo apt-get install -y upx htop
+     EOF
+    ]
+  }
+
+  provisioner "file" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    source      = "${var.conf_path}"
+    destination = "/etc/chainspace"
+  }
+
+  provisioner "file" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    source      = "${var.runadapt_path}"
+    destination = "/etc/chainspace/runadapt.sh"
+  }
+
+  provisioner "file" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    source      = "${var.chainspace_path}"
+    destination = "/etc/chainspace/chainspace.upx"
+  }
+
+  provisioner "remote-exec" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    inline = [<<EOF
+     upx -d -o /etc/chainspace/chainspace /etc/chainspace/chainspace.upx
+     sudo chmod -R 777 /etc/chainspace/runadapt.sh
+     sudo chmod -R 777 /etc/chainspace/chainspace
+     EOF
+    ]
+  }
+
+  count = "${var.node_count}"
 }
 
 resource "google_compute_instance_from_template" "genload" {

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+if (( $# != 1 )); then
+    echo "Usage: rungenloamultidadapt NUMBEROFNODES";
+    exit 1;
+fi
+
+
+initialrate=10000
+decrate=0.9
+incrate=3000
+expectedlat=6
+session=genload-adapt-multi-$1
+zones=("asia-east1-b" "europe-west2-b" "northamerica-northeast1-b" "us-west2-b" "australia-southeast1-b" "europe-north1-b" "southamerica-east1-b")
+
+echo ">> Setting up tmux session ${session}"
+tmux new-session -d -s ${session}
+
+for i in $(seq 1 $1)
+do
+    im=`expr $i - 1`
+    ii=`expr $im % 7`
+    zone=${zones[${ii}]}
+
+    tmux send-keys "gcloud compute  ssh --zone \"${zone}\" \"node-genload-multi-adapt-${i}\"" "C-l" "C-m"
+    #tmux send-keys "rm -rf ~/.chainspace" "C-l" "C-m"
+    tmux send-keys "/etc/chainspace/runadapt.sh ${initialrate} ${decrate} ${incrate} ${expectedlat}" "C-l" "C-m"
+
+    if (( $i != $1 )); then
+	tmux split-window
+	tmux select-layout tiled
+    fi
+done
+
+tmux attach-session -t ${session}
