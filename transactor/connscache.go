@@ -31,7 +31,7 @@ type AckID struct {
 
 type ConnsCache struct {
 	conns      map[uint64]*MuConn
-	connsmu    []sync.Mutex
+	cmu        []sync.Mutex
 	mu         sync.Mutex
 	key        signature.KeyPair
 	maxPayload int
@@ -83,22 +83,22 @@ func (c *ConnsCache) release(nodeID uint64) {
 
 func (c *ConnsCache) WriteRequest(
 	nodeID uint64, msg *service.Message, timeout time.Duration, ack bool, cb func(uint64, *service.Message)) (uint64, error) {
-	c.mu.Lock()
+	c.cmu[nodeID-1].Lock()
 	mc, err := c.dial(nodeID)
 	if err != nil {
 		// FIXME(): handle this better
 		c.release(nodeID)
-		c.mu.Unlock()
+		c.cmu[nodeID-1].Unlock()
 		time.Sleep(100 * time.Millisecond)
 		return c.WriteRequest(nodeID, msg, timeout, ack, cb)
 	}
 	id, err := mc.conn.WriteRequest(msg, c.maxPayload, timeout)
 	if err != nil {
 		c.release(nodeID)
-		c.mu.Unlock()
+		c.cmu[nodeID-1].Unlock()
 		return c.WriteRequest(nodeID, msg, timeout, ack, cb)
 	}
-	c.mu.Unlock()
+	c.cmu[nodeID-1].Unlock()
 	if ack {
 		c.addPendingAck(nodeID, msg, timeout, id, cb)
 	}
@@ -171,7 +171,7 @@ func (c *ConnsCache) retryRequests() {
 func NewConnsCache(nodeID uint64, top *network.Topology, maxPayload int, key signature.KeyPair) *ConnsCache {
 	c := &ConnsCache{
 		conns:       map[uint64]*MuConn{},
-		connsmu:     make([]sync.Mutex, top.TotalNodes()),
+		cmu:         make([]sync.Mutex, top.TotalNodes()),
 		maxPayload:  maxPayload,
 		selfID:      nodeID,
 		top:         top,

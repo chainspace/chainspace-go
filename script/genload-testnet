@@ -1,23 +1,43 @@
 #! /usr/bin/env bash
 
-if (( $# != 1 )); then
-    echo "Usage: genload-testnet NETWORK_NAME";
-    exit 1;
-fi
+network_name=testnet
+node_count=4
+log_level=error
+fixed_tps=10000
+initial_rate=10000
+rate_decr=0.9
+rate_incr=3000
+expected_latency=4
+
+command -v tmux >/dev/null 2>&1 || { echo "tmux required, aborting." >&2; exit 1; }
+command -v fuser >/dev/null 2>&1 || { echo "fuser required, aborting." >&2; exit 1; }
 
 echo ">> Building chainspace"
 go install chainspace.io/prototype/cmd/chainspace
 
-session="genload-${1}"
+# session+network name
+session="genload-${network_name}"
 
-echo ">> Setting up tmux session"
-tmux new-session -d -s $session
-tmux select-window -t $session:0
-tmux send-keys "chainspace genload ${1} 1 --fixed-tps 10000" "C-l" "C-m"
-tmux split-window -h
-tmux send-keys "chainspace genload ${1} 4 --fixed-tps 10000" "C-l" "C-m"
-tmux split-window -v -t 0
-tmux send-keys "chainspace genload ${1} 7 --fixed-tps 10000" "C-l" "C-m"
-tmux split-window -v -t 2
-tmux send-keys "chainspace genload ${1} 10 --fixed-tps 10000" "C-l" "C-m"
-tmux attach-session -t $session
+# cleanup any previous run
+tmux kill-session -t ${session}
+pkill chainspace
+fuser 8080/tcp
+rm -rf ~/.chainspace/${session}
+
+# initialize the network
+chainspace init ${session} --shard-count 1 --shard-size ${node_count} --disable-transactor true
+
+echo ">> Setting up tmux session ${session}"
+tmux new-session -d -s ${session}
+
+for i in $(seq 1 ${node_count})
+do
+    tmux send-keys "chainspace genload --initial-rate ${initial_rate} --rate-decr ${rate_decr} --rate-incr ${rate_incr} --expected-latency ${expected_latency} --fixed-tps ${fixed_tps} --cpu-profile ~/.chainspace/${session}/node-${i}/cpu.pprof --mem-profile ~/.chainspace/${session}/node-${i}/mem.pprof ${session} ${i}" "C-l" "C-m"
+
+    if (( ${i} != ${node_count} )); then
+	tmux split-window
+	tmux select-layout tiled
+    fi
+done
+
+tmux attach-session -t ${session}

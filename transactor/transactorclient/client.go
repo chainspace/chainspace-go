@@ -47,22 +47,36 @@ type client struct {
 }
 
 func New(cfg *Config) Client {
+	cp := transactor.NewConnsPool(20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key)
 	c := &client{
-		maxPaylod: cfg.MaxPayload,
-		top:       cfg.Top,
-		txconns: transactor.NewConnsPool(
-			20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
-		checkerconns: transactor.NewConnsPool(
-			20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
-		queryconns: transactor.NewConnsPool(
-			20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
-		createconns: transactor.NewConnsPool(
-			20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
-		deleteconns: transactor.NewConnsPool(
-			5, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
-		statesconns: transactor.NewConnsPool(
-			5, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
+		maxPaylod:    cfg.MaxPayload,
+		top:          cfg.Top,
+		txconns:      cp,
+		checkerconns: cp,
+		queryconns:   cp,
+		createconns:  cp,
+		deleteconns:  cp,
+		statesconns:  cp,
 	}
+
+	/*
+		c := &client{
+			maxPaylod: cfg.MaxPayload,
+			top:       cfg.Top,
+			txconns: transactor.NewConnsPool(
+				20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
+			checkerconns: transactor.NewConnsPool(
+				20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
+			queryconns: transactor.NewConnsPool(
+				20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
+			createconns: transactor.NewConnsPool(
+				20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
+			deleteconns: transactor.NewConnsPool(
+				5, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
+			statesconns: transactor.NewConnsPool(
+				5, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
+		}
+	*/
 	return c
 }
 
@@ -268,8 +282,10 @@ func (c *client) Create(obj []byte) ([][]byte, error) {
 	mu := sync.Mutex{}
 	wg := sync.WaitGroup{}
 	objs := [][]byte{}
+	now := time.Now()
 	f := func(n uint64, msg *service.Message) {
 		defer wg.Done()
+		log.Error("TIME ELAPSED TO CREATE OBJECT FROM NODE", log.Uint64("NODEID", n), log.String("duration", time.Since(now).String()))
 		res := transactor.NewObjectResponse{}
 		err = proto.Unmarshal(msg.Payload, &res)
 		if err != nil {
@@ -287,6 +303,7 @@ func (c *client) Create(obj []byte) ([][]byte, error) {
 		conns.WriteRequest(nid, msg, 5*time.Second, true, f)
 	}
 	wg.Wait()
+	log.Error("TIME ELAPSED TO CREATE OBJECT", log.String("duration", time.Since(now).String()))
 
 	return objs, nil
 }

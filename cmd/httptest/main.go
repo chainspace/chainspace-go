@@ -17,11 +17,9 @@ import (
 	"sync"
 	"time"
 
-	"google.golang.org/api/compute/v1"
-
-	"golang.org/x/oauth2/google"
-
 	"chainspace.io/prototype/restsrv"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/compute/v1"
 )
 
 var (

@@ -135,7 +135,7 @@ func cmdGenLoad(args []string, usage string) {
 	rateIncrease := opts.Flags("--rate-incr").Label("FACTOR").Int("Additive increase factor of the queue size [1000]")
 	runtimeRoot := opts.Flags("--runtime-root").Label("PATH").String("Path to the runtime root directory [~/.chainspace]", defaultRootDir())
 	txSize := opts.Flags("--tx-size").Label("SIZE").Int("Size in bytes of the generated transactions [100]")
-	expectedLatency := opts.Flags("--expected-latency").Label("SIZE").Float("Expected latency to deliver transactions in seconds [3.7]")
+	expectedLatency := opts.Flags("--expected-latency").Label("SIZE").Float("Expected latency to deliver transactions in seconds [4]")
 
 	networkName, nodeID := getNetworkNameAndNodeID(opts, args)
 
@@ -242,7 +242,7 @@ func cmdGenLoad(args []string, usage string) {
 	if fixedTPS != nil {
 		fTPS = *fixedTPS
 	}
-	if expectedLatency != nil {
+	if expectedLatency != nil && int(*expectedLatency) != 0 {
 		go genLoadWithExpectedLatency(s, app, nodeID, *txSize, *initialRate, *rateIncrease, *rateDecrease, *expectedLatency)
 		logMore(app, netCfg.Shard.Size, uint64(*initialRate), uint64(*rateIncrease), *rateDecrease, nodePath)
 	} else {

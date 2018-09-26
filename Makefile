@@ -48,9 +48,6 @@ docker-push: ## push the docker image to the gcp registry
 	docker push gcr.io/acoustic-atom-211511/chainspace:latest
 	docker push gcr.io/acoustic-atom-211511/chainspace:v0.1
 
-help:
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
-
 httptest: ## build the httptest binary
 	go install chainspace.io/prototype/cmd/httptest
 
@@ -69,3 +66,6 @@ gcp: ## build and compress in order to send to gcp
 	upx -o ./infrastructure/chainspace.upx chainspace
 
 .PHONY: help
+
+help:
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
