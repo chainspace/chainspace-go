@@ -15,6 +15,7 @@ import (
 
 	"chainspace.io/prototype/broadcast"
 	"chainspace.io/prototype/config"
+	"chainspace.io/prototype/contracts"
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/freeport"
 	"chainspace.io/prototype/log"
@@ -52,6 +53,7 @@ type Config struct {
 	NetworkName string
 	NodeID      uint64
 	Node        *config.Node
+	Contracts   *config.Contracts
 }
 
 // Server represents a running Chainspace node.
@@ -268,6 +270,25 @@ func Run(cfg *Config) (*Server, error) {
 		if err := log.ToFile(logfile, cfg.Node.Logging.FileLevel); err != nil {
 			log.Fatal("Could not initialise the file logger", fld.Err(err))
 		}
+	}
+
+	// start the different contracts
+	cts, err := contracts.New(cfg.Contracts)
+	if err != nil {
+		log.Fatal("unable to instantiate contacts", fld.Err(err))
+	}
+
+	// initialize the contracts
+	if cfg.Node.Contracts.Manage {
+		err = cts.Start()
+		if err != nil {
+			log.Fatal("unable to start contracts", fld.Err(err))
+		}
+	}
+
+	// ensure all the contracts are working
+	if err := cts.EnsureUp(); err != nil {
+		log.Fatal("some contracts are unavailable", fld.Err(err))
 	}
 
 	// Initialise the topology.

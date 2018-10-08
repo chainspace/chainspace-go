@@ -53,6 +53,11 @@ func cmdRun(args []string, usage string) {
 		log.Fatal("Could not load keys.yaml", fld.Err(err))
 	}
 
+	cts, err := config.LoadContracts(filepath.Join(netPath, "contracts.yaml"))
+	if err != nil {
+		log.Fatal("Could not load contracts.yaml", fld.Err(err))
+	}
+
 	root := *configRoot
 	if *runtimeRoot != "" {
 		root = os.ExpandEnv(*runtimeRoot)
@@ -65,6 +70,7 @@ func cmdRun(args []string, usage string) {
 		NetworkName: networkName,
 		NodeID:      nodeID,
 		Node:        nodeCfg,
+		Contracts:   cts,
 	}
 
 	if *cpuProfile != "" {

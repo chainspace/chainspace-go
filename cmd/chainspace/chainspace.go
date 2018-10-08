@@ -22,6 +22,7 @@ func main() {
 		"interpret":  cmdInterpret,
 		"run":        cmdRun,
 		"transactor": cmdTransactor,
+		"contracts":  cmdContracts,
 	}
 	info := map[string]string{
 		"genkeys":    "Generate new keys for a node",
@@ -30,6 +31,7 @@ func main() {
 		"interpret":  "Interpret a node's block graph",
 		"run":        "Run a node in a Chainspace network",
 		"transactor": "Send transactions in a chainspace network",
+		"contracts":  "Manage chainspace contracts",
 	}
 	optparse.Commands("chainspace", "0.0.1", cmds, info, logo)
 }

@@ -42,6 +42,12 @@ type Connections struct {
 	WriteTimeout time.Duration `yaml:"write.timeout"`
 }
 
+// Contracts represents the configuration for the contracts.
+type NodeContracts struct {
+	Docker bool `yaml:"docker"`
+	Manage bool `yaml:"manage"`
+}
+
 // HTTP represents the configuration for the REST HTTP API exposed by a node.
 type HTTP struct {
 	Enabled bool
@@ -117,6 +123,7 @@ type Node struct {
 	Broadcast         *Broadcast     `yaml:"broadcast"`
 	Connections       *Connections   `yaml:"connections"`
 	Consensus         *NodeConsensus `yaml:"consensus"`
+	Contracts         *NodeContracts `yaml:"contracts"`
 	DisableTransactor bool           `yaml:"disable.transactor,omitempty"`
 	HTTP              HTTP           `yaml:"http,omitempty"`
 	Logging           *Logging       `yaml:"logging"`
@@ -180,6 +187,31 @@ type Storage struct {
 	Type string
 }
 
+// DockerContract represent the configuration for a contract running
+// inside a docker container
+type DockerContract struct {
+	Name           string
+	Image          string
+	Addr           string
+	Port           string
+	HostPort       string
+	HealthCheckURL string
+}
+
+type Contract struct {
+	Name           string
+	Addr           string
+	Port           string
+	HealthCheckURL string
+}
+
+// Contracts represent the global configuration for the contracts
+type Contracts struct {
+	DockerContracts      []DockerContract `yaml:"contracts.docker"`
+	Contracts            []Contract       `yaml:"contracts"`
+	DockerMinimalVersion string           `yaml:"docker.minimalversion"`
+}
+
 // LoadKeys will read the YAML file at the given path and return the
 // corresponding Keys config.
 func LoadKeys(path string) (*Keys, error) {
@@ -216,6 +248,19 @@ func LoadNode(path string) (*Node, error) {
 	if cfg.Storage == nil || len(cfg.Storage.Type) <= 0 {
 		cfg.Storage = &Storage{"memstore"}
 	}
+
+	return cfg, err
+}
+
+// LoadContracts will read the YAML file at the given path and return the
+// corresponding Contracts config.
+func LoadContracts(path string) (*Contracts, error) {
+	data, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	cfg := &Contracts{}
+	err = yaml.Unmarshal(data, cfg)
 
 	return cfg, err
 }

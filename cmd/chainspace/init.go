@@ -27,6 +27,7 @@ func cmdInit(args []string, usage string) {
 	shardSize := opts.Flags("--shard-size").Label("N").Int("Number of nodes in each shard [4]")
 	httpPort := opts.Flags("--http-port").Label("PORT").Int("HTTP port to use with the shards")
 	disableTransactor := opts.Flags("--disable-transactor").Label("BOOL").Bool("Disable transactor")
+	manageContracts := opts.Flags("--manage-contracts").Label("BOOL").Bool("Manage docker contracts")
 
 	params := opts.Parse(args)
 
@@ -110,6 +111,29 @@ func cmdInit(args []string, usage string) {
 		Type: "badger",
 	}
 
+	var mContracts bool
+	if manageContracts != nil {
+		mContracts = *manageContracts
+	}
+	nodecontracts := &config.NodeContracts{
+		Manage: mContracts,
+		Docker: true,
+	}
+
+	cts := &config.Contracts{
+		DockerMinimalVersion: "1.30",
+		DockerContracts: []config.DockerContract{
+			{
+				Name:           "labels",
+				Image:          "chainspace.io/contract-labels:latest",
+				Addr:           "http://0.0.0.0",
+				HostPort:       "1789",
+				Port:           "8080",
+				HealthCheckURL: "/healthcheck",
+			},
+		},
+	}
+
 	/*
 		if ((3 * (*shardSize / 3)) + 1) != *shardSize {
 			log.Fatal("The given --shard-size does not satisfy the 3f+1 requirement", fld.ShardSize(uint64(*shardSize)))
@@ -163,6 +187,7 @@ func cmdInit(args []string, usage string) {
 			Broadcast:         broadcast,
 			Connections:       connections,
 			Consensus:         consensus,
+			Contracts:         nodecontracts,
 			DisableTransactor: disableTxtor,
 			HTTP:              httpcfg,
 			Logging:           logging,
@@ -197,4 +222,7 @@ func cmdInit(args []string, usage string) {
 		log.Fatal("Could not write to network.yaml", fld.Err(err))
 	}
 
+	if err := writeYAML(filepath.Join(netDir, "contracts.yaml"), cts); err != nil {
+		log.Fatal("Could not write to contracts.yaml", fld.Err(err))
+	}
 }
