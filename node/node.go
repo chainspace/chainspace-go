@@ -404,19 +404,25 @@ func Run(cfg *Config) (*Server, error) {
 		txtor  *transactor.Service
 	)
 
+	tcheckers := []transactor.Checker{
+		&transactor.DummyCheckerOK{}, &transactor.DummyCheckerKO{}}
+	checkers := cts.GetCheckers()
+	for _, v := range checkers {
+		tcheckers = append(tcheckers, v)
+	}
+
 	if !cfg.Node.DisableTransactor {
 		tcfg := &transactor.Config{
 			Broadcaster: broadcaster,
-			Checkers: []transactor.Checker{
-				&transactor.DummyCheckerOK{}, &transactor.DummyCheckerKO{}},
-			Directory:  dir,
-			Key:        key,
-			MaxPayload: maxPayload,
-			NodeID:     cfg.NodeID,
-			ShardCount: uint64(cfg.Network.Shard.Count),
-			ShardSize:  uint64(cfg.Network.Shard.Size),
-			SigningKey: cfg.Keys.SigningKey,
-			Top:        top,
+			Checkers:    tcheckers,
+			Directory:   dir,
+			Key:         key,
+			MaxPayload:  maxPayload,
+			NodeID:      cfg.NodeID,
+			ShardCount:  uint64(cfg.Network.Shard.Count),
+			ShardSize:   uint64(cfg.Network.Shard.Size),
+			SigningKey:  cfg.Keys.SigningKey,
+			Top:         top,
 		}
 		txtor, err = transactor.New(tcfg)
 		if err != nil {

@@ -200,7 +200,7 @@ func (c *Contracts) EnsureUp() error {
 	for _, contract := range c.configs.DockerContracts {
 		u, err := url.Parse(fmt.Sprintf("http://0.0.0.0:%v", contract.HostPort))
 		if err != nil {
-			return fmt.Errorf("unable to parse docker contract url", log.String("contract.name", contract.Name))
+			log.Fatal("unable to parse docker contract url", log.String("contract.name", contract.Name))
 		}
 		u.Path = path.Join(u.Path, contract.HealthCheckURL)
 		addr := u.String()
@@ -210,6 +210,14 @@ func (c *Contracts) EnsureUp() error {
 		}
 	}
 	return nil
+}
+
+func (c *Contracts) GetCheckers() []Checker {
+	checkers := []Checker{}
+	for _, v := range c.configs.DockerContracts {
+		checkers = append(checkers, NewCheckers(&v)...)
+	}
+	return checkers
 }
 
 func New(cfg *config.Contracts) (*Contracts, error) {

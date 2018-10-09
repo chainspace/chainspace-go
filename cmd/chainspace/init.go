@@ -125,6 +125,7 @@ func cmdInit(args []string, usage string) {
 		DockerContracts: []config.DockerContract{
 			{
 				Name:           "labels",
+				Procedures:     []string{"create"},
 				Image:          "chainspace.io/contract-labels:latest",
 				Addr:           "http://0.0.0.0",
 				HostPort:       "1789",

@@ -191,6 +191,7 @@ type Storage struct {
 // inside a docker container
 type DockerContract struct {
 	Name           string
+	Procedures     []string
 	Image          string
 	Addr           string
 	Port           string
