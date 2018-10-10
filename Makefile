@@ -7,7 +7,9 @@ COVERAGE_SOURCES=$(shell find * -name '*.go' -not -path "testutil/*" -not -path 
 
 FILES=	service/types.proto\
 	broadcast/types.proto\
-	transactor/types.proto
+	transactor/types.proto\
+	kv/types.proto
+
 PKG := "./cmd/$(PROJECT_NAME)"
 PKG_LIST := $(shell go list ${PKG}/... | grep -v /vendor/)
 PROJECT_NAME := "chainspace"

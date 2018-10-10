@@ -318,6 +318,8 @@ func (s *Service) makeServ(addr string, port int) *http.Server {
 	mux.HandleFunc("/object/ready", s.objectsReady)
 	mux.HandleFunc("/states", s.states)
 	mux.HandleFunc("/transaction", s.transaction)
+	// mux.HandleFunc("/kv/get", s.kvGet)
+	// mux.HandleFunc("/kv/get-objectid", s.kvGetObjectID)
 	handler := cors.Default().Handler(mux)
 	h := &http.Server{
 		Addr:    fmt.Sprintf("%v:%v", addr, port),

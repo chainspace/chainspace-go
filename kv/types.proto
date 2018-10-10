@@ -1,0 +1,17 @@
+syntax = "proto3";
+package kv;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+enum Opcode {
+  UNKNOWN = 0;
+  GET = 1;
+}
+
+message GetRequest {
+  bytes key = 1;
+}
+
+message GetResponse {
+  bytes objectID = 1 [(gogoproto.customname) = "ObjectID"];
+}

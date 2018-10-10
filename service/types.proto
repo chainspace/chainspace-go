@@ -8,11 +8,12 @@ enum CONNECTION {
   UNKNOWN = 0;
   BROADCAST = 1;
   TRANSACTOR = 2;
+  KV = 3;
 }
 
 message Hello {
   string agent = 1;
-  bytes payload = 2; # Either nil, or a protobuf encoded HelloInfo
+  bytes payload = 2; // Either nil, or a protobuf encoded HelloInfo
   bytes signature = 3;
   CONNECTION type = 4;
 }
