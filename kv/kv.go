@@ -93,6 +93,7 @@ func (s *Service) Get(key []byte) ([]byte, error) {
 
 func (s *Service) Set(key, value []byte) error {
 	return s.store.Update(func(txn *badger.Txn) error {
+		log.Error("adding new value for key", log.String("key", string(key)))
 		return txn.Set(key, value)
 	})
 }

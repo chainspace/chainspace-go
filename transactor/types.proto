@@ -24,6 +24,10 @@ message Transaction {
   repeated Trace traces = 1;
 }
 
+message strings {
+  repeated string strs = 1;
+}
+
 message Trace {
   string contractID = 1 [(gogoproto.customname) = "ContractID"];
   string procedure = 2;
@@ -32,13 +36,15 @@ message Trace {
   repeated bytes outputObjects = 5;
   repeated bytes parameters = 6;
   repeated bytes returns = 7;
-  repeated Trace dependencies = 8;
+  repeated strings labels = 8;
+  repeated Trace dependencies = 9;
 }
 
 message Object {
   bytes value = 1;
   bytes key = 2;
   ObjectStatus status = 3;
+  repeated string labels = 4;
 }
 
 message CheckTransactionRequest {

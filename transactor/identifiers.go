@@ -91,11 +91,17 @@ func MakeObjectIDs(pair *TraceIdentifierPair) ([]*Object, error) {
 		if err != nil {
 			return nil, fmt.Errorf("transactor: unable to create hash: %v", err)
 		}
+		var labels []string
+		if len(pair.Trace.Labels) > i {
+			labels = pair.Trace.Labels[i].AsSlice()
+		}
 		o := &Object{
 			Value:  outobj,
 			Key:    ch.Digest(),
+			Labels: labels,
 			Status: ObjectStatus_ACTIVE,
 		}
+
 		out = append(out, o)
 	}
 	return out, nil

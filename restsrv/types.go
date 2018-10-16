@@ -27,14 +27,15 @@ func (ct *Transaction) ToTransactor() *transactor.Transaction {
 }
 
 type Trace struct {
-	ContractID          string   `json:"contract_id"`
-	Procedure           string   `json:"procedure"`
-	InputObjectsKeys    []string `json:"input_objects_keys"`
-	InputReferencesKeys []string `json:"input_references_keys"`
-	OutputObjects       []string `json:"output_objects"`
-	Parameters          []string `json:"parameters"`
-	Returns             []string `json:"returns"`
-	Dependencies        []Trace  `json:"dependencies"`
+	ContractID          string     `json:"contract_id"`
+	Procedure           string     `json:"procedure"`
+	InputObjectsKeys    []string   `json:"input_objects_keys"`
+	InputReferencesKeys []string   `json:"input_references_keys"`
+	OutputObjects       []string   `json:"output_objects"`
+	Parameters          []string   `json:"parameters"`
+	Returns             []string   `json:"returns"`
+	Labels              [][]string `json:"labels"`
+	Dependencies        []Trace    `json:"dependencies"`
 }
 
 func (ct *Trace) ToTransactor() *transactor.Trace {
@@ -58,6 +59,7 @@ func (ct *Trace) ToTransactor() *transactor.Trace {
 		OutputObjects:       toBytesB64(ct.OutputObjects),
 		Parameters:          toBytesB64(ct.Parameters),
 		Returns:             toBytesB64(ct.Returns),
+		Labels:              transactor.StringsSlice{}.FromSlice(ct.Labels),
 		Dependencies:        deps,
 	}
 }

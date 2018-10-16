@@ -12,7 +12,7 @@ import (
 type Checker interface {
 	ContractID() string
 	Name() string
-	Check(inputs, refInputs, parameters, outputs, returns [][]byte, dependencies []*Trace) bool
+	Check(inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string, dependencies []*Trace) bool
 }
 
 // a pair of a trace and it's associated checker to be store in a slice
@@ -36,7 +36,7 @@ func runCheckers(ctx context.Context, checkers CheckersMap, tx *Transaction) (bo
 		t := v.Trace
 		c := v.Checker
 		g.Go(func() error {
-			result := c.Check(t.InputObjectsKeys, t.InputReferencesKeys, t.Parameters, t.OutputObjects, t.Returns, t.Dependencies)
+			result := c.Check(t.InputObjectsKeys, t.InputReferencesKeys, t.Parameters, t.OutputObjects, t.Returns, StringsSlice(t.Labels).AsSlice(), t.Dependencies)
 			if !result {
 				return errors.New("check failed")
 			}

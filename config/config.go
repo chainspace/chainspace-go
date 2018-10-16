@@ -201,8 +201,8 @@ type DockerContract struct {
 
 type Contract struct {
 	Name           string
+	Procedures     []string
 	Addr           string
-	Port           string
 	HealthCheckURL string
 }
 

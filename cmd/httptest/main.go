@@ -36,8 +36,8 @@ var (
 )
 
 const (
-	contractID = "contract_dummy"
-	procedure  = "dummy_check_ok"
+	contractID = "dummy"
+	procedure  = "dummy_ok"
 )
 
 func getAddress(workerID int) string {
@@ -90,7 +90,7 @@ func seedObjects(i int) ([]string, error) {
 	return out, nil
 }
 
-func makeTransactionPayload(seed []string) []byte {
+func makeTransactionPayload(seed []string, labels [][]string) []byte {
 	outputs := []string{}
 	for i := 0; i < objects; i += 1 {
 		outputs = append(outputs, randSeq(30))
@@ -102,6 +102,7 @@ func makeTransactionPayload(seed []string) []byte {
 				Procedure:        procedure,
 				InputObjectsKeys: seed,
 				OutputObjects:    outputs,
+				Labels:           labels,
 			},
 		},
 	}
@@ -171,7 +172,7 @@ func objectsReady(ctx context.Context, workerID int, seed []string) {
 	}
 }
 
-func worker(ctx context.Context, seed []string, wg *sync.WaitGroup, id int) {
+func worker(ctx context.Context, seed []string, labels [][]string, wg *sync.WaitGroup, id int) {
 	/*
 		seed, err := seedObjects()
 		if err != nil {
@@ -190,6 +191,7 @@ func worker(ctx context.Context, seed []string, wg *sync.WaitGroup, id int) {
 	mu.Lock()
 	metrics[id] = []time.Duration{}
 	mu.Unlock()
+
 	for {
 		if err := ctx.Err(); err != nil {
 			fmt.Printf("context error: %v\n", err)
@@ -203,7 +205,7 @@ func worker(ctx context.Context, seed []string, wg *sync.WaitGroup, id int) {
 		fmt.Printf("worker %v sending new transaction\n", id)
 		start := time.Now()
 		// make transaction
-		txbytes := makeTransactionPayload(seed)
+		txbytes := makeTransactionPayload(seed, labels)
 		payload := bytes.NewBuffer(txbytes)
 		req, err := http.NewRequest(http.MethodPost, url, payload)
 		req = req.WithContext(ctx)
@@ -279,6 +281,16 @@ func getAddressesFromGCP() {
 	}
 }
 
+func makeLabels(workerID int) [][]string {
+	labels := [][]string{}
+	for i := 0; i < objects; i += 1 {
+		l := fmt.Sprintf("label:%v:%v", workerID, i)
+		fmt.Printf("creating new object with label: %v\n", l)
+		labels = append(labels, []string{l})
+	}
+	return labels
+}
+
 func main() {
 	if len(address) <= 0 && len(port) <= 0 {
 		fmt.Println("missing address or port parameter")
@@ -296,12 +308,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	seeds := make([][]string, workers)
 	// create seeds
-	// var wg1 sync.WaitGroup
+	labels := make([][][]string, workers)
 	for i := 0; i < workers; i += 1 {
-		//	wg1.Add(1)
-		//	i := i
-		//	go func() {
-		//		defer wg1.Done()
 		s, err := seedObjects(i)
 		if err != nil {
 			fmt.Println(err.Error())
@@ -309,17 +317,15 @@ func main() {
 			wg.Wait()
 			return
 		}
-		//fmt.Printf("I: %v", i)
 		seeds[i] = s
-
-		//	}()
+		labels[i] = makeLabels(i)
 	}
-	//	wg1.Wait()
+
 	fmt.Printf("seeds generated successfully\n")
 	// start txs
 	for i := 0; i < workers; i += 1 {
 		fmt.Printf("starting worker %v\n", i)
-		go worker(ctx, seeds[i], wg, i)
+		go worker(ctx, seeds[i], labels[i], wg, i)
 	}
 
 	t := time.NewTimer(time.Duration(duration) * time.Second)

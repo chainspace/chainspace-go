@@ -13,6 +13,7 @@ import (
 
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/crypto/signature"
+	"chainspace.io/prototype/kv"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
@@ -28,14 +29,18 @@ type Config struct {
 	Top        *network.Topology
 	MaxPayload config.ByteSize
 	SelfID     uint64
+	Store      *kv.Service
+	Transactor *transactor.Service
 }
 
 type Service struct {
 	port       int
 	srv        *http.Server
+	store      *kv.Service
 	top        *network.Topology
 	maxPayload config.ByteSize
 	client     transactorclient.Client
+	transactor *transactor.Service
 }
 
 type resp struct {
@@ -318,8 +323,8 @@ func (s *Service) makeServ(addr string, port int) *http.Server {
 	mux.HandleFunc("/object/ready", s.objectsReady)
 	mux.HandleFunc("/states", s.states)
 	mux.HandleFunc("/transaction", s.transaction)
-	// mux.HandleFunc("/kv/get", s.kvGet)
-	// mux.HandleFunc("/kv/get-objectid", s.kvGetObjectID)
+	mux.HandleFunc("/kv/get", s.kvGet)
+	mux.HandleFunc("/kv/get-objectid", s.kvGetObjectID)
 	handler := cors.Default().Handler(mux)
 	h := &http.Server{
 		Addr:    fmt.Sprintf("%v:%v", addr, port),
@@ -342,6 +347,8 @@ func New(cfg *Config) *Service {
 		top:        cfg.Top,
 		maxPayload: cfg.MaxPayload,
 		client:     txclient,
+		store:      cfg.Store,
+		transactor: cfg.Transactor,
 	}
 	s.srv = s.makeServ(cfg.Addr, cfg.Port)
 	go func() {

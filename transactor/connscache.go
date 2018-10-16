@@ -43,6 +43,9 @@ type ConnsCache struct {
 }
 
 func (c *ConnsCache) sendHello(nodeID uint64, conn *network.Conn) error {
+	if c.key == nil {
+		log.Error("nil key")
+	}
 	hellomsg, err := service.SignHello(
 		c.selfID, nodeID, c.key, service.CONNECTION_TRANSACTOR)
 	if err != nil {

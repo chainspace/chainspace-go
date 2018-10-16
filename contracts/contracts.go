@@ -209,12 +209,29 @@ func (c *Contracts) EnsureUp() error {
 			return fmt.Errorf("docker contract '%v' is unavailable, %v", contract.Name, err)
 		}
 	}
+
+	for _, contract := range c.configs.Contracts {
+		u, err := url.Parse(contract.Addr)
+		if err != nil {
+			log.Fatal("unable to parse contract url", log.String("contract.name", contract.Name))
+		}
+		u.Path = path.Join(u.Path, contract.HealthCheckURL)
+		addr := u.String()
+		log.Info("calling contract healthcheck", log.String("contract.name", contract.Name), log.String("contract.healtcheckurl", addr))
+		if err := c.callHealthCheck(addr); err != nil {
+			return fmt.Errorf("contract '%v' is unavailable, %v", contract.Name, err)
+		}
+
+	}
 	return nil
 }
 
 func (c *Contracts) GetCheckers() []Checker {
 	checkers := []Checker{}
 	for _, v := range c.configs.DockerContracts {
+		checkers = append(checkers, NewDockerCheckers(&v)...)
+	}
+	for _, v := range c.configs.Contracts {
 		checkers = append(checkers, NewCheckers(&v)...)
 	}
 	return checkers

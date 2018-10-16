@@ -25,11 +25,12 @@ type Checker struct {
 }
 
 type body struct {
-	Inputs          []string `json:"inputs"`
-	ReferenceInputs []string `json:"referenceInputs"`
-	Parameters      []string `json:"parameters"`
-	Outputs         []string `json:"outputs"`
-	Returns         []string `json:"returns"`
+	Inputs          []string   `json:"inputs"`
+	ReferenceInputs []string   `json:"referenceInputs"`
+	Parameters      []string   `json:"parameters"`
+	Outputs         []string   `json:"outputs"`
+	Labels          [][]string `json:"labels"`
+	Returns         []string   `json:"returns"`
 }
 
 func encodeToStrings(ls [][]byte) []string {
@@ -42,13 +43,14 @@ func encodeToStrings(ls [][]byte) []string {
 	return out
 }
 
-func makeBody(inputs, refInputs, parameters, outputs, returns [][]byte) body {
+func makeBody(inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string) body {
 	return body{
 		Inputs:          encodeToStrings(inputs),
 		ReferenceInputs: encodeToStrings(refInputs),
 		Parameters:      encodeToStrings(parameters),
 		Outputs:         encodeToStrings(outputs),
 		Returns:         encodeToStrings(returns),
+		Labels:          labels,
 	}
 }
 
@@ -57,8 +59,8 @@ func (c Checker) Name() string { return c.procedureName }
 func (c Checker) ContractID() string { return c.iD }
 
 func (c Checker) Check(
-	inputs, refInputs, parameters, outputs, returns [][]byte, dependencies []*transactor.Trace) bool {
-	body := makeBody(inputs, refInputs, parameters, outputs, returns)
+	inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string, dependencies []*transactor.Trace) bool {
+	body := makeBody(inputs, refInputs, parameters, outputs, returns, labels)
 	bbody, _ := json.Marshal(body)
 	payload := bytes.NewBuffer(bbody)
 
@@ -100,7 +102,7 @@ func (c Checker) Check(
 	return res.Success
 }
 
-func NewCheckers(cfg *config.DockerContract) []Checker {
+func NewDockerCheckers(cfg *config.DockerContract) []Checker {
 	u, _ := url.Parse(fmt.Sprintf("http://0.0.0.0:%v", cfg.HostPort))
 	u.Path = path.Join(u.Path, cfg.Name)
 	checkers := []Checker{}
@@ -108,6 +110,19 @@ func NewCheckers(cfg *config.DockerContract) []Checker {
 	for _, v := range cfg.Procedures {
 		_u := *u
 		_u.Path = path.Join(_u.Path, v)
+		checkers = append(checkers, Checker{cfg.Name, v, _u.String()})
+	}
+
+	return checkers
+}
+
+func NewCheckers(cfg *config.Contract) []Checker {
+	u := path.Join(cfg.Addr, cfg.Name)
+	checkers := []Checker{}
+
+	for _, v := range cfg.Procedures {
+		pth := path.Join(u, v)
+		_u, _ := url.Parse(pth)
 		checkers = append(checkers, Checker{cfg.Name, v, _u.String()})
 	}
 

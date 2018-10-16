@@ -124,9 +124,9 @@ func cmdInit(args []string, usage string) {
 		DockerMinimalVersion: "1.30",
 		DockerContracts: []config.DockerContract{
 			{
-				Name:           "labels",
-				Procedures:     []string{"create"},
-				Image:          "chainspace.io/contract-labels:latest",
+				Name:           "dummy",
+				Procedures:     []string{"dummy_ok", "dummy_ko"},
+				Image:          "chainspace.io/contract-dummy:latest",
 				Addr:           "http://0.0.0.0",
 				HostPort:       "1789",
 				Port:           "8080",

@@ -18,6 +18,7 @@ import (
 	"chainspace.io/prototype/contracts"
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/freeport"
+	"chainspace.io/prototype/kv"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
@@ -400,21 +401,30 @@ func Run(cfg *Config) (*Server, error) {
 	}
 
 	var (
-		rstsrv *restsrv.Service
-		txtor  *transactor.Service
+		kvstore *kv.Service
+		rstsrv  *restsrv.Service
+		txtor   *transactor.Service
 	)
 
-	tcheckers := []transactor.Checker{
-		&transactor.DummyCheckerOK{}, &transactor.DummyCheckerKO{}}
+	tcheckers := []transactor.Checker{}
 	checkers := cts.GetCheckers()
 	for _, v := range checkers {
 		tcheckers = append(tcheckers, v)
 	}
 
 	if !cfg.Node.DisableTransactor {
+		kvcfg := &kv.Config{
+			RuntimeDir: dir,
+		}
+		kvstore, err = kv.New(kvcfg)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("node: unable to instantiate the kv service: %v", err)
+		}
 		tcfg := &transactor.Config{
 			Broadcaster: broadcaster,
 			Checkers:    tcheckers,
+			KVStore:     kvstore,
 			Directory:   dir,
 			Key:         key,
 			MaxPayload:  maxPayload,
@@ -443,6 +453,8 @@ func Run(cfg *Config) (*Server, error) {
 				Top:        top,
 				SelfID:     cfg.NodeID,
 				MaxPayload: config.ByteSize(maxPayload),
+				Transactor: txtor,
+				Store:      kvstore,
 			}
 			rstsrv = restsrv.New(restsrvcfg)
 		}

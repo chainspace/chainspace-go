@@ -14,6 +14,7 @@ import (
 	"chainspace.io/prototype/combihash"
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/crypto/signature"
+	"chainspace.io/prototype/kv"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
@@ -31,6 +32,7 @@ var b32 = base32.StdEncoding.WithPadding(base32.NoPadding)
 type Config struct {
 	Broadcaster *broadcast.Service
 	Directory   string
+	KVStore     *kv.Service
 	NodeID      uint64
 	Top         *network.Topology
 	SigningKey  *config.Key
@@ -45,6 +47,7 @@ type Service struct {
 	broadcaster *broadcast.Service
 	checkers    CheckersMap
 	conns       *ConnsPool
+	kvstore     *kv.Service
 	nodeID      uint64
 	pe          *pendingEvents
 	privkey     signature.PrivateKey
@@ -327,6 +330,35 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte, id uint64)
 	}, nil
 }
 
+func (s *Service) QueryObjectByKey(key []byte) ([]byte, error) {
+	objects, err := GetObjects(s.store, [][]byte{key})
+	if err != nil {
+		return nil, err
+	} else if len(objects) != 1 {
+		return nil, fmt.Errorf("invalid number of objects found, expected %v found %v", 1, len(objects))
+	}
+	return objects[0].Value, nil
+}
+
+func (s *Service) saveLabels(tx *Transaction) error {
+	ids, err := MakeIDs(tx)
+	if err != nil {
+		return err
+	}
+	for _, topair := range ids.TraceObjectPairs {
+		for _, outo := range topair.OutputObjects {
+			shard := s.top.ShardForKey(outo.GetKey())
+			if shard == s.shardID {
+				for _, label := range outo.Labels {
+					s.kvstore.Set([]byte(label), outo.Key)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 func queryPayload(id uint64, res *QueryObjectResponse) (*service.Message, error) {
 	b, _ := proto.Marshal(res)
 	return &service.Message{
@@ -503,6 +535,7 @@ func New(cfg *Config) (*Service, error) {
 		broadcaster: cfg.Broadcaster,
 		conns:       NewConnsPool(20, cfg.NodeID, cfg.Top, cfg.MaxPayload, cfg.Key),
 		checkers:    checkers,
+		kvstore:     cfg.KVStore,
 		nodeID:      cfg.NodeID,
 		privkey:     privkey,
 		top:         cfg.Top,

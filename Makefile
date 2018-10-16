@@ -58,7 +58,6 @@ proto: ## recompile all protobuf definitions
 		./genproto.sh $(f);\
 	)
 
-
 test: ## Run unit tests
 	go test -short ${PKG_LIST} -v
 
@@ -66,6 +65,9 @@ gcp: ## build and compress in order to send to gcp
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w" chainspace.io/prototype/cmd/chainspace
 	rm -rf ./infrastructure/chainspace.upx
 	upx -o ./infrastructure/chainspace.upx chainspace
+
+contract: ## build dummy contract docker
+	docker build -t "chainspace.io/contract-dummy:latest" -f ./dummycontract/Dockerfile ./dummycontract
 
 .PHONY: help
 

@@ -683,6 +683,10 @@ func (s *Service) toSucceeded(tx *TxDetails) (State, error) {
 	if err != nil {
 		log.Error("unable to finish transaction", fld.TxID(tx.HashID), fld.Err(err))
 	}
+
+	if err := s.saveLabels(tx.Tx); err != nil {
+		log.Error("unable to save traces", fld.Err(err))
+	}
 	return StateSucceeded, nil
 }
 
