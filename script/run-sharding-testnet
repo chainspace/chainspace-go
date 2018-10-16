@@ -1,0 +1,40 @@
+#!/bin/bash
+
+if (( $# != 1 )); then
+    echo "missing shards count";
+    exit 1;
+fi
+
+# session / network name
+session=testnet-sharding-${1}
+
+# destroy session if exists
+tmux kill-session -t ${session}
+pkill chainspace
+fuser 8080/tcp
+
+# remove existing conf
+rm -rf ~/.chainspace/${session}
+
+# inializes the network
+chainspace init ${session} --shard-count ${1};
+#chainspace init testnet -u https://acoustic-atom-211511.appspot.com --shard-count ${1};
+
+# start the contracts if needed
+chainspace contracts ${session} create
+
+echo ">> Setting up tmux session ${session}"
+tmux new-session -d -s ${session}
+
+tot="$((${1} * 4))";
+for i in $(seq 1 $tot)
+do
+    tmux send-keys "chainspace run --console-log error --file-log error --cpu-profile ~/.chainspace/${session}/node-${i}/cpu.pprof --mem-profile ~/.chainspace/${session}/node-${i}/mem.pprof ${session} ${i}" "C-l" "C-m"
+    if (( ${i} != $tot )); then
+	tmux split-window
+	tmux select-layout tiled
+    fi
+
+done
+
+tmux attach-session -t $session
