@@ -90,10 +90,15 @@ func seedObjects(i int) ([]string, error) {
 	return out, nil
 }
 
+type outputty struct {
+	Label []string `json:"label"`
+	Value string   `json:"value"`
+}
+
 func makeTransactionPayload(seed []string, labels [][]string) []byte {
-	outputs := []string{}
+	outputs := []interface{}{}
 	for i := 0; i < objects; i += 1 {
-		outputs = append(outputs, randSeq(30))
+		outputs = append(outputs, outputty{labels[i], randSeq(30)})
 	}
 	tx := restsrv.Transaction{
 		Traces: []restsrv.Trace{

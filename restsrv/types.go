@@ -2,6 +2,7 @@ package restsrv // import "chainspace.io/prototype/restsrv"
 
 import (
 	"encoding/base64"
+	"encoding/json"
 
 	"chainspace.io/prototype/transactor"
 )
@@ -27,23 +28,31 @@ func (ct *Transaction) ToTransactor() *transactor.Transaction {
 }
 
 type Trace struct {
-	ContractID          string     `json:"contract_id"`
-	Procedure           string     `json:"procedure"`
-	InputObjectsKeys    []string   `json:"input_objects_keys"`
-	InputReferencesKeys []string   `json:"input_references_keys"`
-	OutputObjects       []string   `json:"output_objects"`
-	Parameters          []string   `json:"parameters"`
-	Returns             []string   `json:"returns"`
-	Labels              [][]string `json:"labels"`
-	Dependencies        []Trace    `json:"dependencies"`
+	ContractID          string        `json:"contract_id"`
+	Procedure           string        `json:"procedure"`
+	InputObjectsKeys    []string      `json:"input_objects_keys"`
+	InputReferencesKeys []string      `json:"input_references_keys"`
+	OutputObjects       []interface{} `json:"output_objects"`
+	Parameters          []interface{} `json:"parameters"`
+	Returns             []interface{} `json:"returns"`
+	Labels              [][]string    `json:"labels"`
+	Dependencies        []Trace       `json:"dependencies"`
 }
 
 func (ct *Trace) ToTransactor() *transactor.Trace {
-	toBytesB64 := func(s []string) [][]byte {
+	fromB64String := func(s []string) [][]byte {
 		out := make([][]byte, 0, len(s))
 		for _, v := range s {
 			bytes, _ := base64.StdEncoding.DecodeString(v)
 			out = append(out, []byte(bytes))
+		}
+		return out
+	}
+	toJsonList := func(s []interface{}) [][]byte {
+		out := make([][]byte, 0, len(s))
+		for _, v := range s {
+			bytes, _ := json.Marshal(v)
+			out = append(out, bytes)
 		}
 		return out
 	}
@@ -54,11 +63,11 @@ func (ct *Trace) ToTransactor() *transactor.Trace {
 	return &transactor.Trace{
 		ContractID:          ct.ContractID,
 		Procedure:           ct.Procedure,
-		InputObjectsKeys:    toBytesB64(ct.InputObjectsKeys),
-		InputReferencesKeys: toBytesB64(ct.InputReferencesKeys),
-		OutputObjects:       toBytesB64(ct.OutputObjects),
-		Parameters:          toBytesB64(ct.Parameters),
-		Returns:             toBytesB64(ct.Returns),
+		InputObjectsKeys:    fromB64String(ct.InputObjectsKeys),
+		InputReferencesKeys: fromB64String(ct.InputReferencesKeys),
+		OutputObjects:       toJsonList(ct.OutputObjects),
+		Parameters:          toJsonList(ct.Parameters),
+		Returns:             toJsonList(ct.Returns),
 		Labels:              transactor.StringsSlice{}.FromSlice(ct.Labels),
 		Dependencies:        deps,
 	}

@@ -25,12 +25,12 @@ type Checker struct {
 }
 
 type body struct {
-	Inputs          []string   `json:"inputs"`
-	ReferenceInputs []string   `json:"referenceInputs"`
-	Parameters      []string   `json:"parameters"`
-	Outputs         []string   `json:"outputs"`
-	Labels          [][]string `json:"labels"`
-	Returns         []string   `json:"returns"`
+	Inputs          []string      `json:"inputs"`
+	ReferenceInputs []string      `json:"referenceInputs"`
+	Parameters      []string      `json:"parameters"`
+	Outputs         []interface{} `json:"outputs"`
+	Labels          [][]string    `json:"labels"`
+	Returns         []string      `json:"returns"`
 }
 
 func encodeToStrings(ls [][]byte) []string {
@@ -43,13 +43,27 @@ func encodeToStrings(ls [][]byte) []string {
 	return out
 }
 
+func unmarshalIfaceSlice(ls [][]byte) []interface{} {
+	out := []interface{}{}
+	for _, v := range ls {
+		var val interface{}
+		err := json.Unmarshal(v, &val)
+		if err != nil {
+			log.Fatal("unable to Unmarshal slice", fld.Err(err))
+		}
+		out = append(out, val)
+	}
+	return out
+}
+
 func makeBody(inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string) body {
+
 	return body{
 		Inputs:          encodeToStrings(inputs),
 		ReferenceInputs: encodeToStrings(refInputs),
-		Parameters:      encodeToStrings(parameters),
-		Outputs:         encodeToStrings(outputs),
-		Returns:         encodeToStrings(returns),
+		Parameters:      unmarshalIfaceSlice(parameters),
+		Outputs:         unmarshalIfaceSlice(outputs),
+		Returns:         unmarshalIfaceSlice(returns),
 		Labels:          labels,
 	}
 }

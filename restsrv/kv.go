@@ -82,7 +82,15 @@ func (s *Service) kvGet(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	object, err := s.transactor.QueryObjectByKey(objectID)
+	objectraw, err := s.transactor.QueryObjectByKey(objectID)
+	if err != nil {
+		fail(rw, http.StatusInternalServerError, err.Error())
+		return
+
+	}
+
+	var object interface{}
+	err = json.Unmarshal(objectraw, &object)
 	if err != nil {
 		fail(rw, http.StatusInternalServerError, err.Error())
 		return
@@ -90,9 +98,9 @@ func (s *Service) kvGet(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	res := struct {
-		Object string `json:"object"`
+		Object interface{} `json:"object"`
 	}{
-		Object: base64.StdEncoding.EncodeToString(object),
+		Object: object,
 	}
 
 	success(rw, http.StatusOK, res)

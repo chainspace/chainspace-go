@@ -172,6 +172,7 @@ func (s *Service) checkTransaction(ctx context.Context, payload []byte, id uint6
 		log.Error("transactor: checkTransaction unmarshaling error", fld.Err(err))
 		return nil, fmt.Errorf("transactor: add_transaction unmarshaling error: %v", err)
 	}
+	log.Error("running checkers")
 
 	// run the checkers
 	ok, err := runCheckers(ctx, s.checkers, req.Tx)

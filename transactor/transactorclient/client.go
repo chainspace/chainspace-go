@@ -200,7 +200,6 @@ func (c *client) nodesForTx(t *transactor.Transaction) []uint64 {
 func (c *client) SendTransaction(tx *transactor.Transaction) ([]*transactor.Object, error) {
 	nodes := c.nodesForTx(tx)
 	start := time.Now()
-
 	// checks + evidences
 	evidences, err := c.checkTransaction(nodes, tx)
 	if err != nil {
