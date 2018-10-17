@@ -27,10 +27,10 @@ type Checker struct {
 type body struct {
 	Inputs          []string      `json:"inputs"`
 	ReferenceInputs []string      `json:"referenceInputs"`
-	Parameters      []string      `json:"parameters"`
+	Parameters      []interface{} `json:"parameters"`
 	Outputs         []interface{} `json:"outputs"`
+	Returns         []interface{} `json:"returns"`
 	Labels          [][]string    `json:"labels"`
-	Returns         []string      `json:"returns"`
 }
 
 func encodeToStrings(ls [][]byte) []string {

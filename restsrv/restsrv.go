@@ -117,20 +117,26 @@ func BuildObjectResponse(objects []*transactor.Object) (Object, error) {
 	if len(objects) <= 0 {
 		return Object{}, errors.New("object already inactive")
 	}
+	for _, v := range objects {
+		if string(v.Value) != string(objects[0].Value) {
+			return Object{}, errors.New("inconsistent data")
+		}
+	}
+
 	data := []Object{}
 	for _, v := range objects {
+		var val interface{}
+		err := json.Unmarshal(v.Value, &val)
+		if err != nil {
+			return Object{}, fmt.Errorf("unable to unmarshal value: %v", err)
+		}
 		o := Object{
 			Key:    base64.StdEncoding.EncodeToString(v.Key),
-			Value:  base64.StdEncoding.EncodeToString(v.Value),
+			Value:  val,
 			Status: v.Status.String(),
 		}
 		data = append(data, o)
 
-	}
-	for _, v := range data {
-		if v != data[0] {
-			return Object{}, errors.New("inconsistent data")
-		}
 	}
 	return data[0], nil
 }
@@ -261,9 +267,15 @@ func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
 	data := []Object{}
 	for _, v := range objects {
 		v := v
+		var val interface{}
+		err = json.Unmarshal(v.Value, &val)
+		if err != nil {
+			errorr(rw, http.StatusInternalServerError, err.Error())
+			return
+		}
 		o := Object{
 			Key:    base64.StdEncoding.EncodeToString(v.Key),
-			Value:  base64.StdEncoding.EncodeToString(v.Value),
+			Value:  val,
 			Status: v.Status.String(),
 		}
 		data = append(data, o)

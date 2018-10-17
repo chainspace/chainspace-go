@@ -8,9 +8,9 @@ import (
 )
 
 type Object struct {
-	Key    string `json:"key"`
-	Value  string `json:"value"`
-	Status string `json:"status"`
+	Key    string      `json:"key"`
+	Value  interface{} `json:"value"`
+	Status string      `json:"status"`
 }
 
 type Transaction struct {
