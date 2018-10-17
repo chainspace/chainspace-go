@@ -67,6 +67,19 @@ func success(rw http.ResponseWriter, status int, data interface{}) {
 	response(rw, status, resp{data, "success"})
 }
 
+func (s *Service) objectGet(rw http.ResponseWriter, r *http.Request) {
+	if !strings.EqualFold(r.Header.Get("Content-Type"), "application/json") {
+		fail(rw, http.StatusBadRequest, "unsupported content-type")
+		return
+	}
+	if r.Method == http.MethodPost {
+		fail(rw, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	s.queryObject(rw, r)
+}
+
 func (s *Service) object(rw http.ResponseWriter, r *http.Request) {
 	if !strings.EqualFold(r.Header.Get("Content-Type"), "application/json") {
 		fail(rw, http.StatusBadRequest, "unsupported content-type")
@@ -78,9 +91,6 @@ func (s *Service) object(rw http.ResponseWriter, r *http.Request) {
 		return
 	case http.MethodDelete:
 		s.deleteObject(rw, r)
-		return
-	case http.MethodGet:
-		s.queryObject(rw, r)
 		return
 	default:
 		fail(rw, http.StatusMethodNotAllowed, "method not allowed")
@@ -332,6 +342,7 @@ func (s *Service) objectsReady(rw http.ResponseWriter, r *http.Request) {
 func (s *Service) makeServ(addr string, port int) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/object", s.object)
+	mux.HandleFunc("/object/get", s.objectGet)
 	mux.HandleFunc("/object/ready", s.objectsReady)
 	mux.HandleFunc("/states", s.states)
 	mux.HandleFunc("/transaction", s.transaction)
