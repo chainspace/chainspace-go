@@ -74,12 +74,10 @@ func seedObjects(i int) ([]string, error) {
 		t := seedType{
 			outputty{
 				[]string{fmt.Sprintf("label:%v:%v", _id, i)},
-				randSeq(30),
+				"seed:0:0",
 			},
 		}
 		bt, _ := json.Marshal(&t)
-		fmt.Printf("BODY: %v", string(bt))
-
 		payload := bytes.NewBufferString(string(bt))
 		req, err := http.NewRequest(http.MethodPost, url, payload)
 		req.Header.Add("Content-Type", "application/json")
@@ -108,26 +106,6 @@ func seedObjects(i int) ([]string, error) {
 		fmt.Printf("new seed key: %v\n", key)
 	}
 	return out, nil
-}
-
-func makeTransactionPayload(seed []string, labels [][]string) []byte {
-	outputs := []interface{}{}
-	for i := 0; i < objects; i += 1 {
-		outputs = append(outputs, outputty{labels[i], randSeq(30)})
-	}
-	tx := restsrv.Transaction{
-		Traces: []restsrv.Trace{
-			{
-				ContractID:       contractID,
-				Procedure:        procedure,
-				InputObjectsKeys: seed,
-				OutputObjects:    outputs,
-				Labels:           labels,
-			},
-		},
-	}
-	txbytes, _ := json.Marshal(tx)
-	return txbytes
 }
 
 func objectsReady(ctx context.Context, workerID int, seed []string) {
@@ -192,6 +170,31 @@ func objectsReady(ctx context.Context, workerID int, seed []string) {
 	}
 }
 
+func makeTransactionPayload(seed []string, objectsData []interface{}, labels [][]string, iter int) []byte {
+	outputs := []interface{}{}
+	for i := 0; i < objects; i += 1 {
+		outputs = append(outputs, outputty{labels[i], fmt.Sprintf("worker:%v:%v", i, iter)})
+	}
+	mappings := map[string]interface{}{}
+	for i, _ := range objectsData {
+		mappings[seed[i]] = objectsData[i]
+	}
+	tx := restsrv.Transaction{
+		Traces: []restsrv.Trace{
+			{
+				ContractID:       contractID,
+				Procedure:        procedure,
+				InputObjectsKeys: seed,
+				OutputObjects:    outputs,
+				Labels:           labels,
+			},
+		},
+		Mappings: mappings,
+	}
+	txbytes, _ := json.Marshal(tx)
+	return txbytes
+}
+
 func worker(ctx context.Context, seed []string, labels [][]string, wg *sync.WaitGroup, id int) {
 	/*
 		seed, err := seedObjects()
@@ -212,6 +215,12 @@ func worker(ctx context.Context, seed []string, labels [][]string, wg *sync.Wait
 	metrics[id] = []time.Duration{}
 	mu.Unlock()
 
+	// empty objects first
+	objectsData := []interface{}{}
+	for _, _ = range seed {
+		objectsData = append(objectsData, map[string]interface{}{})
+	}
+	i := 0
 	for {
 		if err := ctx.Err(); err != nil {
 			fmt.Printf("context error: %v\n", err)
@@ -225,7 +234,7 @@ func worker(ctx context.Context, seed []string, labels [][]string, wg *sync.Wait
 		fmt.Printf("worker %v sending new transaction\n", id)
 		start := time.Now()
 		// make transaction
-		txbytes := makeTransactionPayload(seed, labels)
+		txbytes := makeTransactionPayload(seed, objectsData, labels, i)
 		payload := bytes.NewBuffer(txbytes)
 		req, err := http.NewRequest(http.MethodPost, url, payload)
 		req = req.WithContext(ctx)
@@ -257,8 +266,11 @@ func worker(ctx context.Context, seed []string, labels [][]string, wg *sync.Wait
 		}
 
 		data := res.Data.([]interface{})
+		objectsData = []interface{}{}
 		for i, v := range data {
 			seed[i] = v.(map[string]interface{})["key"].(string)
+			objectsData = append(
+				objectsData, v.(map[string]interface{})["value"].(interface{}))
 		}
 
 		mu.Lock()
@@ -270,6 +282,7 @@ func worker(ctx context.Context, seed []string, labels [][]string, wg *sync.Wait
 		// fmt.Printf("worker %v received new objects keys: %v\n", id, seed)
 		fmt.Printf("worker %v received new objects keys: %v\n", id, tot)
 		// time.Sleep(2 * time.Second)
+		i += 1
 	}
 	fmt.Printf("worker %v finished at: %v\n", id, time.Now().Format(time.Stamp))
 }

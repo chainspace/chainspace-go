@@ -27,7 +27,8 @@ func main() {
 			if err := json.Unmarshal(body, &req); err != nil {
 				log.Printf("error: unable to unmarshal body [err=%v]", err)
 			} else {
-				log.Printf("request: %#v", req)
+				log.Printf("inputs:  %v", req.Inputs)
+				log.Printf("outputs: %v", req.Outputs)
 			}
 		}
 

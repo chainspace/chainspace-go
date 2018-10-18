@@ -73,7 +73,7 @@ func (s *Service) objectGet(rw http.ResponseWriter, r *http.Request) {
 		fail(rw, http.StatusBadRequest, "unsupported content-type")
 		return
 	}
-	if r.Method == http.MethodPost {
+	if r.Method != http.MethodPost {
 		fail(rw, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
@@ -307,7 +307,12 @@ func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	objects, err := s.client.SendTransaction(req.ToTransactor())
+	tx, err := req.ToTransactor()
+	if err != nil {
+		fail(rw, http.StatusBadRequest, err.Error())
+		return
+	}
+	objects, err := s.client.SendTransaction(tx)
 	if err != nil {
 		errorr(rw, http.StatusInternalServerError, err.Error())
 		return
