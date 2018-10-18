@@ -38,6 +38,8 @@ message Trace {
   repeated bytes returns = 7;
   repeated strings labels = 8;
   repeated Trace dependencies = 9;
+  repeated bytes inputObjects = 10;
+  repeated bytes inputReferences = 11;
 }
 
 message Object {

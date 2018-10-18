@@ -47,6 +47,15 @@ func getAddress(workerID int) string {
 	return addresses[workerID%len(addresses)]
 }
 
+type seedType struct {
+	Data interface{} `json:"data"`
+}
+
+type outputty struct {
+	Label []string `json:"label"`
+	Value string   `json:"value"`
+}
+
 func seedObjects(i int) ([]string, error) {
 	out := []string{}
 	_addr := getAddress(i)
@@ -55,12 +64,23 @@ func seedObjects(i int) ([]string, error) {
 		Host:   _addr,
 		Path:   "object",
 	}).String()
+	_id := i
 	fmt.Printf("seeding objects for worker %v with %v\n", i, _addr)
 	for i := 0; i < objects; i += 1 {
 		client := http.Client{
 			Timeout: 15 * time.Second,
 		}
-		payload := bytes.NewBufferString(fmt.Sprintf(`{"data": "%v"}`, randSeq(30)))
+
+		t := seedType{
+			outputty{
+				[]string{fmt.Sprintf("label:%v:%v", _id, i)},
+				randSeq(30),
+			},
+		}
+		bt, _ := json.Marshal(&t)
+		fmt.Printf("BODY: %v", string(bt))
+
+		payload := bytes.NewBufferString(string(bt))
 		req, err := http.NewRequest(http.MethodPost, url, payload)
 		req.Header.Add("Content-Type", "application/json")
 		resp, err := client.Do(req)
@@ -88,11 +108,6 @@ func seedObjects(i int) ([]string, error) {
 		fmt.Printf("new seed key: %v\n", key)
 	}
 	return out, nil
-}
-
-type outputty struct {
-	Label []string `json:"label"`
-	Value string   `json:"value"`
 }
 
 func makeTransactionPayload(seed []string, labels [][]string) []byte {

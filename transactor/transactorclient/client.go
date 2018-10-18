@@ -2,6 +2,7 @@ package transactorclient // import "chainspace.io/prototype/transactor/transacto
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -197,7 +198,44 @@ func (c *client) nodesForTx(t *transactor.Transaction) []uint64 {
 	return out
 }
 
+func (c *client) addObjectsToTransation(tx *transactor.Transaction) error {
+	f := func(keys [][]byte) ([][]byte, error) {
+		out := make([][]byte, 0, len(keys))
+		for _, key := range keys {
+			objects, err := c.Query(key)
+			if err != nil {
+				return nil, err
+			}
+			for _, v := range objects {
+				if string(v.Value) != string(objects[0].Value) {
+					return nil, errors.New("inconsistent data")
+				}
+			}
+			out = append(out, objects[0].Value)
+		}
+		return out, nil
+	}
+	for _, t := range tx.Traces {
+		t := t
+		var err error
+		t.InputObjects, err = f(t.InputObjectsKeys)
+		if err != nil {
+			return err
+		}
+		t.InputReferences, err = f(t.InputReferencesKeys)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (c *client) SendTransaction(tx *transactor.Transaction) ([]*transactor.Object, error) {
+	if err := c.addObjectsToTransation(tx); err != nil {
+		log.Error("unable to add objects to the transaction", fld.Err(err))
+		return nil, fmt.Errorf("unable to add objects to the transaction, %v", err)
+	}
+	log.Error("OBJECT LEN", log.Int("LEN", len(tx.Traces[0].InputObjects)))
 	nodes := c.nodesForTx(tx)
 	start := time.Now()
 	// checks + evidences

@@ -25,8 +25,8 @@ type Checker struct {
 }
 
 type body struct {
-	Inputs          []string      `json:"inputs"`
-	ReferenceInputs []string      `json:"referenceInputs"`
+	Inputs          []interface{} `json:"inputs"`
+	ReferenceInputs []interface{} `json:"referenceInputs"`
 	Parameters      []interface{} `json:"parameters"`
 	Outputs         []interface{} `json:"outputs"`
 	Returns         []interface{} `json:"returns"`
@@ -59,8 +59,8 @@ func unmarshalIfaceSlice(ls [][]byte) []interface{} {
 func makeBody(inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string) body {
 
 	return body{
-		Inputs:          encodeToStrings(inputs),
-		ReferenceInputs: encodeToStrings(refInputs),
+		Inputs:          unmarshalIfaceSlice(inputs),
+		ReferenceInputs: unmarshalIfaceSlice(refInputs),
 		Parameters:      unmarshalIfaceSlice(parameters),
 		Outputs:         unmarshalIfaceSlice(outputs),
 		Returns:         unmarshalIfaceSlice(returns),
