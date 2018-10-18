@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"path"
 	"sort"
 	"strings"
 
@@ -175,6 +176,16 @@ func (s *Service) createObject(rw http.ResponseWriter, r *http.Request) {
 	success(rw, http.StatusOK, res)
 }
 
+func (s *Service) swaggerJson(rw http.ResponseWriter, r *http.Request) {
+	fp := path.Join("restsrv", "swagger", "swagger.json")
+	http.ServeFile(rw, r, fp)
+}
+
+func (s *Service) docs(rw http.ResponseWriter, r *http.Request) {
+	fp := path.Join("restsrv", "swagger", "index.html")
+	http.ServeFile(rw, r, fp)
+}
+
 func (s *Service) queryObject(rw http.ResponseWriter, r *http.Request) {
 	key, ok := readdata(rw, r)
 	if !ok {
@@ -340,7 +351,12 @@ func (s *Service) objectsReady(rw http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) makeServ(addr string, port int) *http.Server {
-	mux := http.NewServeMux()
+
+	staticServer := http.FileServer(http.Dir("./restsrv/swagger/"))
+
+	mux := http.NewServeMux() // foo
+	//	// mux.HandleFunc("/docs", s.docs)
+	mux.HandleFunc("/swagger.json", s.swaggerJson)
 	mux.HandleFunc("/object", s.object)
 	mux.HandleFunc("/object/get", s.objectGet)
 	mux.HandleFunc("/object/ready", s.objectsReady)
@@ -348,6 +364,9 @@ func (s *Service) makeServ(addr string, port int) *http.Server {
 	mux.HandleFunc("/transaction", s.transaction)
 	mux.HandleFunc("/kv/get", s.kvGet)
 	mux.HandleFunc("/kv/get-objectid", s.kvGetObjectID)
+	mux.Handle("/docs/",
+		http.StripPrefix("/docs", staticServer))
+
 	handler := cors.Default().Handler(mux)
 	h := &http.Server{
 		Addr:    fmt.Sprintf("%v:%v", addr, port),
