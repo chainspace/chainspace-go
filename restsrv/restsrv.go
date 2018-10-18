@@ -351,11 +351,8 @@ func (s *Service) objectsReady(rw http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) makeServ(addr string, port int) *http.Server {
-
 	staticServer := http.FileServer(http.Dir("./restsrv/swagger/"))
-
-	mux := http.NewServeMux() // foo
-	//	// mux.HandleFunc("/docs", s.docs)
+	mux := http.NewServeMux()
 	mux.HandleFunc("/swagger.json", s.swaggerJson)
 	mux.HandleFunc("/object", s.object)
 	mux.HandleFunc("/object/get", s.objectGet)
