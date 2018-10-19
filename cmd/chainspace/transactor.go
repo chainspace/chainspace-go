@@ -104,7 +104,8 @@ func cmdTransactor(args []string, usage string) {
 			log.Fatal("Invalid payload format for transaction", fld.Err(err))
 		}
 
-		objects, err := transactorClient.SendTransaction(tx.ToTransactor())
+		ttx, _ := tx.ToTransactor()
+		objects, err := transactorClient.SendTransaction(ttx)
 		if err != nil {
 			log.Fatal("unable to send transaction", fld.Err(err))
 		}

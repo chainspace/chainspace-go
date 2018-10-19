@@ -36,7 +36,7 @@ func runCheckers(ctx context.Context, checkers CheckersMap, tx *Transaction) (bo
 		t := v.Trace
 		c := v.Checker
 		g.Go(func() error {
-			result := c.Check(t.InputObjectsKeys, t.InputReferencesKeys, t.Parameters, t.OutputObjects, t.Returns, StringsSlice(t.Labels).AsSlice(), t.Dependencies)
+			result := c.Check(t.InputObjects, t.InputReferences, t.Parameters, t.OutputObjects, t.Returns, StringsSlice(t.Labels).AsSlice(), t.Dependencies)
 			if !result {
 				return errors.New("check failed")
 			}

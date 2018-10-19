@@ -3,6 +3,7 @@ package restsrv // import "chainspace.io/prototype/restsrv"
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 
 	"chainspace.io/prototype/transactor"
 )
@@ -14,17 +15,22 @@ type Object struct {
 }
 
 type Transaction struct {
-	Traces []Trace `json:"traces"`
+	Traces   []Trace                `json:"traces"`
+	Mappings map[string]interface{} `json:"mappings"`
 }
 
-func (ct *Transaction) ToTransactor() *transactor.Transaction {
+func (ct *Transaction) ToTransactor() (*transactor.Transaction, error) {
 	traces := make([]*transactor.Trace, 0, len(ct.Traces))
 	for _, t := range ct.Traces {
-		traces = append(traces, t.ToTransactor())
+		ttrace, err := t.ToTransactor(ct.Mappings)
+		if err != nil {
+			return nil, err
+		}
+		traces = append(traces, ttrace)
 	}
 	return &transactor.Transaction{
 		Traces: traces,
-	}
+	}, nil
 }
 
 type Trace struct {
@@ -39,7 +45,7 @@ type Trace struct {
 	Dependencies        []Trace       `json:"dependencies"`
 }
 
-func (ct *Trace) ToTransactor() *transactor.Trace {
+func (ct *Trace) ToTransactor(mappings map[string]interface{}) (*transactor.Trace, error) {
 	fromB64String := func(s []string) [][]byte {
 		out := make([][]byte, 0, len(s))
 		for _, v := range s {
@@ -58,17 +64,44 @@ func (ct *Trace) ToTransactor() *transactor.Trace {
 	}
 	deps := make([]*transactor.Trace, 0, len(ct.Dependencies))
 	for _, d := range ct.Dependencies {
-		deps = append(deps, d.ToTransactor())
+		ttrace, err := d.ToTransactor(mappings)
+		if err != nil {
+			return nil, err
+		}
+		deps = append(deps, ttrace)
+	}
+
+	inputObjects := make([][]byte, 0, len(ct.InputObjectsKeys))
+	for _, v := range ct.InputObjectsKeys {
+		object, ok := mappings[v]
+		if !ok {
+			return nil, fmt.Errorf("missing object mapping for key [%v]", v)
+		}
+		bobject, _ := json.Marshal(object)
+		inputObjects = append(inputObjects, bobject)
+
+	}
+	inputReferences := make([][]byte, 0, len(ct.InputReferencesKeys))
+	for _, v := range ct.InputReferencesKeys {
+		object, ok := mappings[v]
+		if !ok {
+			return nil, fmt.Errorf("missing object mapping for key [%v]", v)
+		}
+		bobject, _ := json.Marshal(object)
+		inputReferences = append(inputReferences, bobject)
+
 	}
 	return &transactor.Trace{
 		ContractID:          ct.ContractID,
 		Procedure:           ct.Procedure,
 		InputObjectsKeys:    fromB64String(ct.InputObjectsKeys),
 		InputReferencesKeys: fromB64String(ct.InputReferencesKeys),
+		InputObjects:        inputObjects,
+		InputReferences:     inputReferences,
 		OutputObjects:       toJsonList(ct.OutputObjects),
 		Parameters:          toJsonList(ct.Parameters),
 		Returns:             toJsonList(ct.Returns),
 		Labels:              transactor.StringsSlice{}.FromSlice(ct.Labels),
 		Dependencies:        deps,
-	}
+	}, nil
 }

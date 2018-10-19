@@ -73,7 +73,7 @@ func (s *Service) objectGet(rw http.ResponseWriter, r *http.Request) {
 		fail(rw, http.StatusBadRequest, "unsupported content-type")
 		return
 	}
-	if r.Method == http.MethodPost {
+	if r.Method != http.MethodPost {
 		fail(rw, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
@@ -152,8 +152,35 @@ func BuildObjectResponse(objects []*transactor.Object) (Object, error) {
 	return data[0], nil
 }
 
+func readifacedata(rw http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to read request: %v", err))
+		return nil, false
+	}
+	req := struct {
+		Data interface{} `json:"data"`
+	}{}
+	if err := json.Unmarshal(body, &req); err != nil {
+		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to unmarshal: %v", err))
+		return nil, false
+	}
+	if req.Data == nil {
+		fail(rw, http.StatusBadRequest, "empty data")
+		return nil, false
+	}
+
+	b, err := json.Marshal(req.Data)
+	if err != nil {
+		fail(rw, http.StatusBadRequest, "invalid data")
+		return nil, false
+	}
+
+	return b, true
+}
+
 func (s *Service) createObject(rw http.ResponseWriter, r *http.Request) {
-	rawObject, ok := readdata(rw, r)
+	rawObject, ok := readifacedata(rw, r)
 	if !ok {
 		return
 	}
@@ -280,7 +307,12 @@ func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	objects, err := s.client.SendTransaction(req.ToTransactor())
+	tx, err := req.ToTransactor()
+	if err != nil {
+		fail(rw, http.StatusBadRequest, err.Error())
+		return
+	}
+	objects, err := s.client.SendTransaction(tx)
 	if err != nil {
 		errorr(rw, http.StatusInternalServerError, err.Error())
 		return

@@ -47,6 +47,15 @@ func getAddress(workerID int) string {
 	return addresses[workerID%len(addresses)]
 }
 
+type seedType struct {
+	Data interface{} `json:"data"`
+}
+
+type outputty struct {
+	Label []string `json:"label"`
+	Value string   `json:"value"`
+}
+
 func seedObjects(i int) ([]string, error) {
 	out := []string{}
 	_addr := getAddress(i)
@@ -55,12 +64,21 @@ func seedObjects(i int) ([]string, error) {
 		Host:   _addr,
 		Path:   "object",
 	}).String()
+	_id := i
 	fmt.Printf("seeding objects for worker %v with %v\n", i, _addr)
 	for i := 0; i < objects; i += 1 {
 		client := http.Client{
 			Timeout: 15 * time.Second,
 		}
-		payload := bytes.NewBufferString(fmt.Sprintf(`{"data": "%v"}`, randSeq(30)))
+
+		t := seedType{
+			outputty{
+				[]string{fmt.Sprintf("label:%v:%v", _id, i)},
+				"seed:0:0",
+			},
+		}
+		bt, _ := json.Marshal(&t)
+		payload := bytes.NewBufferString(string(bt))
 		req, err := http.NewRequest(http.MethodPost, url, payload)
 		req.Header.Add("Content-Type", "application/json")
 		resp, err := client.Do(req)
@@ -88,31 +106,6 @@ func seedObjects(i int) ([]string, error) {
 		fmt.Printf("new seed key: %v\n", key)
 	}
 	return out, nil
-}
-
-type outputty struct {
-	Label []string `json:"label"`
-	Value string   `json:"value"`
-}
-
-func makeTransactionPayload(seed []string, labels [][]string) []byte {
-	outputs := []interface{}{}
-	for i := 0; i < objects; i += 1 {
-		outputs = append(outputs, outputty{labels[i], randSeq(30)})
-	}
-	tx := restsrv.Transaction{
-		Traces: []restsrv.Trace{
-			{
-				ContractID:       contractID,
-				Procedure:        procedure,
-				InputObjectsKeys: seed,
-				OutputObjects:    outputs,
-				Labels:           labels,
-			},
-		},
-	}
-	txbytes, _ := json.Marshal(tx)
-	return txbytes
 }
 
 func objectsReady(ctx context.Context, workerID int, seed []string) {
@@ -177,6 +170,31 @@ func objectsReady(ctx context.Context, workerID int, seed []string) {
 	}
 }
 
+func makeTransactionPayload(seed []string, objectsData []interface{}, labels [][]string, iter int) []byte {
+	outputs := []interface{}{}
+	for i := 0; i < objects; i += 1 {
+		outputs = append(outputs, outputty{labels[i], fmt.Sprintf("worker:%v:%v", i, iter)})
+	}
+	mappings := map[string]interface{}{}
+	for i, _ := range objectsData {
+		mappings[seed[i]] = objectsData[i]
+	}
+	tx := restsrv.Transaction{
+		Traces: []restsrv.Trace{
+			{
+				ContractID:       contractID,
+				Procedure:        procedure,
+				InputObjectsKeys: seed,
+				OutputObjects:    outputs,
+				Labels:           labels,
+			},
+		},
+		Mappings: mappings,
+	}
+	txbytes, _ := json.Marshal(tx)
+	return txbytes
+}
+
 func worker(ctx context.Context, seed []string, labels [][]string, wg *sync.WaitGroup, id int) {
 	/*
 		seed, err := seedObjects()
@@ -197,6 +215,12 @@ func worker(ctx context.Context, seed []string, labels [][]string, wg *sync.Wait
 	metrics[id] = []time.Duration{}
 	mu.Unlock()
 
+	// empty objects first
+	objectsData := []interface{}{}
+	for _, _ = range seed {
+		objectsData = append(objectsData, map[string]interface{}{})
+	}
+	i := 0
 	for {
 		if err := ctx.Err(); err != nil {
 			fmt.Printf("context error: %v\n", err)
@@ -210,7 +234,7 @@ func worker(ctx context.Context, seed []string, labels [][]string, wg *sync.Wait
 		fmt.Printf("worker %v sending new transaction\n", id)
 		start := time.Now()
 		// make transaction
-		txbytes := makeTransactionPayload(seed, labels)
+		txbytes := makeTransactionPayload(seed, objectsData, labels, i)
 		payload := bytes.NewBuffer(txbytes)
 		req, err := http.NewRequest(http.MethodPost, url, payload)
 		req = req.WithContext(ctx)
@@ -242,8 +266,11 @@ func worker(ctx context.Context, seed []string, labels [][]string, wg *sync.Wait
 		}
 
 		data := res.Data.([]interface{})
+		objectsData = []interface{}{}
 		for i, v := range data {
 			seed[i] = v.(map[string]interface{})["key"].(string)
+			objectsData = append(
+				objectsData, v.(map[string]interface{})["value"].(interface{}))
 		}
 
 		mu.Lock()
@@ -255,6 +282,7 @@ func worker(ctx context.Context, seed []string, labels [][]string, wg *sync.Wait
 		// fmt.Printf("worker %v received new objects keys: %v\n", id, seed)
 		fmt.Printf("worker %v received new objects keys: %v\n", id, tot)
 		// time.Sleep(2 * time.Second)
+		i += 1
 	}
 	fmt.Printf("worker %v finished at: %v\n", id, time.Now().Format(time.Stamp))
 }

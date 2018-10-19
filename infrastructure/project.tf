@@ -485,7 +485,15 @@ resource "google_compute_instance_from_template" "sharding" {
      sudo chmod -R 777 /etc/chainspace
      sudo chmod -R 777 /etc/chainspace/node_id
      sudo echo ${count.index+1} > /etc/chainspace/node_id
-     sudo apt-get install -y upx htop tmux psmisc
+     sudo apt-get update
+     sudo apt-get install -y upx htop tmux psmisc apt-transport-https ca-certificates curl gnupg2 software-properties-common
+     curl -fsSL https://download.docker.com/linux/debian/gpg | sudo apt-key add -
+     sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/debian $(lsb_release -cs) stable"
+     sudo apt-get update
+     sudo apt-get install -y docker-ce
+     sudo gpasswd -a $USER docker
+     sudo yes | sudo gcloud auth configure-docker
+     sudo docker pull gcr.io/acoustic-atom-211511/chainspace.io/contract-dummy:latest
      EOF
     ]
   }

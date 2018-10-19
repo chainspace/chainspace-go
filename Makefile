@@ -67,7 +67,7 @@ gcp: ## build and compress in order to send to gcp
 	upx -o ./infrastructure/chainspace.upx chainspace
 
 contract: ## build dummy contract docker
-	docker build -t "chainspace.io/contract-dummy:latest" -f ./dummycontract/Dockerfile ./dummycontract
+	docker build -t "chainspace.io/contract-dummy:latest" -t "gcr.io/acoustic-atom-211511/chainspace.io/contract-dummy:latest" -f ./dummycontract/Dockerfile ./dummycontract
 
 .PHONY: help
 
