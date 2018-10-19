@@ -6,22 +6,27 @@ Chainspace is a smart contract system offering speedy consensus and unlimited ho
 
 At present, our running code has two main components:
 
-* the `transactor` is a sharding component. It provides an implementation of the Sharded Byzantine Atomic Commit (S-BAC) protocol detailed in the Chainspace academic paper.
-* the consensus component, which implements the leaderless consensus protocol detailed in the Blockmania paper.
+* the `transactor` is a sharding component. It provides an implementation of the Sharded Byzantine Atomic Commit (S-BAC) protocol detailed in the [Chainspace](https://arxiv.org/abs/1708.03778) academic paper.
+* the consensus component, which implements the leaderless consensus protocol detailed in the [Blockmania](https://arxiv.org/abs/1809.01620) paper.
 
 Eventually, it's likely that we will split these two components. A project wanting only fast consensus, but no sharding, should be able use Blockmania by itself. For projects that need the added horizontal scalability of sharding, the S-BAC component would be added. But for the moment, the two components co-exist in the same codebase.
 
 ### Development Setup
 
-You'll need Go `1.11`. This is relatively new, don't try to use anything older.
+There are several prerequisites to get a running system working:
 
-Run `make install`. This will build and install the `chainspace` binary as well as the `httptest` load generator. You can generate a new set of shards, start the nodes, and hit them with a load test. See the help documentation (`chainspace -h` and `httptest -h`) for each binary.
+* Go `1.11`. Earlier versions won't work.
+* Install [Docker](https://docs.docker.com/install/) for your platform.
+* Test that Docker is working. Run `docker run hello-world` in a shell. Fix any errors before proceeding.
+
+With those requirements met, run `make install`. This will build and install the `chainspace` binary as well as the `httptest` load generator. You can generate a new set of shards, start the nodes, and hit them with a load test. See the help documentation (`chainspace -h` and `httptest -h`) for each binary.
+
 
 ### Setting up and running nodes
 
 The `chainspace init <networkname>` command, by default, creates a network consisting of 12 nodes grouped into 3 shards of 4 nodes each.
 
-The setup you get from that is at present heavily skewed towards convenient development rather than production use. It will change as we get closer to production.
+The setup you get from that is heavily skewed towards convenient development rather than production use. It will change as we get closer to production.
 
 Have a look at the config files for the network you've generated (stored by default in `~/.chainspace/<networkname>`). The `network.yaml` file contains public signing keys and transport encryption certificates for each node in the network. Everything in `network.yaml` is public, and for the moment it defines network topology. Later, it will be replaced by a directory component.
 
@@ -41,8 +46,6 @@ chainspace run foonet 4
 chainspace run foonet 7
 chainspace run foonet 10
 ```
-
-
 
 A convenient script runner is included. The short way to run it is:
 
@@ -139,6 +142,11 @@ Running `chainspace genload` with swap enabled can cause system lockups on Linux
 
 
 
+### REST Documentation
+
+Many parts of the system are available to poke at via a RESTful HTTP server interface. After starting a node locally, you can see what's available by going to http://localhost:8080/docs
+
+TODO: we still need to really document how to use the REST endpoints from a conceptual standpoint.
 
 ### Adding dependencies
 
