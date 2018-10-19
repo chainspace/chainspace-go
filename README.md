@@ -2,9 +2,9 @@
 
 [![pipeline status](https://code.constructiveproof.com/chainspace/prototype/badges/master/pipeline.svg)](https://code.constructiveproof.com/chainspace/prototype/commits/master) [![coverage report](https://code.constructiveproof.com/chainspace/prototype/badges/master/coverage.svg)](https://code.constructiveproof.com/chainspace/prototype/commits/master)
 
-Chainspace is a smart contract system offering speedy consensus and unlimited horizontal scalability. 
+Chainspace is a smart contract system offering speedy consensus and unlimited horizontal scalability.
 
-At present, it has two main components:
+At present, our running code has two main components:
 
 * the `transactor` is a sharding component. It provides an implementation of the Sharded Byzantine Atomic Commit (S-BAC) protocol detailed in the Chainspace academic paper.
 * the consensus component, which implements the leaderless consensus protocol detailed in the Blockmania paper.
@@ -13,7 +13,7 @@ Eventually, it's likely that we will split these two components. A project wanti
 
 ### Development Setup
 
-You'll need Go `1.11`. This is relatively new, don't try to use anything older. 
+You'll need Go `1.11`. This is relatively new, don't try to use anything older.
 
 Run `make install`. This will build and install the `chainspace` binary as well as the `httptest` load generator. You can generate a new set of shards, start the nodes, and hit them with a load test. See the help documentation (`chainspace -h` and `httptest -h`) for each binary.
 
