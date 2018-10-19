@@ -1,31 +1,47 @@
 kvstore
 =======
 
+TODO: Add a description of what the Key Value store is and does, how it relates to SBAC, contracts, etc.
+
 How to test the key value storage.
 
+Prerequisites
+-------------
+
+* Install [Docker](https://docs.docker.com/install/) for your platform
+* Test that Docker is working. Run `docker run hello-world` in a shell. Fix any errors before proceeding.
+* Set up a testnet
+
+Running the Key Value store
+---------------
+
 Build the docker image for your contracts, you can do this using the makefile at the root of the repository:
+
 ```
 $ make contract
 ```
-In the future we could expect chainspace to pull the docker image directly from some docker registry
+In the future chainspace will pull the docker image directly from a docker registry according to which contract is being run. At present during development we've simply hard-coded in a dummy contract inside a Docker container we've made.  
 
-Then run the script `script/run-sharding/testnet`.
+Then run the script `script/run-sharding-testnet`.
 ```
-$ ./script/run-sharding/testnet N_SHARDS
+$ NUM_SHARDS=3
+$ ./script/run-sharding-testnet $NUM_SHARDS
 ```
 
 This script will:
-* initialize a new chainspace network with N shards
-* start the different contracts required by your network (by default only the mock one)
+
+* initialize a new chainspace network `testnet-sharding-$NUM_SHARDS` with NUM_SHARDS shards
+* start the different contracts required by your network (by default only the dummy contract)
 * start the nodes of your network
 
-The generated configuration expose the http rest api on node-1 on the port 8080.
+The generated configuration exposes an HTTP REST API on node-1 on the port 8080.
 
 In order to test the key value store you can use the httptest binary (which is installed at the same time as the chainspace binary when you run `make install`).
 
 ```
 $ httptest -addr "0.0.0.0:8080" -workers 1 -objects 3 -duration 20
 ```
+
 This will run the httptest for 20 second, with one worker creating 3 objects per transaction.
 
 When it start running you should see a similar output on the standard output:
