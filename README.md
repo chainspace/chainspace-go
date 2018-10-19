@@ -2,7 +2,9 @@
 
 [![pipeline status](https://code.constructiveproof.com/chainspace/prototype/badges/master/pipeline.svg)](https://code.constructiveproof.com/chainspace/prototype/commits/master) [![coverage report](https://code.constructiveproof.com/chainspace/prototype/badges/master/coverage.svg)](https://code.constructiveproof.com/chainspace/prototype/commits/master)
 
-This is a pre-alpha smart contract system comprising two main components:
+Chainspace is a smart contract system offering speedy consensus and unlimited horizontal scalability. 
+
+At present, it has two main components:
 
 * the `transactor` is a sharding component. It provides an implementation of the Sharded Byzantine Atomic Commit (S-BAC) protocol detailed in the Chainspace academic paper.
 * the consensus component, which implements the leaderless consensus protocol detailed in the Blockmania paper.
