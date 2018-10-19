@@ -15,6 +15,7 @@ type request struct {
 	Outputs         interface{} `json:"outputs"`
 	Labels          [][]string  `json:"labels"`
 	Returns         interface{} `json:"returns"`
+	Dependencies    []request   `json:"dependencies"`
 }
 
 func main() {

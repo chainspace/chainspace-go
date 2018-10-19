@@ -24,18 +24,18 @@ type Checker struct {
 	addr          string
 }
 
-type body struct {
+type trace struct {
 	Inputs          []interface{} `json:"inputs"`
 	ReferenceInputs []interface{} `json:"referenceInputs"`
 	Parameters      []interface{} `json:"parameters"`
 	Outputs         []interface{} `json:"outputs"`
 	Returns         []interface{} `json:"returns"`
 	Labels          [][]string    `json:"labels"`
+	Dependencies    []trace       `json:"dependencies"`
 }
 
 func encodeToStrings(ls [][]byte) []string {
 	out := make([]string, 0, len(ls))
-
 	for _, v := range ls {
 		out = append(out, base64.StdEncoding.EncodeToString(v))
 	}
@@ -56,15 +56,29 @@ func unmarshalIfaceSlice(ls [][]byte) []interface{} {
 	return out
 }
 
-func makeBody(inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string) body {
+func makeTrace(inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string, traces []*transactor.Trace) trace {
+	deps := []trace{}
+	for _, t := range traces {
+		t := t
+		trace := makeTrace(
+			t.InputObjects,
+			t.InputReferences,
+			t.Parameters,
+			t.OutputObjects,
+			t.Returns,
+			transactor.StringsSlice(t.Labels).AsSlice(),
+			t.Dependencies)
+		deps = append(deps, trace)
+	}
 
-	return body{
+	return trace{
 		Inputs:          unmarshalIfaceSlice(inputs),
 		ReferenceInputs: unmarshalIfaceSlice(refInputs),
 		Parameters:      unmarshalIfaceSlice(parameters),
 		Outputs:         unmarshalIfaceSlice(outputs),
 		Returns:         unmarshalIfaceSlice(returns),
 		Labels:          labels,
+		Dependencies:    deps,
 	}
 }
 
@@ -74,7 +88,7 @@ func (c Checker) ContractID() string { return c.iD }
 
 func (c Checker) Check(
 	inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string, dependencies []*transactor.Trace) bool {
-	body := makeBody(inputs, refInputs, parameters, outputs, returns, labels)
+	body := makeTrace(inputs, refInputs, parameters, outputs, returns, labels, dependencies)
 	bbody, _ := json.Marshal(body)
 	payload := bytes.NewBuffer(bbody)
 

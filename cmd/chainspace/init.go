@@ -120,13 +120,14 @@ func cmdInit(args []string, usage string) {
 		Docker: true,
 	}
 
+	dummyimage := "gcr.io/acoustic-atom-211511/chainspace.io/contract-dummy:latest"
 	cts := &config.Contracts{
 		DockerMinimalVersion: "1.30",
 		DockerContracts: []config.DockerContract{
 			{
 				Name:           "dummy",
 				Procedures:     []string{"dummy_ok", "dummy_ko"},
-				Image:          "chainspace.io/contract-dummy:latest",
+				Image:          dummyimage,
 				Addr:           "http://0.0.0.0",
 				HostPort:       "1789",
 				Port:           "8080",
