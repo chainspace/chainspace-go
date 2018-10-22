@@ -28,6 +28,8 @@ func cmdInit(args []string, usage string) {
 	httpPort := opts.Flags("--http-port").Label("PORT").Int("HTTP port to use with the shards")
 	disableTransactor := opts.Flags("--disable-transactor").Label("BOOL").Bool("Disable transactor")
 	manageContracts := opts.Flags("--manage-contracts").Label("BOOL").Bool("Manage docker contracts")
+	enablePubsub := opts.Flags("--disable-pubsub").Label("BOOL").Bool("Enable pubsub")
+	pubsubPort := opts.Flags("--pubsub-port").Label("PORT").Int("Port to use for the pubsub server")
 
 	params := opts.Parse(args)
 
@@ -109,6 +111,15 @@ func cmdInit(args []string, usage string) {
 
 	storage := &config.Storage{
 		Type: "badger",
+	}
+
+	var epb bool
+	if enablePubsub != nil {
+		epb = *enablePubsub
+	}
+	pubsub := &config.Pubsub{
+		Enabled: epb,
+		Port:    pubsubPort,
 	}
 
 	var mContracts bool
@@ -193,6 +204,7 @@ func cmdInit(args []string, usage string) {
 			DisableTransactor: disableTxtor,
 			HTTP:              httpcfg,
 			Logging:           logging,
+			Pubsub:            pubsub,
 			Registries:        registries,
 			Storage:           storage,
 		}

@@ -127,6 +127,7 @@ type Node struct {
 	DisableTransactor bool           `yaml:"disable.transactor,omitempty"`
 	HTTP              HTTP           `yaml:"http,omitempty"`
 	Logging           *Logging       `yaml:"logging"`
+	Pubsub            *Pubsub        `yaml:"pubsub"`
 	Registries        []Registry     `yaml:"registries,omitempty"`
 	Storage           *Storage       `yaml:"storage"`
 }
@@ -150,6 +151,13 @@ type Peer struct {
 type PeerKey struct {
 	Type  string
 	Value string
+}
+
+// Pubsub represent the configuration for the pub sub system
+type Pubsub struct {
+	Enabled bool `yaml:"enabled"`
+	// if not specified choose random port and announce with mdns
+	Port *int `yaml:"port"`
 }
 
 // RateLimit represents the configuration for rate-limiting within the system.
