@@ -164,10 +164,10 @@ func cmdInit(args []string, usage string) {
 				Enabled: true,
 				Port:    *httpPort,
 			}
-		} else if i == 1 {
+		} else {
 			httpcfg = config.HTTP{
 				Enabled: true,
-				Port:    8080,
+				Port:    8000 + i,
 			}
 		}
 
