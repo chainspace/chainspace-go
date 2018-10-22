@@ -12,9 +12,9 @@ import (
 	"github.com/grandcat/zeroconf"
 )
 
-type Callback func(nodeID uint64, addr string)
+type mdnscallback func(nodeID uint64, addr string)
 
-func bootstrapMDNS(ctx context.Context, network string, cb Callback) error {
+func bootstrapMDNS(ctx context.Context, network string, cb mdnscallback) error {
 	resolver, err := zeroconf.NewResolver(nil)
 	if err != nil {
 		return err
@@ -44,18 +44,18 @@ func bootstrapMDNS(ctx context.Context, network string, cb Callback) error {
 			}
 		}
 	}()
-	service := fmt.Sprintf("_%s_pubsub._chainspace", strings.ToLower(t.id))
+	service := fmt.Sprintf("_%s_pubsub._chainspace", strings.ToLower(network))
 	return resolver.Browse(ctx, service, "local.", entries)
 }
 
 // BootstrapMDNS will try to auto-discover the addresses of initial nodes using
 // multicast DNS.
-func BootstrapMDNS(network string, cb Callback) {
-	log.Debug("Bootstrapping network via mDNS", fld.NetworkName(t.name))
+func BootstrapMDNS(network string, cb mdnscallback) {
+	log.Debug("Bootstrapping network via mDNS", fld.NetworkName(network))
 	go func() {
 		for {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			if err := bootstrapMDNS(ctx); err != nil {
+			if err := bootstrapMDNS(ctx, network, cb); err != nil {
 				log.Error("Unable to start bootstrapping mDNS", log.Err(err))
 			}
 			select {

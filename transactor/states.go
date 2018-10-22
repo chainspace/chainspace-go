@@ -684,9 +684,15 @@ func (s *Service) toSucceeded(tx *TxDetails) (State, error) {
 		log.Error("unable to finish transaction", fld.TxID(tx.HashID), fld.Err(err))
 	}
 
-	if err := s.saveLabels(tx.Tx); err != nil {
-		log.Error("unable to save traces", fld.Err(err))
+	ids, err := MakeIDs(tx.Tx)
+	if err != nil {
+		log.Error("unable to make ids", fld.Err(err))
+		return StateSucceeded, nil
 	}
+
+	s.saveLabels(ids)
+	s.publishObjects(ids)
+
 	return StateSucceeded, nil
 }
 

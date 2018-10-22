@@ -18,6 +18,7 @@ import (
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
+	"chainspace.io/prototype/pubsub"
 	"chainspace.io/prototype/service"
 	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
@@ -37,6 +38,7 @@ type Config struct {
 	Top         *network.Topology
 	SigningKey  *config.Key
 	Checkers    []Checker
+	Pubsub      *pubsub.Server
 	ShardSize   uint64
 	ShardCount  uint64
 	MaxPayload  int
@@ -51,6 +53,7 @@ type Service struct {
 	nodeID      uint64
 	pe          *pendingEvents
 	privkey     signature.PrivateKey
+	ps          *pubsub.Server
 	store       *badger.DB
 	shardCount  uint64
 	shardID     uint64
@@ -341,11 +344,18 @@ func (s *Service) QueryObjectByKey(key []byte) ([]byte, error) {
 	return objects[0].Value, nil
 }
 
-func (s *Service) saveLabels(tx *Transaction) error {
-	ids, err := MakeIDs(tx)
-	if err != nil {
-		return err
+func (s *Service) publishObjects(ids *IDs) {
+	for _, topair := range ids.TraceObjectPairs {
+		for _, outo := range topair.OutputObjects {
+			shard := s.top.ShardForKey(outo.GetKey())
+			if shard == s.shardID {
+				s.ps.Publish(outo.Key, true)
+			}
+		}
 	}
+}
+
+func (s *Service) saveLabels(ids *IDs) error {
 	for _, topair := range ids.TraceObjectPairs {
 		for _, outo := range topair.OutputObjects {
 			shard := s.top.ShardForKey(outo.GetKey())

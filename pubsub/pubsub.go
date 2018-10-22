@@ -1,16 +1,18 @@
 package pubsub
 
 import (
-	"encoding/binary"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"chainspace.io/prototype/freeport"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/log/fld"
+	"chainspace.io/prototype/pubsub/internal"
 	"github.com/grandcat/zeroconf"
 )
 
@@ -24,17 +26,13 @@ type Server struct {
 	port      int
 	networkID string
 	nodeID    uint64
-	conns     []net.Conn
-}
-
-type Payload struct {
-	ObjectID string `json:"object_id"`
-	Success  bool   `json:"success"`
+	conns     []*internal.Conn
+	mu        sync.Mutex
 }
 
 func (s *Server) handleConnection(conn net.Conn) {
 	// may need to init with block number or sumbthing in the future
-	s.conns = append(s.conns, conn)
+	s.conns = append(s.conns, internal.NewConn(conn))
 }
 
 func (s *Server) listen(ln net.Listener) {
@@ -47,42 +45,20 @@ func (s *Server) listen(ln net.Listener) {
 	}
 }
 
-func (s *Server) Publish(objectID string, success bool) {
-	payload := Payload{
-		ObjectID: objectID,
+func (s *Server) Publish(objectID []byte, success bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	payload := internal.Payload{
+		ObjectID: base64.StdEncoding.EncodeToString(objectID),
 		Success:  success,
+		NodeID:   s.nodeID,
 	}
 	b, _ := json.Marshal(&payload)
-	for _, v := range s.conns {
-
-	}
-}
-func (c *Conn) writePayload(payload []byte, timeout time.Duration) error {
-	size := len(payload)
-	buf := c.buf[:4]
-	binary.LittleEndian.PutUint32(buf, uint32(size))
-	need := 4
-	for need > 0 {
-		c.conn.SetWriteDeadline(time.Now().Add(timeout))
-		n, err := c.conn.Write(buf)
-		if err != nil {
-			c.conn.Close()
-			return err
+	for _, c := range s.conns {
+		if err := c.Write(b, 5*time.Second); err != nil {
+			log.Error("unable to publish objectID", fld.Err(err))
 		}
-		buf = buf[n:]
-		need -= n
 	}
-	for size > 0 {
-		c.conn.SetWriteDeadline(time.Now().Add(timeout))
-		n, err := c.conn.Write(payload)
-		if err != nil {
-			c.conn.Close()
-			return err
-		}
-		payload = payload[n:]
-		size -= n
-	}
-	return nil
 }
 
 func announceMDNS(networkID string, nodeID uint64, port int) error {
@@ -93,11 +69,17 @@ func announceMDNS(networkID string, nodeID uint64, port int) error {
 }
 
 func New(cfg *Config) (*Server, error) {
-	var port int
-	var mdns bool
+	var (
+		port int
+		mdns bool
+		err  error
+	)
 	if cfg.Port == nil {
 		mdns = true
-		port, err := freeport.TCP("")
+		port, err = freeport.TCP("")
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		port = *cfg.Port
 	}
@@ -117,7 +99,7 @@ func New(cfg *Config) (*Server, error) {
 		port:      port,
 		networkID: cfg.NetworkID,
 		nodeID:    cfg.NodeID,
-		conns:     []net.Conn{},
+		conns:     []*internal.Conn{},
 	}
 	go srv.listen(ln)
 

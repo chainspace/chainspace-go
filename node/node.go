@@ -22,6 +22,7 @@ import (
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
+	"chainspace.io/prototype/pubsub"
 	"chainspace.io/prototype/restsrv"
 	"chainspace.io/prototype/service"
 	"chainspace.io/prototype/transactor"
@@ -404,7 +405,21 @@ func Run(cfg *Config) (*Server, error) {
 		kvstore *kv.Service
 		rstsrv  *restsrv.Service
 		txtor   *transactor.Service
+		pbsb    *pubsub.Server
 	)
+
+	if cfg.Node.Pubsub.Enabled {
+		cfg := &pubsub.Config{
+			Port:      cfg.Node.Pubsub.Port,
+			NetworkID: cfg.NetworkName,
+			NodeID:    cfg.NodeID,
+		}
+		pbsb, err = pubsub.New(cfg)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("node: unable to instantiate the pubsub server %v", err)
+		}
+	}
 
 	tcheckers := []transactor.Checker{}
 	checkers := cts.GetCheckers()
@@ -433,6 +448,7 @@ func Run(cfg *Config) (*Server, error) {
 			ShardSize:   uint64(cfg.Network.Shard.Size),
 			SigningKey:  cfg.Keys.SigningKey,
 			Top:         top,
+			Pubsub:      pbsb,
 		}
 		txtor, err = transactor.New(tcfg)
 		if err != nil {
