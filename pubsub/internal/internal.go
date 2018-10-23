@@ -3,6 +3,7 @@ package internal
 import (
 	"encoding/binary"
 	"encoding/json"
+	"io"
 	"net"
 	"time"
 )
@@ -23,29 +24,23 @@ func (c *Conn) Close() error {
 }
 
 func (c *Conn) Write(payload []byte, timeout time.Duration) error {
-	size := len(payload)
-	buf := c.buf
-	binary.LittleEndian.PutUint32(buf, uint32(size))
-	need := 4
+	buf := make([]byte, len(payload)+4)
+	binary.LittleEndian.PutUint32(buf, uint32(len(payload)))
+	copy(buf[4:], payload)
+	need := len(buf)
 	for need > 0 {
 		c.conn.SetWriteDeadline(time.Now().Add(timeout))
 		n, err := c.conn.Write(buf)
+		e, ok := err.(net.Error)
+		if (ok && e.Timeout()) || err == io.EOF {
+			return nil
+		}
 		if err != nil {
 			c.conn.Close()
 			return err
 		}
 		buf = buf[n:]
 		need -= n
-	}
-	for size > 0 {
-		c.conn.SetWriteDeadline(time.Now().Add(timeout))
-		n, err := c.conn.Write(payload)
-		if err != nil {
-			c.conn.Close()
-			return err
-		}
-		payload = payload[n:]
-		size -= n
 	}
 	return nil
 }
@@ -56,6 +51,10 @@ func (c *Conn) Read(timeout time.Duration) (*Payload, error) {
 	for need > 0 {
 		c.conn.SetReadDeadline(time.Now().Add(timeout))
 		n, err := c.conn.Read(buf[4-need : 4])
+		e, ok := err.(net.Error)
+		if (ok && e.Timeout()) || err == io.EOF {
+			return nil, nil
+		}
 		if err != nil {
 			c.conn.Close()
 			return nil, err
@@ -72,6 +71,10 @@ func (c *Conn) Read(timeout time.Duration) (*Payload, error) {
 	for need > 0 {
 		c.conn.SetReadDeadline(time.Now().Add(timeout))
 		n, err := c.conn.Read(buf[size-need:])
+		e, ok := err.(net.Error)
+		if (ok && e.Timeout()) || err == io.EOF {
+			return nil, nil
+		}
 		if err != nil {
 			c.conn.Close()
 			return nil, err

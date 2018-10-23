@@ -157,7 +157,7 @@ type PeerKey struct {
 type Pubsub struct {
 	Enabled bool `yaml:"enabled"`
 	// if not specified choose random port and announce with mdns
-	Port *int `yaml:"port"`
+	Port *int `yaml:"port,omitempty"`
 }
 
 // RateLimit represents the configuration for rate-limiting within the system.

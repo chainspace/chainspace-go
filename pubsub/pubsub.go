@@ -48,6 +48,7 @@ func (s *Server) listen(ln net.Listener) {
 func (s *Server) Publish(objectID []byte, success bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	log.Error("sending object id", log.String("id", base64.StdEncoding.EncodeToString(objectID)))
 	payload := internal.Payload{
 		ObjectID: base64.StdEncoding.EncodeToString(objectID),
 		Success:  success,
@@ -62,6 +63,7 @@ func (s *Server) Publish(objectID []byte, success bool) {
 }
 
 func announceMDNS(networkID string, nodeID uint64, port int) error {
+	log.Error("ANNOUNCE MDNS PUBSUB")
 	instance := fmt.Sprintf("_%d", nodeID)
 	service := fmt.Sprintf("_%s_pubsub._chainspace", strings.ToLower(networkID))
 	_, err := zeroconf.Register(instance, service, "local.", port, nil, nil)
@@ -74,7 +76,7 @@ func New(cfg *Config) (*Server, error) {
 		mdns bool
 		err  error
 	)
-	if cfg.Port == nil {
+	if cfg.Port == nil || *cfg.Port == 0 {
 		mdns = true
 		port, err = freeport.TCP("")
 		if err != nil {

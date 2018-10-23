@@ -28,7 +28,7 @@ func cmdInit(args []string, usage string) {
 	httpPort := opts.Flags("--http-port").Label("PORT").Int("HTTP port to use with the shards")
 	disableTransactor := opts.Flags("--disable-transactor").Label("BOOL").Bool("Disable transactor")
 	manageContracts := opts.Flags("--manage-contracts").Label("BOOL").Bool("Manage docker contracts")
-	enablePubsub := opts.Flags("--disable-pubsub").Label("BOOL").Bool("Enable pubsub")
+	enablePubsub := opts.Flags("--enable-pubsub").Label("BOOL").Bool("Enable pubsub")
 	pubsubPort := opts.Flags("--pubsub-port").Label("PORT").Int("Port to use for the pubsub server")
 
 	params := opts.Parse(args)
@@ -117,9 +117,14 @@ func cmdInit(args []string, usage string) {
 	if enablePubsub != nil {
 		epb = *enablePubsub
 	}
+
+	var psPort *int
+	if pubsubPort != nil && *pubsubPort != 0 {
+		psPort = pubsubPort
+	}
 	pubsub := &config.Pubsub{
 		Enabled: epb,
-		Port:    pubsubPort,
+		Port:    psPort,
 	}
 
 	var mContracts bool

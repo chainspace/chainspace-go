@@ -344,12 +344,12 @@ func (s *Service) QueryObjectByKey(key []byte) ([]byte, error) {
 	return objects[0].Value, nil
 }
 
-func (s *Service) publishObjects(ids *IDs) {
+func (s *Service) publishObjects(ids *IDs, success bool) {
 	for _, topair := range ids.TraceObjectPairs {
 		for _, outo := range topair.OutputObjects {
 			shard := s.top.ShardForKey(outo.GetKey())
 			if shard == s.shardID {
-				s.ps.Publish(outo.Key, true)
+				s.ps.Publish(outo.Key, success)
 			}
 		}
 	}
@@ -549,6 +549,7 @@ func New(cfg *Config) (*Service, error) {
 		kvstore:     cfg.KVStore,
 		nodeID:      cfg.NodeID,
 		privkey:     privkey,
+		ps:          cfg.Pubsub,
 		top:         cfg.Top,
 		txstates:    map[string]*StateMachine{},
 		store:       store,

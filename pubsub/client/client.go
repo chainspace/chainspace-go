@@ -6,14 +6,13 @@ import (
 	"sync"
 	"time"
 
-	"chainspace.io/prototype/log"
-	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/pubsub/internal"
 )
 
-type Callback func(internal.Payload)
+type Callback func(nodeID uint64, objectID string, success bool)
 
 type Client struct {
+	usercb      Callback
 	nodes       map[uint64]string
 	conns       map[uint64]*internal.Conn
 	mu          sync.Mutex
@@ -23,39 +22,50 @@ type Client struct {
 type Config struct {
 	NetworkName string
 	NodeAddrs   map[uint64]string
+	CB          Callback
 }
 
 func (c *Client) cb(nodeID uint64, addr string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if naddr, ok := c.nodes[nodeID]; ok {
+		if naddr == addr {
+			return
+		}
+	}
+	fmt.Printf("new node [id=%v, addr=%v]\n", nodeID, addr)
 	c.nodes[nodeID] = addr
-	fmt.Printf("nodeID: %v -> addr: %v", nodeID, addr)
+	if err := c.run(nodeID, addr); err != nil {
+		fmt.Printf("error: unable to dial with node [nodeID=%v, err=%v]\n", nodeID, err)
+	}
 }
 
-func (c *Client) Run(cb Callback) error {
-	for n, a := range c.nodes {
-		conn, err := net.Dial("tcp", a)
-		if err != nil {
-			return err
-		}
-		c.conns[n] = internal.NewConn(conn)
+func (c *Client) run(nodeID uint64, addr string) error {
+	fmt.Printf("running node conn [nodeID=%v]\n", nodeID)
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return err
 	}
+	c.conns[nodeID] = internal.NewConn(conn)
 
-	for n, c := range c.conns {
-		go func(nodeID uint64, conn *internal.Conn) {
-			for {
-				payload, err := conn.Read(5 * time.Second)
-				if err != nil {
-					log.Error("unable to read from conn", fld.NodeID(nodeID), fld.Err(err))
-				}
+	go func(nodeID uint64, conn *internal.Conn) {
+		for {
+			payload, err := conn.Read(5 * time.Second)
+			if err != nil {
+				fmt.Printf("error: unable to read from conn [nodeID=%v, err=%v]\n", nodeID, err)
+				continue
 			}
-		}(n, c)
-	}
+			if payload != nil {
+				c.usercb(payload.NodeID, payload.ObjectID, payload.Success)
+			}
+		}
+	}(nodeID, c.conns[nodeID])
 	return nil
 }
 
 func New(cfg *Config) *Client {
 	c := &Client{
+		usercb:      cfg.CB,
 		nodes:       cfg.NodeAddrs,
 		conns:       map[uint64]*internal.Conn{},
 		networkName: cfg.NetworkName,

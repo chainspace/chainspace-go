@@ -691,7 +691,7 @@ func (s *Service) toSucceeded(tx *TxDetails) (State, error) {
 	}
 
 	s.saveLabels(ids)
-	s.publishObjects(ids)
+	s.publishObjects(ids, true)
 
 	return StateSucceeded, nil
 }
@@ -709,6 +709,13 @@ func (s *Service) toAborted(tx *TxDetails) (State, error) {
 	if err != nil {
 		log.Error("unable to finish transaction", fld.TxID(tx.HashID), fld.Err(err))
 	}
+
+	ids, err := MakeIDs(tx.Tx)
+	if err != nil {
+		log.Error("unable to make ids", fld.Err(err))
+		return StateSucceeded, nil
+	}
+	s.publishObjects(ids, false)
 
 	return StateAborted, nil
 }
