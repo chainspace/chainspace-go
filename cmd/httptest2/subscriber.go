@@ -39,7 +39,7 @@ func (s *subscriber) cb(nodeID uint64, objectID string, success bool) {
 			cnt.cb(objectID)
 		}
 	} else {
-		fmt.Printf("unexpected object id, id=%v\n", objectID)
+		fmt.Printf("unexpected object id, id=%v success=%v\n", objectID, success)
 	}
 }
 

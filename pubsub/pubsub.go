@@ -30,6 +30,12 @@ type Server struct {
 	mu        sync.Mutex
 }
 
+func (s *Server) Close() {
+	for _, v := range s.conns {
+		v.Close()
+	}
+}
+
 func (s *Server) handleConnection(conn net.Conn) {
 	// may need to init with block number or sumbthing in the future
 	s.conns = append(s.conns, internal.NewConn(conn))
@@ -55,10 +61,17 @@ func (s *Server) Publish(objectID []byte, success bool) {
 		NodeID:   s.nodeID,
 	}
 	b, _ := json.Marshal(&payload)
-	for _, c := range s.conns {
+	badconns := []int{}
+	for i, c := range s.conns {
 		if err := c.Write(b, 5*time.Second); err != nil {
 			log.Error("unable to publish objectID", fld.Err(err))
+			badconns = append(badconns, i)
 		}
+	}
+	// remove badconns
+	for _, v := range badconns {
+		s.conns[v].Close()
+		s.conns = append(s.conns[:v], s.conns[v+1:]...)
 	}
 }
 

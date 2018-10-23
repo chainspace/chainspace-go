@@ -121,8 +121,8 @@ func (w *worker) run(ctx context.Context, wg *sync.WaitGroup) {
 		data := res.Data.([]interface{})
 		for i, v := range data {
 			w.seed[i] = v.(map[string]interface{})["key"].(string)
-			subscribr.Subscribe(w.seed[i], w.cb)
 			w.pendingIDs[w.seed[i]] = struct{}{}
+			subscribr.Subscribe(w.seed[i], w.cb)
 		}
 
 		// bock while waiting to get notified
