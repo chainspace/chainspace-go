@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"sync"
@@ -17,12 +18,14 @@ type Client struct {
 	conns       map[uint64]*internal.Conn
 	mu          sync.Mutex
 	networkName string
+	ctx         context.Context
 }
 
 type Config struct {
 	NetworkName string
 	NodeAddrs   map[uint64]string
 	CB          Callback
+	Ctx         context.Context
 }
 
 func (c *Client) cb(nodeID uint64, addr string) {
@@ -50,13 +53,18 @@ func (c *Client) run(nodeID uint64, addr string) error {
 
 	go func(nodeID uint64, conn *internal.Conn) {
 		for {
-			payload, err := conn.Read(5 * time.Second)
-			if err != nil {
-				fmt.Printf("error: unable to read from conn [nodeID=%v, err=%v]\n", nodeID, err)
-				continue
-			}
-			if payload != nil {
-				c.usercb(payload.NodeID, payload.ObjectID, payload.Success)
+			select {
+			case <-c.ctx.Done():
+				return
+			default:
+				payload, err := conn.Read(5 * time.Second)
+				if err != nil {
+					fmt.Printf("error: unable to read from conn [nodeID=%v, err=%v]\n", nodeID, err)
+					continue
+				}
+				if payload != nil {
+					c.usercb(payload.NodeID, payload.ObjectID, payload.Success)
+				}
 			}
 		}
 	}(nodeID, c.conns[nodeID])
@@ -69,6 +77,7 @@ func New(cfg *Config) *Client {
 		nodes:       cfg.NodeAddrs,
 		conns:       map[uint64]*internal.Conn{},
 		networkName: cfg.NetworkName,
+		ctx:         cfg.Ctx,
 	}
 	if len(c.nodes) <= 0 {
 		c.nodes = map[uint64]string{}
