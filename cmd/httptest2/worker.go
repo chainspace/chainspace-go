@@ -21,6 +21,8 @@ type worker struct {
 	url        string
 	notify     chan struct{}
 	pendingIDs map[string]struct{}
+	ready      bool
+	mu         sync.Mutex
 }
 
 func NewWorker(seed []string, labels [][]string, id int) *worker {
@@ -37,6 +39,7 @@ func NewWorker(seed []string, labels [][]string, id int) *worker {
 		url:        url,
 		notify:     make(chan struct{}),
 		pendingIDs: map[string]struct{}{},
+		ready:      true,
 	}
 }
 
@@ -60,84 +63,104 @@ func makeTransactionPayload(seed []string, labels [][]string) []byte {
 	return txbytes
 }
 
+func (w *worker) Ready() bool {
+	w.mu.Lock()
+	ret := w.ready
+	w.mu.Unlock()
+	return ret
+}
+
+func (w *worker) setReady(ready bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.ready = ready
+}
+
 func (w *worker) cb(objectID string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	delete(w.pendingIDs, objectID)
 	if len(w.pendingIDs) <= 0 {
 		w.notify <- struct{}{}
 	}
+	w.ready = true
 }
 
 func (w *worker) run(ctx context.Context, wg *sync.WaitGroup) {
+	w.setReady(false)
 	wg.Add(1)
 	defer wg.Done()
 
 	mu.Lock()
-	metrics[w.id] = []time.Duration{}
+	if _, ok := metrics[w.id]; !ok {
+		metrics[w.id] = []time.Duration{}
+	}
 	mu.Unlock()
 
-	for {
-		if err := ctx.Err(); err != nil {
-			fmt.Printf("context error: %v\n", err)
-			break
-		}
-
-		client := http.Client{
-			Timeout: 5 * time.Second,
-		}
-		fmt.Printf("worker %v sending new transaction\n", w.id)
-		start := time.Now()
-		// make transaction
-		txbytes := makeTransactionPayload(w.seed, w.labels)
-		payload := bytes.NewBuffer(txbytes)
-		req, err := http.NewRequest(http.MethodPost, w.url, payload)
-		req = req.WithContext(ctx)
-		req.Header.Add("Content-Type", "application/json")
-		resp, err := client.Do(req)
-		if err != nil {
-			fmt.Printf("error calling node from worker: %v\n", err.Error())
-			continue
-		}
-		b, err := ioutil.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			fmt.Printf("error reading response from POST /object: %v\n", err.Error())
-			continue
-		}
-
-		res := struct {
-			Data   interface{} `json:"data"`
-			Status string      `json:"status"`
-		}{}
-		err = json.Unmarshal(b, &res)
-		if err != nil {
-			fmt.Printf("unable to unmarshal response: %v\n", err.Error())
-			break
-		}
-		if res.Status != "success" {
-			fmt.Printf("error from server: %v\n", string(b))
-			continue
-		}
-
-		data := res.Data.([]interface{})
-		for i, v := range data {
-			w.seed[i] = v.(map[string]interface{})["key"].(string)
-			w.pendingIDs[w.seed[i]] = struct{}{}
-			subscribr.Subscribe(w.seed[i], w.cb)
-		}
-
-		// bock while waiting to get notified
-		select {
-		case <-w.notify:
-			mu.Lock()
-			metrics[w.id] = append(metrics[w.id], time.Since(start))
-			tot := len(metrics[w.id])
-			mu.Unlock()
-			fmt.Printf("worker %v all objects created: %v\n", w.id, tot)
-			continue
-		case <-ctx.Done():
-			return
-		}
-
+	if err := ctx.Err(); err != nil {
+		fmt.Printf("context error: %v\n", err)
+		return
 	}
-	fmt.Printf("worker %v finished at: %v\n", w.id, time.Now().Format(time.Stamp))
+
+	client := http.Client{
+		Timeout: 5 * time.Second,
+	}
+	fmt.Printf("worker %v sending new transaction\n", w.id)
+	start := time.Now()
+	// make transaction
+	txbytes := makeTransactionPayload(w.seed, w.labels)
+	payload := bytes.NewBuffer(txbytes)
+	req, err := http.NewRequest(http.MethodPost, w.url, payload)
+	req = req.WithContext(ctx)
+	req.Header.Add("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		w.setReady(true)
+		fmt.Printf("error calling node from worker: %v\n", err.Error())
+		return
+	}
+	b, err := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		w.setReady(true)
+		fmt.Printf("error reading response from POST /object: %v\n", err.Error())
+		return
+	}
+
+	res := struct {
+		Data   interface{} `json:"data"`
+		Status string      `json:"status"`
+	}{}
+	err = json.Unmarshal(b, &res)
+	if err != nil {
+		w.setReady(true)
+		fmt.Printf("unable to unmarshal response: %v\n", err.Error())
+		return
+	}
+	if res.Status != "success" {
+		fmt.Printf("error from server: %v\n", string(b))
+		w.setReady(true)
+		return
+	}
+
+	data := res.Data.([]interface{})
+	for i, v := range data {
+		w.seed[i] = v.(map[string]interface{})["key"].(string)
+		w.pendingIDs[w.seed[i]] = struct{}{}
+		subscribr.Subscribe(w.seed[i], w.cb)
+	}
+
+	// bock while waiting to get notified
+	select {
+	case <-w.notify:
+		mu.Lock()
+		metrics[w.id] = append(metrics[w.id], time.Since(start))
+		tot := len(metrics[w.id])
+		mu.Unlock()
+		fmt.Printf("worker %v all objects created: %v\n", w.id, tot)
+		//		continue
+	case <-ctx.Done():
+		return
+	}
+
 }

@@ -63,15 +63,15 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
-func seedObjects(i int) ([]string, error) {
+func seedObjects(id int) ([]string, error) {
 	out := []string{}
-	_addr := getAddress(i)
+	_addr := getAddress(id)
 	url := (&url.URL{
 		Scheme: "http",
 		Host:   _addr,
 		Path:   "object",
 	}).String()
-	fmt.Printf("seeding objects for worker %v with %v\n", i, _addr)
+	fmt.Printf("seeding objects for worker %v with %v\n", id, _addr)
 	for i := 0; i < objects; i += 1 {
 		client := http.Client{
 			Timeout: 15 * time.Second,
@@ -121,34 +121,15 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	subscribr = NewSubscriber(ctx, subPort == 0, nodeCount)
 
-	wg := &sync.WaitGroup{}
-	seeds := make([][]string, workers)
-	// create seeds
-	labels := make([][][]string, workers)
-	for i := 0; i < workers; i += 1 {
-		s, err := seedObjects(i)
-		if err != nil {
-			fmt.Println(err.Error())
-			cancel()
-			wg.Wait()
-			return
-		}
-		seeds[i] = s
-		labels[i] = makeLabels(i)
-	}
-
-	fmt.Printf("seeds generated successfully\n")
-	// start txs
-	workrs := []*worker{}
-	for i := 0; i < workers; i += 1 {
-		fmt.Printf("starting worker %v\n", i)
-		w := NewWorker(seeds[i], labels[i], i)
-		workrs = append(workrs, w)
-		go w.run(ctx, wg)
-	}
-
 	t := time.NewTimer(time.Duration(duration) * time.Second)
-	fmt.Printf("starting tests (at %v) for %v seconds (until %v)\n", time.Now(), time.Duration(duration)*time.Second, time.Now().Add(time.Duration(duration)*time.Second).Format(time.Stamp))
+	fmt.Printf("starting tests (at %v) for %v seconds (until %v)\n",
+		time.Now(), time.Duration(duration)*time.Second,
+		time.Now().Add(time.Duration(duration)*time.Second).Format(time.Stamp))
+
+	wg := &sync.WaitGroup{}
+	// run testrunner
+	tr := NewTestRunner(wg)
+	go tr.Run(ctx, cancel)
 	select {
 	case <-t.C:
 		cancel()
@@ -173,6 +154,7 @@ func main() {
 	fmt.Printf("total txs: %v\n", totaltx)
 	fmt.Printf("average duration per tx: %v\n", time.Duration(total/uint64(len(durations))))
 	fmt.Printf("testing finished at: %v\n", time.Now().Format(time.Stamp))
+	fmt.Printf("average tx per secs: %v\n", totaltx/duration)
 }
 
 type WorkerTxCount struct {
