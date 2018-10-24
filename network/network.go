@@ -214,6 +214,7 @@ func (t *Topology) BootstrapStatic(addresses map[uint64]string) error {
 // Dial opens a connection to a node in the given network. It will block if
 // unable to find a routing address for the given node.
 func (t *Topology) Dial(nodeID uint64, timeout time.Duration) (*Conn, error) {
+	// log.Error("NEW DIAL", fld.NodeID(nodeID))
 	t.mu.RLock()
 	cfg, cfgExists := t.nodes[nodeID]
 	t.mu.RUnlock()

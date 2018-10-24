@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 )
@@ -38,9 +37,9 @@ func (tr *testrunner) initWorkers() []*worker {
 	for i := 0; i < workers; i += 1 {
 		tr.workercount += 1
 		seeds, err := seedObjects(tr.workercount)
-		if err != nil {
+		for err != nil {
 			fmt.Println(err.Error())
-			os.Exit(1)
+			seeds, err = seedObjects(tr.workercount)
 		}
 		fmt.Printf("seeds generated successfully\n")
 		labels := makeLabels(tr.workercount)

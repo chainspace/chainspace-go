@@ -28,6 +28,13 @@ func NewConnsPool(size int, nodeID uint64, top *network.Topology, maxPayload int
 	}
 }
 
+func (c *ConnsPool) Close() {
+	for _, conn := range c.conns {
+		conn := conn
+		conn.Close()
+	}
+}
+
 func (c *ConnsPool) Borrow() *ConnsCache {
 	c.mu.Lock()
 	cc := c.conns[c.i]

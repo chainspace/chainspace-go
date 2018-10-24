@@ -59,29 +59,11 @@ func New(cfg *Config) Client {
 		statesconns:  cp,
 	}
 
-	/*
-		c := &client{
-			maxPaylod: cfg.MaxPayload,
-			top:       cfg.Top,
-			txconns: transactor.NewConnsPool(
-				20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
-			checkerconns: transactor.NewConnsPool(
-				20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
-			queryconns: transactor.NewConnsPool(
-				20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
-			createconns: transactor.NewConnsPool(
-				20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
-			deleteconns: transactor.NewConnsPool(
-				5, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
-			statesconns: transactor.NewConnsPool(
-				5, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key),
-		}
-	*/
 	return c
 }
 
 func (c *client) Close() {
-	// c.conns.Close()
+	c.createconns.Close()
 }
 
 func (c *client) checkTransaction(nodes []uint64, t *transactor.Transaction) (map[uint64][]byte, error) {
@@ -273,7 +255,8 @@ func (c *client) Create(obj []byte) ([][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	msg := &service.Message{
+	now := time.Now()
+	msg := service.Message{
 		Opcode:  int32(transactor.Opcode_CREATE_OBJECT),
 		Payload: bytes,
 	}
@@ -281,7 +264,6 @@ func (c *client) Create(obj []byte) ([][]byte, error) {
 	mu := sync.Mutex{}
 	wg := sync.WaitGroup{}
 	objs := [][]byte{}
-	now := time.Now()
 	f := func(n uint64, msg *service.Message) {
 		defer wg.Done()
 		log.Error("TIME ELAPSED TO CREATE OBJECT FROM NODE", log.Uint64("NODEID", n), log.String("duration", time.Since(now).String()))
@@ -299,7 +281,8 @@ func (c *client) Create(obj []byte) ([][]byte, error) {
 	for _, nid := range nodes {
 		nid := nid
 		wg.Add(1)
-		conns.WriteRequest(nid, msg, 5*time.Second, true, f)
+		msg := msg
+		go conns.WriteRequest(nid, &msg, 5*time.Second, true, f)
 	}
 	wg.Wait()
 	log.Error("TIME ELAPSED TO CREATE OBJECT", log.String("duration", time.Since(now).String()))

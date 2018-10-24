@@ -6,6 +6,7 @@ import (
 
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/log"
+	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
 )
@@ -42,6 +43,8 @@ type ConnsCache struct {
 	pendingAcksMu sync.Mutex
 }
 
+func (c *ConnsCache) Close() {}
+
 func (c *ConnsCache) sendHello(nodeID uint64, conn *network.Conn) error {
 	if c.key == nil {
 		log.Error("nil key")
@@ -56,10 +59,13 @@ func (c *ConnsCache) sendHello(nodeID uint64, conn *network.Conn) error {
 
 func (c *ConnsCache) dial(nodeID uint64) (*MuConn, error) {
 	// conn exist
+	c.mu.Lock()
 	cc, ok := c.conns[nodeID]
+	c.mu.Unlock()
 	if ok {
 		return cc, nil
 	}
+	log.Error("NEED TO DIAL", fld.NodeID(nodeID))
 	// need to dial
 	conn, err := c.top.Dial(nodeID, 5*time.Hour)
 	if err != nil {
@@ -72,15 +78,23 @@ func (c *ConnsCache) dial(nodeID uint64) (*MuConn, error) {
 	}
 	cc = &MuConn{conn: conn, die: make(chan bool)}
 	go c.readAckMessage(nodeID, cc.conn, cc.die)
+	c.mu.Lock()
 	c.conns[nodeID] = cc
+	c.mu.Unlock()
 	return cc, nil
 }
 
 func (c *ConnsCache) release(nodeID uint64) {
+	c.mu.Lock()
 	cc, ok := c.conns[nodeID]
+	c.mu.Unlock()
 	if ok {
+
 		cc.die <- true
+		cc.conn.Close()
+		c.mu.Lock()
 		delete(c.conns, nodeID)
+		c.mu.Unlock()
 	}
 }
 
@@ -89,10 +103,8 @@ func (c *ConnsCache) WriteRequest(
 	c.cmu[nodeID-1].Lock()
 	mc, err := c.dial(nodeID)
 	if err != nil {
-		// FIXME(): handle this better
 		c.release(nodeID)
 		c.cmu[nodeID-1].Unlock()
-		time.Sleep(100 * time.Millisecond)
 		return c.WriteRequest(nodeID, msg, timeout, ack, cb)
 	}
 	id, err := mc.conn.WriteRequest(msg, c.maxPayload, timeout)
@@ -141,6 +153,7 @@ func (c *ConnsCache) readAckMessage(nodeID uint64, conn *network.Conn, die chan 
 	for {
 		select {
 		case _ = <-die:
+			log.Error("KILLING READ ACK", fld.PeerID(nodeID))
 			return
 		default:
 			msg, err := conn.ReadMessage(int(c.maxPayload), 5*time.Second)

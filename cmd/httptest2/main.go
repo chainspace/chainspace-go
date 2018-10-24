@@ -79,6 +79,7 @@ func seedObjects(id int) ([]string, error) {
 		payload := bytes.NewBufferString(fmt.Sprintf(`{"data": "%v"}`, randSeq(30)))
 		req, err := http.NewRequest(http.MethodPost, url, payload)
 		req.Header.Add("Content-Type", "application/json")
+		req.Header.Add("X-request-start", time.Now().Format(time.RFC3339Nano))
 		resp, err := client.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("error calling node: %v", err.Error())
