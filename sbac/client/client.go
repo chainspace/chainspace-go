@@ -229,10 +229,10 @@ func (c *client) Create(obj []byte) ([][]byte, error) {
 	return objs, nil
 }
 
-func (c *client) Delete(key []byte) ([]*sbac.Object, error) {
-	nodes := c.top.NodesInShard(c.top.ShardForVersionID(key))
+func (c *client) Delete(versionid []byte) ([]*sbac.Object, error) {
+	nodes := c.top.NodesInShard(c.top.ShardForVersionID(versionid))
 	req := &sbac.DeleteObjectRequest{
-		ObjectKey: key,
+		VersionID: versionid,
 	}
 	bytes, err := proto.Marshal(req)
 	if err != nil {
