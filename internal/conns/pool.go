@@ -1,4 +1,4 @@
-package sbac // import "chainspace.io/prototype/sbac"
+package conns // import "chainspace.io/prototype/internal/conns"
 
 import (
 	"sync"
@@ -8,35 +8,35 @@ import (
 	"chainspace.io/prototype/service"
 )
 
-type ConnsPool struct {
+type Pool struct {
 	mu    sync.Mutex
 	i     int
 	size  int
-	conns []*ConnsCache
+	conns []*Cache
 }
 
-func NewConnsPool(size int, nodeID uint64, top *network.Topology, maxPayload int, key signature.KeyPair, connection service.CONNECTION) *ConnsPool {
-	conns := make([]*ConnsCache, 0, size)
+func NewPool(size int, nodeID uint64, top *network.Topology, maxPayload int, key signature.KeyPair, connection service.CONNECTION) *Pool {
+	conns := make([]*Cache, 0, size)
 	for i := 0; i < size; i += 1 {
-		cc := NewConnsCache(
+		cc := NewCache(
 			nodeID, top, maxPayload, key, connection)
 		conns = append(conns, cc)
 	}
-	return &ConnsPool{
+	return &Pool{
 		i:     0,
 		size:  size,
 		conns: conns,
 	}
 }
 
-func (c *ConnsPool) Close() {
+func (c *Pool) Close() {
 	for _, conn := range c.conns {
 		conn := conn
 		conn.Close()
 	}
 }
 
-func (c *ConnsPool) Borrow() *ConnsCache {
+func (c *Pool) Borrow() *Cache {
 	c.mu.Lock()
 	cc := c.conns[c.i]
 	c.i += 1

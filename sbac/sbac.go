@@ -13,6 +13,7 @@ import (
 	"chainspace.io/prototype/broadcast"
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/internal/combihash"
+	"chainspace.io/prototype/internal/conns"
 	"chainspace.io/prototype/internal/crypto/signature"
 	"chainspace.io/prototype/internal/log"
 	"chainspace.io/prototype/internal/log/fld"
@@ -46,7 +47,7 @@ type Config struct {
 
 type Service struct {
 	broadcaster *broadcast.Service
-	conns       *ConnsPool
+	conns       *conns.Pool
 	kvstore     *kv.Service
 	nodeID      uint64
 	pe          *pendingEvents
@@ -489,7 +490,7 @@ func New(cfg *Config) (*Service, error) {
 
 	s := &Service{
 		broadcaster: cfg.Broadcaster,
-		conns:       NewConnsPool(20, cfg.NodeID, cfg.Top, cfg.MaxPayload, cfg.Key, service.CONNECTION_SBAC),
+		conns:       conns.NewPool(20, cfg.NodeID, cfg.Top, cfg.MaxPayload, cfg.Key, service.CONNECTION_SBAC),
 		kvstore:     cfg.KVStore,
 		nodeID:      cfg.NodeID,
 		privkey:     privkey,

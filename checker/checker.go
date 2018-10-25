@@ -35,7 +35,6 @@ func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, e
 	ctx := context.TODO()
 	switch Opcode(m.Opcode) {
 	case Opcode_CHECK:
-		log.Error("CALLING CHECKER")
 		return s.check(ctx, m.Payload, m.ID)
 	default:
 		log.Error("checker: unknown message opcode",

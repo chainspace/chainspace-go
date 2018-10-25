@@ -7,6 +7,7 @@ import (
 
 	"chainspace.io/prototype/checker"
 	"chainspace.io/prototype/config"
+	"chainspace.io/prototype/internal/conns"
 	"chainspace.io/prototype/internal/crypto/signature"
 	"chainspace.io/prototype/internal/log"
 	"chainspace.io/prototype/internal/log/fld"
@@ -28,7 +29,7 @@ type Config struct {
 type Client struct {
 	maxPaylod config.ByteSize
 	top       *network.Topology
-	conns     *sbac.ConnsPool
+	conns     *conns.Pool
 }
 
 func (c *Client) nodesForTx(t *sbac.Transaction) []uint64 {
@@ -111,7 +112,7 @@ func (c *Client) Check(tx *sbac.Transaction) (map[uint64][]byte, error) {
 }
 
 func New(cfg *Config) *Client {
-	cp := sbac.NewConnsPool(20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key, service.CONNECTION_CHECKER)
+	cp := conns.NewPool(20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key, service.CONNECTION_CHECKER)
 	c := &Client{
 		maxPaylod: cfg.MaxPayload,
 		top:       cfg.Top,

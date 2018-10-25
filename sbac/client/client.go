@@ -7,6 +7,7 @@ import (
 
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/internal/combihash"
+	"chainspace.io/prototype/internal/conns"
 	"chainspace.io/prototype/internal/crypto/signature"
 	"chainspace.io/prototype/internal/log"
 	"chainspace.io/prototype/internal/log/fld"
@@ -36,32 +37,24 @@ type Client interface {
 }
 
 type client struct {
-	maxPaylod   config.ByteSize
-	top         *network.Topology
-	txconns     *sbac.ConnsPool
-	queryconns  *sbac.ConnsPool
-	createconns *sbac.ConnsPool
-	deleteconns *sbac.ConnsPool
-	statesconns *sbac.ConnsPool
+	maxPaylod config.ByteSize
+	top       *network.Topology
+	conns     *conns.Pool
 }
 
 func New(cfg *Config) Client {
-	cp := sbac.NewConnsPool(20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key, service.CONNECTION_SBAC)
+	cp := conns.NewPool(20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key, service.CONNECTION_SBAC)
 	c := &client{
-		maxPaylod:   cfg.MaxPayload,
-		top:         cfg.Top,
-		txconns:     cp,
-		queryconns:  cp,
-		createconns: cp,
-		deleteconns: cp,
-		statesconns: cp,
+		maxPaylod: cfg.MaxPayload,
+		top:       cfg.Top,
+		conns:     cp,
 	}
 
 	return c
 }
 
 func (c *client) Close() {
-	c.createconns.Close()
+	c.conns.Close()
 }
 
 func (c *client) addTransaction(nodes []uint64, t *sbac.Transaction, evidences map[uint64][]byte) ([]*sbac.Object, error) {
@@ -99,7 +92,7 @@ func (c *client) addTransaction(nodes []uint64, t *sbac.Transaction, evidences m
 		}
 		mu.Unlock()
 	}
-	conns := c.txconns.Borrow()
+	conns := c.conns.Borrow()
 	for _, nid := range nodes {
 		nid := nid
 		wg.Add(1)
@@ -178,7 +171,7 @@ func (c *client) Query(key []byte) ([]*sbac.Object, error) {
 		mu.Unlock()
 		return
 	}
-	conns := c.queryconns.Borrow()
+	conns := c.conns.Borrow()
 	for _, nid := range nodes {
 		nid := nid
 		wg.Add(1)
@@ -223,7 +216,7 @@ func (c *client) Create(obj []byte) ([][]byte, error) {
 		mu.Unlock()
 		return
 	}
-	conns := c.createconns.Borrow()
+	conns := c.conns.Borrow()
 	for _, nid := range nodes {
 		nid := nid
 		wg.Add(1)
@@ -264,7 +257,7 @@ func (c *client) Delete(key []byte) ([]*sbac.Object, error) {
 		objs = append(objs, res.Object)
 		mu.Unlock()
 	}
-	conns := c.deleteconns.Borrow()
+	conns := c.conns.Borrow()
 	for _, nid := range nodes {
 		nid := nid
 		wg.Add(1)
@@ -291,7 +284,7 @@ func (c *client) States(nodeID uint64) (*sbac.StatesReportResponse, error) {
 	}
 
 	wg.Add(1)
-	conns := c.statesconns.Borrow()
+	conns := c.conns.Borrow()
 	conns.WriteRequest(nodeID, msg, 5*time.Second, true, f)
 	return res, nil
 }
