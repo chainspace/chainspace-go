@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 
 	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/log"
-	"chainspace.io/prototype/log/fld"
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/restsrv"
 	sbacclient "chainspace.io/prototype/sbac/client"

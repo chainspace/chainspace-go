@@ -6,8 +6,8 @@ import (
 	"sort"
 	"sync"
 
-	"chainspace.io/prototype/log"
-	"chainspace.io/prototype/log/fld"
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
 )
 
 type blockInfo struct {

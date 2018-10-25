@@ -7,7 +7,7 @@
 //
 // The version prefix is `v1` and the data length is encoded as an unsigned
 // 32-bit in little endian format.
-package combihash // import "chainspace.io/prototype/combihash"
+package combihash // import "chainspace.io/prototype/internal/combihash"
 
 import (
 	"crypto/sha512"

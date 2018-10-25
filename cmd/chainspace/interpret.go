@@ -14,8 +14,8 @@ import (
 	"chainspace.io/prototype/broadcast"
 	"chainspace.io/prototype/byzco"
 	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/log"
-	"chainspace.io/prototype/log/fld"
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
 	"chainspace.io/prototype/network"
 	"github.com/tav/golly/process"
 )

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/x509certs"
+	"chainspace.io/prototype/internal/x509certs"
 
 	"github.com/grandcat/zeroconf"
 )

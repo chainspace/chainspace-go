@@ -3,7 +3,7 @@ package sbac // import "chainspace.io/prototype/sbac"
 import (
 	"sync"
 
-	"chainspace.io/prototype/crypto/signature"
+	"chainspace.io/prototype/internal/crypto/signature"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
 )

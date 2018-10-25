@@ -1,4 +1,4 @@
-package log
+package log // import "chainspace.io/prototype/internal/log"
 
 import (
 	"bufio"

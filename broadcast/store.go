@@ -8,9 +8,9 @@ import (
 	"sync"
 
 	"chainspace.io/prototype/byzco"
-	"chainspace.io/prototype/lexinum"
-	"chainspace.io/prototype/log"
-	"chainspace.io/prototype/log/fld"
+	"chainspace.io/prototype/internal/lexinum"
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
 	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
 )

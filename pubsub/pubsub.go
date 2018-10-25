@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"chainspace.io/prototype/freeport"
-	"chainspace.io/prototype/log"
-	"chainspace.io/prototype/log/fld"
+	"chainspace.io/prototype/internal/freeport"
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
 	"chainspace.io/prototype/pubsub/internal"
 	"github.com/grandcat/zeroconf"
 )

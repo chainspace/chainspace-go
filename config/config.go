@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"chainspace.io/prototype/log"
+	"chainspace.io/prototype/internal/log"
 	"gopkg.in/yaml.v2"
 )
 

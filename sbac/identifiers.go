@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"chainspace.io/prototype/combihash"
+	"chainspace.io/prototype/internal/combihash"
 )
 
 type IDs struct {

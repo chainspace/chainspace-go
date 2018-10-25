@@ -6,10 +6,10 @@ import (
 	"os"
 
 	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/crypto/signature"
-	"chainspace.io/prototype/crypto/transport"
-	"chainspace.io/prototype/log"
-	"chainspace.io/prototype/log/fld"
+	"chainspace.io/prototype/internal/crypto/signature"
+	"chainspace.io/prototype/internal/crypto/transport"
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
 	"gopkg.in/yaml.v2"
 )
 

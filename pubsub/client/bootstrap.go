@@ -7,8 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"chainspace.io/prototype/log"
-	"chainspace.io/prototype/log/fld"
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
+
 	"github.com/grandcat/zeroconf"
 )
 

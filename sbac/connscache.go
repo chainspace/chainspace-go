@@ -4,9 +4,9 @@ import (
 	"sync"
 	"time"
 
-	"chainspace.io/prototype/crypto/signature"
-	"chainspace.io/prototype/log"
-	"chainspace.io/prototype/log/fld"
+	"chainspace.io/prototype/internal/crypto/signature"
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/service"
 )

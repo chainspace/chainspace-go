@@ -1,7 +1,8 @@
 package main
 
 import (
-	"chainspace.io/prototype/log"
+	"chainspace.io/prototype/internal/log"
+
 	"github.com/tav/golly/optparse"
 )
 

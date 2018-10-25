@@ -18,10 +18,11 @@ import (
 	"time"
 
 	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/crypto/signature"
-	"chainspace.io/prototype/log"
-	"chainspace.io/prototype/log/fld"
-	"chainspace.io/prototype/x509certs"
+	"chainspace.io/prototype/internal/crypto/signature"
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
+	"chainspace.io/prototype/internal/x509certs"
+
 	"github.com/grandcat/zeroconf"
 	"github.com/minio/highwayhash"
 )

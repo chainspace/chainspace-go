@@ -1,5 +1,5 @@
 // Package signature provides support for digital signature algorithms.
-package signature // import "chainspace.io/prototype/crypto/signature"
+package signature // import "chainspace.io/prototype/internal/crypto/signature"
 
 import (
 	"crypto/rand"

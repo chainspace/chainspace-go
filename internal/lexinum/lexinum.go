@@ -1,6 +1,6 @@
 // Package lexinum supports encoding of uint64s in a lexicographically sortable
 // manner.
-package lexinum // import "chainspace.io/prototype/lexinum"
+package lexinum // import "chainspace.io/prototype/internal/lexinum"
 
 import (
 	"fmt"
