@@ -23,6 +23,7 @@ type worker struct {
 	pendingIDs map[string]struct{}
 	ready      bool
 	mu         sync.Mutex
+	objsdata   []interface{}
 }
 
 func NewWorker(seed []string, labels [][]string, id int) *worker {
@@ -32,6 +33,11 @@ func NewWorker(seed []string, labels [][]string, id int) *worker {
 		Path:   "transaction",
 	}).String()
 
+	objsdata := []interface{}{}
+	for _, _ = range seed {
+		objsdata = append(objsdata, map[string]interface{}{})
+	}
+
 	return &worker{
 		seed:       seed,
 		labels:     labels,
@@ -40,13 +46,18 @@ func NewWorker(seed []string, labels [][]string, id int) *worker {
 		notify:     make(chan struct{}),
 		pendingIDs: map[string]struct{}{},
 		ready:      true,
+		objsdata:   objsdata,
 	}
 }
 
-func makeTransactionPayload(seed []string, labels [][]string) []byte {
+func makeTransactionPayload(seed []string, labels [][]string, objsdata []interface{}) []byte {
 	outputs := []interface{}{}
 	for i := 0; i < objects; i += 1 {
 		outputs = append(outputs, outputty{labels[i], randSeq(30)})
+	}
+	mappings := map[string]interface{}{}
+	for i, _ := range objsdata {
+		mappings[seed[i]] = objsdata[i]
 	}
 	tx := restsrv.Transaction{
 		Traces: []restsrv.Trace{
@@ -58,6 +69,7 @@ func makeTransactionPayload(seed []string, labels [][]string) []byte {
 				Labels:           labels,
 			},
 		},
+		Mappings: mappings,
 	}
 	txbytes, _ := json.Marshal(tx)
 	return txbytes
@@ -108,7 +120,7 @@ func (w *worker) run(ctx context.Context, wg *sync.WaitGroup) {
 	fmt.Printf("worker %v sending new transaction\n", w.id)
 	start := time.Now()
 	// make transaction
-	txbytes := makeTransactionPayload(w.seed, w.labels)
+	txbytes := makeTransactionPayload(w.seed, w.labels, w.objsdata)
 	payload := bytes.NewBuffer(txbytes)
 	req, err := http.NewRequest(http.MethodPost, w.url, payload)
 	req = req.WithContext(ctx)
@@ -144,10 +156,14 @@ func (w *worker) run(ctx context.Context, wg *sync.WaitGroup) {
 	}
 
 	data := res.Data.([]interface{})
+	w.objsdata = []interface{}{}
 	for i, v := range data {
 		w.seed[i] = v.(map[string]interface{})["key"].(string)
 		w.pendingIDs[w.seed[i]] = struct{}{}
 		subscribr.Subscribe(w.seed[i], w.cb)
+		w.objsdata = append(
+			w.objsdata, v.(map[string]interface{})["value"].(interface{}))
+
 	}
 
 	// bock while waiting to get notified

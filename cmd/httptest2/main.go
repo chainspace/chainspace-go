@@ -35,7 +35,7 @@ var (
 	mu      sync.Mutex
 
 	addresses       []string
-	pubsubAddresses map[uint64]string
+	pubsubAddresses = map[uint64]string{}
 
 	subscribr *subscriber
 )
@@ -53,10 +53,10 @@ type outputty struct {
 func init() {
 	flag.StringVar(&address, "addr", "", "address of the node http server to use")
 	flag.StringVar(&port, "port", "", "port to connect in order to send transactions (use with gcp)")
-	flag.IntVar(&workers, "workers", 1, "number of workers used to send transactions default=1")
+	flag.IntVar(&workers, "txs", 1, "number of transactions to send per seconds default=1")
 	flag.IntVar(&objects, "objects", 1, "number of objects to be used as inputs in the transaction default=1")
 	flag.IntVar(&duration, "duration", 5, "duration of the test")
-	flag.IntVar(&duration, "pubsub-port", 0, "pubsub port, this is the same port for all nodes")
+	flag.IntVar(&subPort, "pubsub-port", 0, "pubsub port, this is the same port for all nodes")
 	flag.StringVar(&networkName, "network-name", "testnet", "network name")
 	flag.IntVar(&nodeCount, "node-count", 4, "node count per shard")
 	flag.Parse()
@@ -122,14 +122,16 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	subscribr = NewSubscriber(ctx, subPort == 0, nodeCount)
 
+	wg := &sync.WaitGroup{}
+	tr := NewTestRunner(wg)
+	tr.InitWorkers()
+
 	t := time.NewTimer(time.Duration(duration) * time.Second)
 	fmt.Printf("starting tests (at %v) for %v seconds (until %v)\n",
 		time.Now(), time.Duration(duration)*time.Second,
 		time.Now().Add(time.Duration(duration)*time.Second).Format(time.Stamp))
 
-	wg := &sync.WaitGroup{}
 	// run testrunner
-	tr := NewTestRunner(wg)
 	go tr.Run(ctx, cancel)
 	select {
 	case <-t.C:

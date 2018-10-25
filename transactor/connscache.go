@@ -61,10 +61,11 @@ func (c *ConnsCache) dial(nodeID uint64) (*MuConn, error) {
 	// conn exist
 	c.mu.Lock()
 	cc, ok := c.conns[nodeID]
-	c.mu.Unlock()
 	if ok {
+		c.mu.Unlock()
 		return cc, nil
 	}
+	defer c.mu.Unlock()
 	log.Error("NEED TO DIAL", fld.NodeID(nodeID))
 	// need to dial
 	conn, err := c.top.Dial(nodeID, 5*time.Hour)
@@ -78,9 +79,7 @@ func (c *ConnsCache) dial(nodeID uint64) (*MuConn, error) {
 	}
 	cc = &MuConn{conn: conn, die: make(chan bool)}
 	go c.readAckMessage(nodeID, cc.conn, cc.die)
-	c.mu.Lock()
 	c.conns[nodeID] = cc
-	c.mu.Unlock()
 	return cc, nil
 }
 

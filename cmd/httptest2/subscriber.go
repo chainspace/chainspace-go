@@ -51,6 +51,9 @@ func NewSubscriber(ctx context.Context, mdns bool, nodeCount int) *subscriber {
 	if mdns {
 		pubsubAddresses = map[uint64]string{}
 	}
+	for k, v := range pubsubAddresses {
+		fmt.Printf("%v -> %v\n", k, v)
+	}
 	cfg := client.Config{
 		NetworkName: networkName,
 		NodeAddrs:   pubsubAddresses,

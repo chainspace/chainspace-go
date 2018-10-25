@@ -69,10 +69,10 @@ func (s *Server) Publish(objectID []byte, success bool) {
 		}
 	}
 	// remove badconns
-	for _, v := range badconns {
-		s.conns[v].Close()
-		s.conns = append(s.conns[:v], s.conns[v+1:]...)
-	}
+	// for _, v := range badconns {
+	// 	s.conns[v].Close()
+	// 		s.conns = append(s.conns[:v], s.conns[v+1:]...)
+	//	}
 }
 
 func announceMDNS(networkID string, nodeID uint64, port int) error {

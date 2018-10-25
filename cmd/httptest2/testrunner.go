@@ -8,54 +8,59 @@ import (
 )
 
 type testrunner struct {
-	workerspool [][]*worker
+	workerspool []*worker
 	wg          *sync.WaitGroup
 	cancel      func()
 	workercount int
+	mu          sync.Mutex
 }
 
 func (tr *testrunner) getReadyWorkers() []*worker {
-	for _, workrs := range tr.workerspool {
-		workrs := workrs
-		ok := true
-		for _, workr := range workrs {
-			workr := workr
-			if !workr.Ready() {
-				ok = false
-				continue
-			}
+	out := []*worker{}
+	for _, workr := range tr.workerspool {
+		workr := workr
+		if workr.Ready() {
+			out = append(out, workr)
 		}
-		if ok == true {
-			return workrs
+		if len(out) >= workers {
+			return out
 		}
 	}
-	return nil
+
+	for len(out) < workers {
+		wrkr := tr.initWorker()
+		out = append(out, wrkr)
+	}
+
+	return out
 }
 
-func (tr *testrunner) initWorkers() []*worker {
-	workrs := []*worker{}
-	for i := 0; i < workers; i += 1 {
-		tr.workercount += 1
-		seeds, err := seedObjects(tr.workercount)
-		for err != nil {
-			fmt.Println(err.Error())
-			seeds, err = seedObjects(tr.workercount)
-		}
-		fmt.Printf("seeds generated successfully\n")
-		labels := makeLabels(tr.workercount)
-		fmt.Printf("starting worker %v\n", tr.workercount)
-		w := NewWorker(seeds, labels, tr.workercount)
-		workrs = append(workrs, w)
-
+func (tr *testrunner) initWorker() *worker {
+	tr.mu.Lock()
+	tr.workercount += 1
+	wrkrcount := tr.workercount
+	tr.mu.Unlock()
+	seeds, err := seedObjects(wrkrcount)
+	for err != nil {
+		fmt.Println(err.Error())
+		seeds, err = seedObjects(wrkrcount)
 	}
-
-	return workrs
+	fmt.Printf("seeds generated successfully\n")
+	labels := makeLabels(wrkrcount)
+	fmt.Printf("starting worker %v\n", wrkrcount)
+	w := NewWorker(seeds, labels, wrkrcount)
+	tr.mu.Lock()
+	tr.workerspool = append(tr.workerspool, w)
+	tr.mu.Unlock()
+	return w
 }
 
 func (tr *testrunner) runWorkers(ctx context.Context, workrs []*worker) {
+	waitfor := time.Second / time.Duration(workers)
 	for _, workr := range workrs {
 		workr := workr
 		go workr.run(ctx, tr.wg)
+		time.Sleep(waitfor)
 	}
 }
 
@@ -65,29 +70,28 @@ func (tr *testrunner) Run(ctx context.Context, cancel func()) {
 		case <-ctx.Done():
 			return
 		default:
-			now := time.Now()
-
 			workrs := tr.getReadyWorkers()
-			if workrs != nil {
-				tr.runWorkers(ctx, workrs)
-			} else {
-				workrs = tr.initWorkers()
-				tr.workerspool = append(tr.workerspool, workrs)
-				tr.runWorkers(ctx, workrs)
-			}
-
-			timeelapsed := time.Since(now)
-			waitfor := time.Duration(time.Second - timeelapsed)
-			fmt.Printf("waiting before sending more transation: %v\n", waitfor)
-			time.Sleep(waitfor)
+			tr.runWorkers(ctx, workrs)
 		}
 
 	}
 }
 
+func (tr *testrunner) InitWorkers() {
+	wg := &sync.WaitGroup{}
+	for i := 0; i < workers*10; i += 1 {
+		wg.Add(1)
+		go func(w *sync.WaitGroup) {
+			defer w.Done()
+			tr.initWorker()
+		}(wg)
+	}
+	wg.Wait()
+}
+
 func NewTestRunner(wg *sync.WaitGroup) *testrunner {
 	return &testrunner{
-		workerspool: [][]*worker{},
+		workerspool: []*worker{},
 		wg:          wg,
 	}
 }

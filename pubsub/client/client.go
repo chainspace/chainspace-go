@@ -82,6 +82,13 @@ func New(cfg *Config) *Client {
 	if len(c.nodes) <= 0 {
 		c.nodes = map[uint64]string{}
 		BootstrapMDNS(cfg.NetworkName, c.cb)
+	} else {
+		for nodeID, addr := range c.nodes {
+			if err := c.run(nodeID, addr); err != nil {
+				fmt.Printf("error: unable to dial with node [nodeID=%v, err=%v]\n", nodeID, err)
+			}
+		}
 	}
+
 	return c
 }
