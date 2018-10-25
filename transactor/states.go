@@ -350,7 +350,7 @@ func (s *Service) onWaitingForConsensus1(tx *TxDetails) (State, error) {
 	if tx.Consensus1Tx == nil {
 		return StateWaitingForConsensus1, nil
 	}
-	if !s.verifySignatures(tx.ID, tx.Consensus1Tx.GetEvidences()) {
+	if !s.verifySignatures(tx.Raw, tx.Consensus1Tx.GetEvidences()) {
 		log.Error("consensus1 missing/invalid signatures", fld.TxID(tx.HashID))
 		return StateRejectPhase1Broadcasted, nil
 	}
@@ -381,7 +381,7 @@ func (s *Service) onWaitingForConsensus2(tx *TxDetails) (State, error) {
 	if tx.Consensus2Tx == nil {
 		return StateWaitingForConsensus2, nil
 	}
-	if !s.verifySignatures(tx.ID, tx.Consensus2Tx.GetEvidences()) {
+	if !s.verifySignatures(tx.Raw, tx.Consensus2Tx.GetEvidences()) {
 		log.Error("consensus2 missing/invalid signatures", fld.TxID(tx.HashID))
 		return StateRejectPhase2Broadcasted, nil
 	}
@@ -394,7 +394,7 @@ func (s *Service) onWaitingForConsensusCommit(tx *TxDetails) (State, error) {
 	if tx.ConsensusCommitTx == nil {
 		return StateWaitingForConsensusCommit, nil
 	}
-	if !s.verifySignatures(tx.ID, tx.ConsensusCommitTx.GetEvidences()) {
+	if !s.verifySignatures(tx.Raw, tx.ConsensusCommitTx.GetEvidences()) {
 		log.Error("consensus_commit missing/invalid signatures", fld.TxID(tx.HashID))
 		return StateAborted, nil
 

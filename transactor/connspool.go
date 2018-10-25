@@ -5,6 +5,7 @@ import (
 
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/network"
+	"chainspace.io/prototype/service"
 )
 
 type ConnsPool struct {
@@ -14,11 +15,11 @@ type ConnsPool struct {
 	conns []*ConnsCache
 }
 
-func NewConnsPool(size int, nodeID uint64, top *network.Topology, maxPayload int, key signature.KeyPair) *ConnsPool {
+func NewConnsPool(size int, nodeID uint64, top *network.Topology, maxPayload int, key signature.KeyPair, connection service.CONNECTION) *ConnsPool {
 	conns := make([]*ConnsCache, 0, size)
 	for i := 0; i < size; i += 1 {
 		cc := NewConnsCache(
-			nodeID, top, maxPayload, key)
+			nodeID, top, maxPayload, key, connection)
 		conns = append(conns, cc)
 	}
 	return &ConnsPool{

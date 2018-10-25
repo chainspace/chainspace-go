@@ -1,10 +1,11 @@
-package transactor // import "chainspace.io/prototype/transactor"
+package checker // import "chainspace.io/prototype/checker"
 
 import (
+	"context"
 	"errors"
-	"fmt"
+	fmt "fmt"
 
-	"golang.org/x/net/context"
+	transactor "chainspace.io/prototype/transactor"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -12,20 +13,17 @@ import (
 type Checker interface {
 	ContractID() string
 	Name() string
-	Check(inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string, dependencies []*Trace) bool
+	Check(inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string, dependencies []*transactor.Trace) bool
 }
 
 // a pair of a trace and it's associated checker to be store in a slice
 type checkerTracePair struct {
 	Checker Checker
-	Trace   *Trace
+	Trace   *transactor.Trace
 }
 
-// CheckersMap map contractID to map check procedure name to checker
-type CheckersMap map[string]map[string]Checker
-
-func runCheckers(ctx context.Context, checkers CheckersMap, tx *Transaction) (bool, error) {
-	ctpairs, err := aggregateCheckers(checkers, tx.Traces)
+func run(ctx context.Context, checkers checkersMap, tx *transactor.Transaction) (bool, error) {
+	ctpairs, err := aggregate(checkers, tx.Traces)
 	if err != nil {
 		return false, err
 	}
@@ -36,7 +34,7 @@ func runCheckers(ctx context.Context, checkers CheckersMap, tx *Transaction) (bo
 		t := v.Trace
 		c := v.Checker
 		g.Go(func() error {
-			result := c.Check(t.InputObjects, t.InputReferences, t.Parameters, t.OutputObjects, t.Returns, StringsSlice(t.Labels).AsSlice(), t.Dependencies)
+			result := c.Check(t.InputObjects, t.InputReferences, t.Parameters, t.OutputObjects, t.Returns, transactor.StringsSlice(t.Labels).AsSlice(), t.Dependencies)
 			if !result {
 				return errors.New("check failed")
 			}
@@ -51,7 +49,7 @@ func runCheckers(ctx context.Context, checkers CheckersMap, tx *Transaction) (bo
 
 // aggregateCheckers first ensure that all the contracts and procedures used in the transaction
 // exists then map each transaction to the associated contract.
-func aggregateCheckers(checkers CheckersMap, traces []*Trace) ([]checkerTracePair, error) {
+func aggregate(checkers checkersMap, traces []*transactor.Trace) ([]checkerTracePair, error) {
 	var ok bool
 	var m map[string]Checker
 	var checker Checker
@@ -59,13 +57,13 @@ func aggregateCheckers(checkers CheckersMap, traces []*Trace) ([]checkerTracePai
 	for _, t := range traces {
 		m, ok = checkers[t.ContractID]
 		if !ok {
-			return nil, fmt.Errorf("transactor: unknown contract with ID: %v", t.ContractID)
+			return nil, fmt.Errorf("unknown contract with ID: %v", t.ContractID)
 		}
 		checker, ok = m[t.Procedure]
 		if !ok {
-			return nil, fmt.Errorf("transactor: unknown procedure %v for contract with ID: %v", t.Procedure, t.ContractID)
+			return nil, fmt.Errorf("unknown procedure %v for contract with ID: %v", t.Procedure, t.ContractID)
 		}
-		newpairs, err := aggregateCheckers(checkers, t.Dependencies)
+		newpairs, err := aggregate(checkers, t.Dependencies)
 		if err != nil {
 			return nil, err
 		}

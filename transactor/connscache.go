@@ -38,6 +38,7 @@ type ConnsCache struct {
 	maxPayload int
 	selfID     uint64
 	top        *network.Topology
+	connection service.CONNECTION
 
 	pendingAcks   map[AckID]PendingAck
 	pendingAcksMu sync.Mutex
@@ -50,7 +51,7 @@ func (c *ConnsCache) sendHello(nodeID uint64, conn *network.Conn) error {
 		log.Error("nil key")
 	}
 	hellomsg, err := service.SignHello(
-		c.selfID, nodeID, c.key, service.CONNECTION_TRANSACTOR)
+		c.selfID, nodeID, c.key, c.connection)
 	if err != nil {
 		return err
 	}
@@ -183,7 +184,7 @@ func (c *ConnsCache) retryRequests() {
 	}
 }
 
-func NewConnsCache(nodeID uint64, top *network.Topology, maxPayload int, key signature.KeyPair) *ConnsCache {
+func NewConnsCache(nodeID uint64, top *network.Topology, maxPayload int, key signature.KeyPair, connection service.CONNECTION) *ConnsCache {
 	c := &ConnsCache{
 		conns:       map[uint64]*MuConn{},
 		cmu:         make([]sync.Mutex, top.TotalNodes()),
@@ -192,6 +193,7 @@ func NewConnsCache(nodeID uint64, top *network.Topology, maxPayload int, key sig
 		top:         top,
 		key:         key,
 		pendingAcks: map[AckID]PendingAck{},
+		connection:  connection,
 	}
 	go c.retryRequests()
 

@@ -105,7 +105,7 @@ func cmdTransactor(args []string, usage string) {
 		}
 
 		ttx, _ := tx.ToTransactor()
-		objects, err := transactorClient.SendTransaction(ttx)
+		objects, err := transactorClient.SendTransaction(ttx, map[uint64][]byte{})
 		if err != nil {
 			log.Fatal("unable to send transaction", fld.Err(err))
 		}

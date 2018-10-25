@@ -9,6 +9,7 @@ enum CONNECTION {
   BROADCAST = 1;
   TRANSACTOR = 2;
   KV = 3;
+  CHECKER = 4;
 }
 
 message Hello {

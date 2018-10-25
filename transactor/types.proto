@@ -5,13 +5,12 @@ import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 
 enum Opcode {
   UNKNOWN = 0;
-  CHECK_TRANSACTION = 1;
-  ADD_TRANSACTION = 2;
-  QUERY_OBJECT = 3;
-  CREATE_OBJECT = 4;
-  DELETE_OBJECT = 5;
-  STATES = 6;
-  SBAC = 7;
+  ADD_TRANSACTION = 1;
+  QUERY_OBJECT = 2;
+  CREATE_OBJECT = 3;
+  DELETE_OBJECT = 4;
+  STATES = 5;
+  SBAC = 6;
 }
 
 enum ObjectStatus {
@@ -47,15 +46,6 @@ message Object {
   bytes key = 2;
   ObjectStatus status = 3;
   repeated string labels = 4;
-}
-
-message CheckTransactionRequest {
-  Transaction tx = 1;
-}
-
-message CheckTransactionResponse {
-  bool ok = 1;
-  bytes signature = 2;
 }
 
 message AddTransactionRequest {

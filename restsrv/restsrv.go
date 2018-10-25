@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	checkerclient "chainspace.io/prototype/checker/client"
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/kv"
@@ -42,6 +43,7 @@ type Service struct {
 	maxPayload config.ByteSize
 	client     transactorclient.Client
 	transactor *transactor.Service
+	checker    *checkerclient.Client
 }
 
 type resp struct {
@@ -312,7 +314,13 @@ func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
 		fail(rw, http.StatusBadRequest, err.Error())
 		return
 	}
-	objects, err := s.client.SendTransaction(tx)
+
+	evidences, err := s.checker.Check(tx)
+	if err != nil {
+		errorr(rw, http.StatusInternalServerError, err.Error())
+		return
+	}
+	objects, err := s.client.SendTransaction(tx, evidences)
 	if err != nil {
 		errorr(rw, http.StatusInternalServerError, err.Error())
 		return
@@ -406,6 +414,13 @@ func (s *Service) makeServ(addr string, port int) *http.Server {
 }
 
 func New(cfg *Config) *Service {
+	checkrcfg := checkerclient.Config{
+		NodeID:     cfg.SelfID,
+		Top:        cfg.Top,
+		MaxPayload: cfg.MaxPayload,
+		Key:        cfg.Key,
+	}
+	checkrclt := checkerclient.New(&checkrcfg)
 	clcfg := transactorclient.Config{
 		NodeID:     cfg.SelfID,
 		Top:        cfg.Top,
@@ -420,6 +435,7 @@ func New(cfg *Config) *Service {
 		client:     txclient,
 		store:      cfg.Store,
 		transactor: cfg.Transactor,
+		checker:    checkrclt,
 	}
 	s.srv = s.makeServ(cfg.Addr, cfg.Port)
 	go func() {

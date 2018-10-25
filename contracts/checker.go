@@ -1,4 +1,4 @@
-package contracts
+package contracts // import "chainspace.io/prototype/contracts"
 
 import (
 	"bytes"

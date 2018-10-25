@@ -8,6 +8,7 @@ COVERAGE_SOURCES=$(shell find * -name '*.go' -not -path "testutil/*" -not -path 
 FILES=	service/types.proto\
 	broadcast/types.proto\
 	transactor/types.proto\
+	checker/types.proto\
 	kv/types.proto
 
 PKG := "./cmd/$(PROJECT_NAME)"

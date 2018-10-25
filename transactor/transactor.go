@@ -37,7 +37,6 @@ type Config struct {
 	NodeID      uint64
 	Top         *network.Topology
 	SigningKey  *config.Key
-	Checkers    []Checker
 	Pubsub      *pubsub.Server
 	ShardSize   uint64
 	ShardCount  uint64
@@ -47,7 +46,6 @@ type Config struct {
 
 type Service struct {
 	broadcaster *broadcast.Service
-	checkers    CheckersMap
 	conns       *ConnsPool
 	kvstore     *kv.Service
 	nodeID      uint64
@@ -96,8 +94,6 @@ func (s *Service) handleDeliver(round uint64, blocks []*broadcast.SignedData) {
 func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, error) {
 	ctx := context.TODO()
 	switch Opcode(m.Opcode) {
-	case Opcode_CHECK_TRANSACTION:
-		return s.checkTransaction(ctx, m.Payload, m.ID)
 	case Opcode_ADD_TRANSACTION:
 		return s.addTransaction(ctx, m.Payload, m.ID)
 	case Opcode_QUERY_OBJECT:
@@ -168,55 +164,17 @@ func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64,
 	return &service.Message{ID: msgID, Opcode: int32(Opcode_SBAC), Payload: payloadres}, nil
 }
 
-func (s *Service) checkTransaction(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
-	req := &CheckTransactionRequest{}
-	err := proto.Unmarshal(payload, req)
-	if err != nil {
-		log.Error("transactor: checkTransaction unmarshaling error", fld.Err(err))
-		return nil, fmt.Errorf("transactor: add_transaction unmarshaling error: %v", err)
-	}
-	log.Error("running checkers")
-
-	// run the checkers
-	ok, err := runCheckers(ctx, s.checkers, req.Tx)
-	if err != nil {
-		log.Error("transactor: errors happend while checkers", fld.Err(err))
-		return nil, fmt.Errorf("transactor: errors happend while running the checkers: %v", err)
-	}
-
-	// create txID and signature then payload
-	ids, err := MakeIDs(req.Tx)
-	if err != nil {
-		log.Error("transactor: unable to generate IDs", fld.Err(err))
-		return nil, err
-	}
-	res := &CheckTransactionResponse{
-		Ok:        ok,
-		Signature: s.privkey.Sign(ids.TxID),
-	}
-
-	b, err := proto.Marshal(res)
-	if err != nil {
-		log.Error("unable to marshal checkTransaction response", fld.Err(err))
-		return nil, fmt.Errorf("transactor: unable to marshal check_transaction response")
-	}
-
-	if log.AtDebug() {
-		log.Debug("transactor: transaction checked successfully", fld.TxID(ID(ids.TxID)))
-	}
-	return &service.Message{
-		ID:      id,
-		Opcode:  int32(Opcode_ADD_TRANSACTION),
-		Payload: b,
-	}, nil
-}
-
 func (s *Service) verifySignatures(txID []byte, evidences map[uint64][]byte) bool {
 	ok := true
 	keys := s.top.SeedPublicKeys()
+	if len(evidences) <= 0 {
+		log.Errorf("missing signatures")
+		return false
+	}
 	for nodeID, sig := range evidences {
 		key := keys[nodeID]
 		if !key.Verify(txID, sig) {
+			log.Errorf("invalid signature")
 			if log.AtDebug() {
 				log.Debug("invalid signature", fld.PeerID(nodeID))
 			}
@@ -284,7 +242,8 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte, id uint64)
 		return nil, err
 	}
 
-	if !s.verifySignatures(ids.TxID, req.Evidences) {
+	txbytes, _ := proto.Marshal(req.Tx)
+	if !s.verifySignatures(txbytes, req.Evidences) {
 		log.Error("invalid evidences from nodes")
 		return nil, errors.New("transactor: invalid evidences from nodes")
 	}
@@ -295,12 +254,7 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte, id uint64)
 		trID := base64.StdEncoding.EncodeToString(v.Trace.ID)
 		objects[trID] = &ObjectList{v.OutputObjects}
 	}
-	rawtx, err := proto.Marshal(req.Tx)
-	if err != nil {
-		log.Error("unable to marshal transaction", fld.Err(err))
-		return nil, fmt.Errorf("transactor: unable to marshal tx: %v", err)
-	}
-	txdetails := NewTxDetails(ids.TxID, rawtx, req.Tx, req.Evidences)
+	txdetails := NewTxDetails(ids.TxID, txbytes, req.Tx, req.Evidences)
 
 	s.addStateMachine(txdetails, StateWaitingForConsensus1)
 
@@ -511,15 +465,6 @@ func (s *Service) Stop() error {
 }
 
 func New(cfg *Config) (*Service, error) {
-	checkers := map[string]map[string]Checker{}
-	for _, c := range cfg.Checkers {
-		if m, ok := checkers[c.ContractID()]; ok {
-			m[c.Name()] = c
-			continue
-		}
-		checkers[c.ContractID()] = map[string]Checker{c.Name(): c}
-	}
-
 	algorithm, err := signature.AlgorithmFromString(cfg.SigningKey.Type)
 	if err != nil {
 		return nil, err
@@ -544,8 +489,7 @@ func New(cfg *Config) (*Service, error) {
 
 	s := &Service{
 		broadcaster: cfg.Broadcaster,
-		conns:       NewConnsPool(20, cfg.NodeID, cfg.Top, cfg.MaxPayload, cfg.Key),
-		checkers:    checkers,
+		conns:       NewConnsPool(20, cfg.NodeID, cfg.Top, cfg.MaxPayload, cfg.Key, service.CONNECTION_TRANSACTOR),
 		kvstore:     cfg.KVStore,
 		nodeID:      cfg.NodeID,
 		privkey:     privkey,

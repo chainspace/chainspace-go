@@ -26,7 +26,7 @@ type Server struct {
 	port      int
 	networkID string
 	nodeID    uint64
-	conns     []*internal.Conn
+	conns     map[string]*internal.Conn
 	mu        sync.Mutex
 }
 
@@ -38,7 +38,7 @@ func (s *Server) Close() {
 
 func (s *Server) handleConnection(conn net.Conn) {
 	// may need to init with block number or sumbthing in the future
-	s.conns = append(s.conns, internal.NewConn(conn))
+	s.conns[conn.RemoteAddr().String()] = internal.NewConn(conn)
 }
 
 func (s *Server) listen(ln net.Listener) {
@@ -61,18 +61,18 @@ func (s *Server) Publish(objectID []byte, success bool) {
 		NodeID:   s.nodeID,
 	}
 	b, _ := json.Marshal(&payload)
-	badconns := []int{}
-	for i, c := range s.conns {
+	badconns := []string{}
+	for addr, c := range s.conns {
 		if err := c.Write(b, 5*time.Second); err != nil {
 			log.Error("unable to publish objectID", fld.Err(err))
-			badconns = append(badconns, i)
+			badconns = append(badconns, addr)
 		}
 	}
 	// remove badconns
-	// for _, v := range badconns {
-	// 	s.conns[v].Close()
-	// 		s.conns = append(s.conns[:v], s.conns[v+1:]...)
-	//	}
+	for _, addr := range badconns {
+		s.conns[addr].Close()
+		delete(s.conns, addr)
+	}
 }
 
 func announceMDNS(networkID string, nodeID uint64, port int) error {
@@ -114,7 +114,7 @@ func New(cfg *Config) (*Server, error) {
 		port:      port,
 		networkID: cfg.NetworkID,
 		nodeID:    cfg.NodeID,
-		conns:     []*internal.Conn{},
+		conns:     map[string]*internal.Conn{},
 	}
 	go srv.listen(ln)
 

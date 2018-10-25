@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"chainspace.io/prototype/broadcast"
+	"chainspace.io/prototype/checker"
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/contracts"
 	"chainspace.io/prototype/crypto/signature"
@@ -62,6 +63,7 @@ type Config struct {
 type Server struct {
 	Broadcast       *broadcast.Service
 	cancel          context.CancelFunc
+	checker         *checker.Service
 	ctx             context.Context
 	id              uint64
 	key             signature.KeyPair
@@ -102,6 +104,13 @@ func (s *Server) handleConnection(conn net.Conn) {
 		}
 	case service.CONNECTION_TRANSACTOR:
 		svc = s.transactor
+		peerID, err = s.verifyPeerID(hello)
+		if err != nil {
+			log.Error("Unable to verify peer ID from the hello message", fld.Err(err))
+			return
+		}
+	case service.CONNECTION_CHECKER:
+		svc = s.checker
 		peerID, err = s.verifyPeerID(hello)
 		if err != nil {
 			log.Error("Unable to verify peer ID from the hello message", fld.Err(err))
@@ -406,6 +415,7 @@ func Run(cfg *Config) (*Server, error) {
 		rstsrv  *restsrv.Service
 		txtor   *transactor.Service
 		pbsb    *pubsub.Server
+		checkr  *checker.Service
 	)
 
 	if cfg.Node.Pubsub.Enabled {
@@ -421,13 +431,23 @@ func Run(cfg *Config) (*Server, error) {
 		}
 	}
 
-	tcheckers := []transactor.Checker{}
+	tcheckers := []checker.Checker{}
 	checkers := cts.GetCheckers()
 	for _, v := range checkers {
 		tcheckers = append(tcheckers, v)
 	}
 
 	if !cfg.Node.DisableTransactor {
+		checkercfg := &checker.Config{
+			Checkers:   tcheckers,
+			SigningKey: cfg.Keys.SigningKey,
+		}
+		checkr, err = checker.New(checkercfg)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("node unable to instantiate checker service: %v", err)
+		}
+
 		kvcfg := &kv.Config{
 			RuntimeDir: dir,
 		}
@@ -438,7 +458,6 @@ func Run(cfg *Config) (*Server, error) {
 		}
 		tcfg := &transactor.Config{
 			Broadcaster: broadcaster,
-			Checkers:    tcheckers,
 			KVStore:     kvstore,
 			Directory:   dir,
 			Key:         key,
@@ -479,6 +498,7 @@ func Run(cfg *Config) (*Server, error) {
 	node := &Server{
 		Broadcast:       broadcaster,
 		cancel:          cancel,
+		checker:         checkr,
 		ctx:             ctx,
 		id:              cfg.NodeID,
 		key:             key,
