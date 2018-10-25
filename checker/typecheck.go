@@ -2,9 +2,9 @@ package checker // import "chainspace.io/prototype/checker"
 
 import (
 	"encoding/base64"
-	fmt "fmt"
+	"fmt"
 
-	"chainspace.io/prototype/transactor"
+	"chainspace.io/prototype/sbac"
 )
 
 type idstate int8
@@ -23,7 +23,7 @@ type statedata struct {
 
 type idmap map[string]statedata
 
-func typeCheck(ids idmap, traces []*transactor.Trace) error {
+func typeCheck(ids idmap, traces []*sbac.Trace) error {
 	// type checks all traces
 	for _, trace := range traces {
 		trace := trace

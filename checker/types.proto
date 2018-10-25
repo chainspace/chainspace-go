@@ -2,7 +2,7 @@ syntax = "proto3";
 package checker;
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
-import "chainspace.io/prototype/transactor/types.proto";
+import "chainspace.io/prototype/sbac/types.proto";
 
 enum Opcode {
   UNKNOWN = 0;
@@ -10,7 +10,7 @@ enum Opcode {
 }
 
 message CheckRequest {
-  transactor.Transaction tx = 1;
+  sbac.Transaction tx = 1;
 }
 
 message CheckResponse {

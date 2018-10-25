@@ -1,4 +1,4 @@
-package internal
+package internal // import "chainspace.io/prototype/pubsub/internal"
 
 import (
 	"encoding/binary"

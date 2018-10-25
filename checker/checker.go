@@ -9,8 +9,8 @@ import (
 	"chainspace.io/prototype/crypto/signature"
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/log/fld"
+	"chainspace.io/prototype/sbac"
 	"chainspace.io/prototype/service"
-	transactor "chainspace.io/prototype/transactor"
 	"github.com/gogo/protobuf/proto"
 )
 
@@ -45,7 +45,7 @@ func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, e
 	}
 }
 
-func (s *Service) Check(ctx context.Context, tx *transactor.Transaction) (bool, error) {
+func (s *Service) Check(ctx context.Context, tx *sbac.Transaction) (bool, error) {
 	if err := typeCheck(idmap{}, tx.Traces); err != nil {
 		return false, err
 	}

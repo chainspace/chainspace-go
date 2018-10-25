@@ -11,8 +11,8 @@ import (
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
+	"chainspace.io/prototype/sbac"
 	"chainspace.io/prototype/service"
-	"chainspace.io/prototype/transactor"
 	"github.com/gogo/protobuf/proto"
 )
 
@@ -28,10 +28,10 @@ type Config struct {
 type Client struct {
 	maxPaylod config.ByteSize
 	top       *network.Topology
-	conns     *transactor.ConnsPool
+	conns     *sbac.ConnsPool
 }
 
-func (c *Client) nodesForTx(t *transactor.Transaction) []uint64 {
+func (c *Client) nodesForTx(t *sbac.Transaction) []uint64 {
 	shardIDs := map[uint64]struct{}{}
 	// for each input object / reference, send the transaction.
 	for _, trace := range t.Traces {
@@ -51,7 +51,7 @@ func (c *Client) nodesForTx(t *transactor.Transaction) []uint64 {
 	return out
 }
 
-func (c *Client) check(nodes []uint64, t *transactor.Transaction) (map[uint64][]byte, error) {
+func (c *Client) check(nodes []uint64, t *sbac.Transaction) (map[uint64][]byte, error) {
 	req := &checker.CheckRequest{
 		Tx: t,
 	}
@@ -94,7 +94,7 @@ func (c *Client) check(nodes []uint64, t *transactor.Transaction) (map[uint64][]
 	return evidences, nil
 }
 
-func (c *Client) Check(tx *transactor.Transaction) (map[uint64][]byte, error) {
+func (c *Client) Check(tx *sbac.Transaction) (map[uint64][]byte, error) {
 	nodes := c.nodesForTx(tx)
 	evidences, err := c.check(nodes, tx)
 	if err != nil {
@@ -111,7 +111,7 @@ func (c *Client) Check(tx *transactor.Transaction) (map[uint64][]byte, error) {
 }
 
 func New(cfg *Config) *Client {
-	cp := transactor.NewConnsPool(20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key, service.CONNECTION_CHECKER)
+	cp := sbac.NewConnsPool(20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key, service.CONNECTION_CHECKER)
 	c := &Client{
 		maxPaylod: cfg.MaxPayload,
 		top:       cfg.Top,

@@ -5,7 +5,7 @@ import (
 	"errors"
 	fmt "fmt"
 
-	transactor "chainspace.io/prototype/transactor"
+	sbac "chainspace.io/prototype/sbac"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -13,16 +13,16 @@ import (
 type Checker interface {
 	ContractID() string
 	Name() string
-	Check(inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string, dependencies []*transactor.Trace) bool
+	Check(inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string, dependencies []*sbac.Trace) bool
 }
 
 // a pair of a trace and it's associated checker to be store in a slice
 type checkerTracePair struct {
 	Checker Checker
-	Trace   *transactor.Trace
+	Trace   *sbac.Trace
 }
 
-func run(ctx context.Context, checkers checkersMap, tx *transactor.Transaction) (bool, error) {
+func run(ctx context.Context, checkers checkersMap, tx *sbac.Transaction) (bool, error) {
 	ctpairs, err := aggregate(checkers, tx.Traces)
 	if err != nil {
 		return false, err
@@ -34,7 +34,7 @@ func run(ctx context.Context, checkers checkersMap, tx *transactor.Transaction) 
 		t := v.Trace
 		c := v.Checker
 		g.Go(func() error {
-			result := c.Check(t.InputObjects, t.InputReferences, t.Parameters, t.OutputObjects, t.Returns, transactor.StringsSlice(t.Labels).AsSlice(), t.Dependencies)
+			result := c.Check(t.InputObjects, t.InputReferences, t.Parameters, t.OutputObjects, t.Returns, sbac.StringsSlice(t.Labels).AsSlice(), t.Dependencies)
 			if !result {
 				return errors.New("check failed")
 			}
@@ -49,7 +49,7 @@ func run(ctx context.Context, checkers checkersMap, tx *transactor.Transaction) 
 
 // aggregateCheckers first ensure that all the contracts and procedures used in the transaction
 // exists then map each transaction to the associated contract.
-func aggregate(checkers checkersMap, traces []*transactor.Trace) ([]checkerTracePair, error) {
+func aggregate(checkers checkersMap, traces []*sbac.Trace) ([]checkerTracePair, error) {
 	var ok bool
 	var m map[string]Checker
 	var checker Checker

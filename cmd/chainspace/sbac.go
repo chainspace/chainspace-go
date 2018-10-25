@@ -14,7 +14,7 @@ import (
 	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/restsrv"
-	"chainspace.io/prototype/transactor/transactorclient"
+	sbacclient "chainspace.io/prototype/sbac/client"
 	"github.com/tav/golly/optparse"
 )
 
@@ -36,7 +36,7 @@ func getRequiredParams(
 	return
 }
 
-func cmdTransactor(args []string, usage string) {
+func cmdSBAC(args []string, usage string) {
 	opts := newOpts("transactor NETWORK_NAME COMMAND [OPTIONS]", usage)
 	configRoot := opts.Flags("-c", "--config-root").Label("PATH").String("path to the chainspace root directory [$HOME/.chainspace]", defaultRootDir())
 	consoleLog := opts.Flags("--console-log").Label("LEVEL").String("set the minimum console log level")
@@ -80,13 +80,13 @@ func cmdTransactor(args []string, usage string) {
 	}
 	topology.BootstrapMDNS()
 
-	cfg := &transactorclient.Config{
+	cfg := &sbacclient.Config{
 		Top:        topology,
 		MaxPayload: netCfg.MaxPayload,
 	}
 
-	transactorClient := transactorclient.New(cfg)
-	defer transactorClient.Close()
+	sbacclt := sbacclient.New(cfg)
+	defer sbacclt.Close()
 
 	switch cmd {
 	case "transaction":
@@ -105,7 +105,7 @@ func cmdTransactor(args []string, usage string) {
 		}
 
 		ttx, _ := tx.ToTransactor()
-		objects, err := transactorClient.SendTransaction(ttx, map[uint64][]byte{})
+		objects, err := sbacclt.SendTransaction(ttx, map[uint64][]byte{})
 		if err != nil {
 			log.Fatal("unable to send transaction", fld.Err(err))
 		}
@@ -129,7 +129,7 @@ func cmdTransactor(args []string, usage string) {
 			log.Fatal("missing object key")
 		}
 		keybytes := readkey(*key)
-		objs, err := transactorClient.Query(keybytes)
+		objs, err := sbacclt.Query(keybytes)
 		if err != nil {
 			log.Fatal("unable to query object", fld.Err(err))
 		}
@@ -147,7 +147,7 @@ func cmdTransactor(args []string, usage string) {
 			log.Fatal("missing object key")
 		}
 		objbytes := readkey(*object)
-		ids, err := transactorClient.Create(objbytes)
+		ids, err := sbacclt.Create(objbytes)
 		if err != nil {
 			log.Fatal("unable to query object", fld.Err(err))
 		}
@@ -172,7 +172,7 @@ func cmdTransactor(args []string, usage string) {
 			log.Fatal("missing object key")
 		}
 		keybytes := readkey(*key)
-		objs, err := transactorClient.Delete(keybytes)
+		objs, err := sbacclt.Delete(keybytes)
 		if err != nil {
 			log.Fatal("unable to delete object", fld.Err(err))
 		}

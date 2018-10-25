@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"chainspace.io/prototype/transactor"
+	"chainspace.io/prototype/sbac"
 )
 
 type Object struct {
@@ -19,8 +19,8 @@ type Transaction struct {
 	Mappings map[string]interface{} `json:"mappings"`
 }
 
-func (ct *Transaction) ToTransactor() (*transactor.Transaction, error) {
-	traces := make([]*transactor.Trace, 0, len(ct.Traces))
+func (ct *Transaction) ToTransactor() (*sbac.Transaction, error) {
+	traces := make([]*sbac.Trace, 0, len(ct.Traces))
 	for _, t := range ct.Traces {
 		ttrace, err := t.ToTransactor(ct.Mappings)
 		if err != nil {
@@ -28,7 +28,7 @@ func (ct *Transaction) ToTransactor() (*transactor.Transaction, error) {
 		}
 		traces = append(traces, ttrace)
 	}
-	return &transactor.Transaction{
+	return &sbac.Transaction{
 		Traces: traces,
 	}, nil
 }
@@ -45,7 +45,7 @@ type Trace struct {
 	Dependencies        []Trace       `json:"dependencies"`
 }
 
-func (ct *Trace) ToTransactor(mappings map[string]interface{}) (*transactor.Trace, error) {
+func (ct *Trace) ToTransactor(mappings map[string]interface{}) (*sbac.Trace, error) {
 	fromB64String := func(s []string) [][]byte {
 		out := make([][]byte, 0, len(s))
 		for _, v := range s {
@@ -62,7 +62,7 @@ func (ct *Trace) ToTransactor(mappings map[string]interface{}) (*transactor.Trac
 		}
 		return out
 	}
-	deps := make([]*transactor.Trace, 0, len(ct.Dependencies))
+	deps := make([]*sbac.Trace, 0, len(ct.Dependencies))
 	for _, d := range ct.Dependencies {
 		ttrace, err := d.ToTransactor(mappings)
 		if err != nil {
@@ -91,7 +91,7 @@ func (ct *Trace) ToTransactor(mappings map[string]interface{}) (*transactor.Trac
 		inputReferences = append(inputReferences, bobject)
 
 	}
-	return &transactor.Trace{
+	return &sbac.Trace{
 		ContractID:          ct.ContractID,
 		Procedure:           ct.Procedure,
 		InputObjectsKeys:    fromB64String(ct.InputObjectsKeys),
@@ -101,7 +101,7 @@ func (ct *Trace) ToTransactor(mappings map[string]interface{}) (*transactor.Trac
 		OutputObjects:       toJsonList(ct.OutputObjects),
 		Parameters:          toJsonList(ct.Parameters),
 		Returns:             toJsonList(ct.Returns),
-		Labels:              transactor.StringsSlice{}.FromSlice(ct.Labels),
+		Labels:              sbac.StringsSlice{}.FromSlice(ct.Labels),
 		Dependencies:        deps,
 	}, nil
 }

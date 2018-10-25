@@ -1,4 +1,4 @@
-package transactor // import "chainspace.io/prototype/transactor"
+package sbac // import "chainspace.io/prototype/sbac"
 
 import (
 	"sync"

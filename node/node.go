@@ -25,8 +25,8 @@ import (
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/pubsub"
 	"chainspace.io/prototype/restsrv"
+	"chainspace.io/prototype/sbac"
 	"chainspace.io/prototype/service"
-	"chainspace.io/prototype/transactor"
 	"github.com/gogo/protobuf/proto"
 	"github.com/tav/golly/process"
 )
@@ -413,7 +413,7 @@ func Run(cfg *Config) (*Server, error) {
 	var (
 		kvstore *kv.Service
 		rstsrv  *restsrv.Service
-		txtor   *transactor.Service
+		txtor   *sbac.Service
 		pbsb    *pubsub.Server
 		checkr  *checker.Service
 	)
@@ -456,7 +456,7 @@ func Run(cfg *Config) (*Server, error) {
 			cancel()
 			return nil, fmt.Errorf("node: unable to instantiate the kv service: %v", err)
 		}
-		tcfg := &transactor.Config{
+		tcfg := &sbac.Config{
 			Broadcaster: broadcaster,
 			KVStore:     kvstore,
 			Directory:   dir,
@@ -469,7 +469,7 @@ func Run(cfg *Config) (*Server, error) {
 			Top:         top,
 			Pubsub:      pbsb,
 		}
-		txtor, err = transactor.New(tcfg)
+		txtor, err = sbac.New(tcfg)
 		if err != nil {
 			cancel()
 			return nil, fmt.Errorf("node: unable to instantiate the transactor service: %s", err)

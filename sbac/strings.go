@@ -1,4 +1,4 @@
-package transactor
+package sbac // import "chainspace.io/prototype/sbac"
 
 type StringsSlice []*Strings
 

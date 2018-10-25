@@ -1,4 +1,4 @@
-package transactorclient // import "chainspace.io/prototype/transactor/transactorclient"
+package client // import "chainspace.io/prototype/sbac/client"
 
 import (
 	"encoding/base64"
@@ -11,8 +11,8 @@ import (
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
+	"chainspace.io/prototype/sbac"
 	"chainspace.io/prototype/service"
-	"chainspace.io/prototype/transactor"
 	"github.com/gogo/protobuf/proto"
 )
 
@@ -26,26 +26,26 @@ type Config struct {
 }
 
 type Client interface {
-	SendTransaction(t *transactor.Transaction, evidences map[uint64][]byte) ([]*transactor.Object, error)
-	Query(key []byte) ([]*transactor.Object, error)
+	SendTransaction(t *sbac.Transaction, evidences map[uint64][]byte) ([]*sbac.Object, error)
+	Query(key []byte) ([]*sbac.Object, error)
 	Create(obj []byte) ([][]byte, error)
-	Delete(key []byte) ([]*transactor.Object, error)
-	States(nodeID uint64) (*transactor.StatesReportResponse, error)
+	Delete(key []byte) ([]*sbac.Object, error)
+	States(nodeID uint64) (*sbac.StatesReportResponse, error)
 	Close()
 }
 
 type client struct {
 	maxPaylod   config.ByteSize
 	top         *network.Topology
-	txconns     *transactor.ConnsPool
-	queryconns  *transactor.ConnsPool
-	createconns *transactor.ConnsPool
-	deleteconns *transactor.ConnsPool
-	statesconns *transactor.ConnsPool
+	txconns     *sbac.ConnsPool
+	queryconns  *sbac.ConnsPool
+	createconns *sbac.ConnsPool
+	deleteconns *sbac.ConnsPool
+	statesconns *sbac.ConnsPool
 }
 
 func New(cfg *Config) Client {
-	cp := transactor.NewConnsPool(20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key, service.CONNECTION_TRANSACTOR)
+	cp := sbac.NewConnsPool(20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key, service.CONNECTION_TRANSACTOR)
 	c := &client{
 		maxPaylod:   cfg.MaxPayload,
 		top:         cfg.Top,
@@ -63,8 +63,8 @@ func (c *client) Close() {
 	c.createconns.Close()
 }
 
-func (c *client) addTransaction(nodes []uint64, t *transactor.Transaction, evidences map[uint64][]byte) ([]*transactor.Object, error) {
-	req := &transactor.AddTransactionRequest{
+func (c *client) addTransaction(nodes []uint64, t *sbac.Transaction, evidences map[uint64][]byte) ([]*sbac.Object, error) {
+	req := &sbac.AddTransactionRequest{
 		Tx:        t,
 		Evidences: evidences,
 	}
@@ -74,15 +74,15 @@ func (c *client) addTransaction(nodes []uint64, t *transactor.Transaction, evide
 		return nil, err
 	}
 	msg := &service.Message{
-		Opcode:  int32(transactor.Opcode_ADD_TRANSACTION),
+		Opcode:  int32(sbac.Opcode_ADD_TRANSACTION),
 		Payload: txbytes,
 	}
 	mu := sync.Mutex{}
 	wg := &sync.WaitGroup{}
-	objects := map[string]*transactor.Object{}
+	objects := map[string]*sbac.Object{}
 	f := func(n uint64, msg *service.Message) {
 		defer wg.Done()
-		res := transactor.AddTransactionResponse{}
+		res := sbac.AddTransactionResponse{}
 		err = proto.Unmarshal(msg.Payload, &res)
 		if err != nil {
 			log.Error("unable to unmarshal input message", fld.PeerID(n), fld.Err(err))
@@ -105,7 +105,7 @@ func (c *client) addTransaction(nodes []uint64, t *transactor.Transaction, evide
 		conns.WriteRequest(nid, msg, 5*time.Second, true, f)
 	}
 	wg.Wait()
-	objectsres := []*transactor.Object{}
+	objectsres := []*sbac.Object{}
 	for _, v := range objects {
 		v := v
 		objectsres = append(objectsres, v)
@@ -115,7 +115,7 @@ func (c *client) addTransaction(nodes []uint64, t *transactor.Transaction, evide
 	return objectsres, nil
 }
 
-func (c *client) nodesForTx(t *transactor.Transaction) []uint64 {
+func (c *client) nodesForTx(t *sbac.Transaction) []uint64 {
 	shardIDs := map[uint64]struct{}{}
 	// for each input object / reference, send the transaction.
 	for _, trace := range t.Traces {
@@ -135,7 +135,7 @@ func (c *client) nodesForTx(t *transactor.Transaction) []uint64 {
 	return out
 }
 
-func (c *client) SendTransaction(tx *transactor.Transaction, evidences map[uint64][]byte) ([]*transactor.Object, error) {
+func (c *client) SendTransaction(tx *sbac.Transaction, evidences map[uint64][]byte) ([]*sbac.Object, error) {
 	nodes := c.nodesForTx(tx)
 	start := time.Now()
 	// add the transaction
@@ -144,9 +144,9 @@ func (c *client) SendTransaction(tx *transactor.Transaction, evidences map[uint6
 	return objs, err
 }
 
-func (c *client) Query(key []byte) ([]*transactor.Object, error) {
+func (c *client) Query(key []byte) ([]*sbac.Object, error) {
 	nodes := c.top.NodesInShard(c.top.ShardForKey(key))
-	req := &transactor.QueryObjectRequest{
+	req := &sbac.QueryObjectRequest{
 		ObjectKey: key,
 	}
 	bytes, err := proto.Marshal(req)
@@ -155,16 +155,16 @@ func (c *client) Query(key []byte) ([]*transactor.Object, error) {
 		return nil, err
 	}
 	msg := &service.Message{
-		Opcode:  int32(transactor.Opcode_QUERY_OBJECT),
+		Opcode:  int32(sbac.Opcode_QUERY_OBJECT),
 		Payload: bytes,
 	}
 
 	mu := sync.Mutex{}
-	objs := []*transactor.Object{}
+	objs := []*sbac.Object{}
 	wg := &sync.WaitGroup{}
 	f := func(n uint64, msg *service.Message) {
 		defer wg.Done()
-		res := transactor.QueryObjectResponse{}
+		res := sbac.QueryObjectResponse{}
 		err = proto.Unmarshal(msg.Payload, &res)
 		if err != nil {
 			return
@@ -193,7 +193,7 @@ func (c *client) Create(obj []byte) ([][]byte, error) {
 	key := ch.Digest()
 	nodes := c.top.NodesInShard(c.top.ShardForKey(key))
 
-	req := &transactor.NewObjectRequest{
+	req := &sbac.NewObjectRequest{
 		Object: obj,
 	}
 	bytes, err := proto.Marshal(req)
@@ -202,7 +202,7 @@ func (c *client) Create(obj []byte) ([][]byte, error) {
 	}
 	now := time.Now()
 	msg := service.Message{
-		Opcode:  int32(transactor.Opcode_CREATE_OBJECT),
+		Opcode:  int32(sbac.Opcode_CREATE_OBJECT),
 		Payload: bytes,
 	}
 
@@ -212,7 +212,7 @@ func (c *client) Create(obj []byte) ([][]byte, error) {
 	f := func(n uint64, msg *service.Message) {
 		defer wg.Done()
 		log.Error("TIME ELAPSED TO CREATE OBJECT FROM NODE", log.Uint64("NODEID", n), log.String("duration", time.Since(now).String()))
-		res := transactor.NewObjectResponse{}
+		res := sbac.NewObjectResponse{}
 		err = proto.Unmarshal(msg.Payload, &res)
 		if err != nil {
 			return
@@ -235,9 +235,9 @@ func (c *client) Create(obj []byte) ([][]byte, error) {
 	return objs, nil
 }
 
-func (c *client) Delete(key []byte) ([]*transactor.Object, error) {
+func (c *client) Delete(key []byte) ([]*sbac.Object, error) {
 	nodes := c.top.NodesInShard(c.top.ShardForKey(key))
-	req := &transactor.DeleteObjectRequest{
+	req := &sbac.DeleteObjectRequest{
 		ObjectKey: key,
 	}
 	bytes, err := proto.Marshal(req)
@@ -245,16 +245,16 @@ func (c *client) Delete(key []byte) ([]*transactor.Object, error) {
 		return nil, err
 	}
 	msg := &service.Message{
-		Opcode:  int32(transactor.Opcode_DELETE_OBJECT),
+		Opcode:  int32(sbac.Opcode_DELETE_OBJECT),
 		Payload: bytes,
 	}
 
 	mu := sync.Mutex{}
 	wg := &sync.WaitGroup{}
-	objs := []*transactor.Object{}
+	objs := []*sbac.Object{}
 	f := func(n uint64, msg *service.Message) {
 		defer wg.Done()
-		res := &transactor.DeleteObjectResponse{}
+		res := &sbac.DeleteObjectResponse{}
 		err = proto.Unmarshal(msg.Payload, res)
 		if err != nil {
 			return
@@ -274,13 +274,13 @@ func (c *client) Delete(key []byte) ([]*transactor.Object, error) {
 	return objs, nil
 }
 
-func (c *client) States(nodeID uint64) (*transactor.StatesReportResponse, error) {
+func (c *client) States(nodeID uint64) (*sbac.StatesReportResponse, error) {
 	msg := &service.Message{
-		Opcode: int32(transactor.Opcode_STATES),
+		Opcode: int32(sbac.Opcode_STATES),
 	}
 
 	wg := &sync.WaitGroup{}
-	res := &transactor.StatesReportResponse{}
+	res := &sbac.StatesReportResponse{}
 	f := func(n uint64, msg *service.Message) {
 		defer wg.Done()
 		err := proto.Unmarshal(msg.Payload, res)

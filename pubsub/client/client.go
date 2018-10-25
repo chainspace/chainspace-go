@@ -1,4 +1,4 @@
-package client
+package client // import "chainspace.io/prototype/pubsub/client"
 
 import (
 	"context"

@@ -19,8 +19,8 @@ import (
 	"chainspace.io/prototype/log"
 	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
-	"chainspace.io/prototype/transactor"
-	"chainspace.io/prototype/transactor/transactorclient"
+	"chainspace.io/prototype/sbac"
+	sbacclient "chainspace.io/prototype/sbac/client"
 	"github.com/rs/cors"
 )
 
@@ -32,7 +32,7 @@ type Config struct {
 	MaxPayload config.ByteSize
 	SelfID     uint64
 	Store      *kv.Service
-	Transactor *transactor.Service
+	Transactor *sbac.Service
 }
 
 type Service struct {
@@ -41,8 +41,8 @@ type Service struct {
 	store      *kv.Service
 	top        *network.Topology
 	maxPayload config.ByteSize
-	client     transactorclient.Client
-	transactor *transactor.Service
+	client     sbacclient.Client
+	transactor *sbac.Service
 	checker    *checkerclient.Client
 }
 
@@ -126,7 +126,7 @@ func readdata(rw http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	return key, true
 }
 
-func BuildObjectResponse(objects []*transactor.Object) (Object, error) {
+func BuildObjectResponse(objects []*sbac.Object) (Object, error) {
 	if len(objects) <= 0 {
 		return Object{}, errors.New("object already inactive")
 	}
@@ -421,13 +421,13 @@ func New(cfg *Config) *Service {
 		Key:        cfg.Key,
 	}
 	checkrclt := checkerclient.New(&checkrcfg)
-	clcfg := transactorclient.Config{
+	clcfg := sbacclient.Config{
 		NodeID:     cfg.SelfID,
 		Top:        cfg.Top,
 		MaxPayload: cfg.MaxPayload,
 		Key:        cfg.Key,
 	}
-	txclient := transactorclient.New(&clcfg)
+	txclient := sbacclient.New(&clcfg)
 	s := &Service{
 		port:       cfg.Port,
 		top:        cfg.Top,

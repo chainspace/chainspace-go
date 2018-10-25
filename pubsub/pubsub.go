@@ -1,4 +1,4 @@
-package pubsub
+package pubsub // import "chainspace.io/prototype/pubsub"
 
 import (
 	"encoding/base64"
