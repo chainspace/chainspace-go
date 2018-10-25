@@ -17,7 +17,7 @@ import (
 )
 
 // Config represent the configuration required to send messages
-// using the transactor
+// using the sbac
 type Config struct {
 	Top        *network.Topology
 	MaxPayload config.ByteSize

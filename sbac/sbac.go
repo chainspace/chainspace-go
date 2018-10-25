@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	badgerStorePath = "/transactor/"
+	badgerStorePath = "/sbac/"
 )
 
 var b32 = base32.StdEncoding.WithPadding(base32.NoPadding)
@@ -107,8 +107,8 @@ func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, e
 	case Opcode_SBAC:
 		return s.handleSBAC(ctx, m.Payload, peerID, m.ID)
 	default:
-		log.Error("transactor: unknown message opcode", log.Int32("opcode", m.Opcode), fld.PeerID(peerID), log.Int("len", len(m.Payload)))
-		return nil, fmt.Errorf("transactor: unknown message opcode: %v", m.Opcode)
+		log.Error("sbac: unknown message opcode", log.Int32("opcode", m.Opcode), fld.PeerID(peerID), log.Int("len", len(m.Payload)))
+		return nil, fmt.Errorf("sbac: unknown message opcode: %v", m.Opcode)
 	}
 }
 
@@ -144,8 +144,8 @@ func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64,
 	req := &SBACMessage{}
 	err := proto.Unmarshal(payload, req)
 	if err != nil {
-		log.Error("transactor: sbac unmarshaling error", fld.Err(err))
-		return nil, fmt.Errorf("transactor: sbac unmarshaling error: %v", err)
+		log.Error("sbac: sbac unmarshaling error", fld.Err(err))
+		return nil, fmt.Errorf("sbac: sbac unmarshaling error: %v", err)
 	}
 	// if we received a COMMIT opcode, the statemachine may not exists
 	// lets check and create it here.
@@ -232,8 +232,8 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte, id uint64)
 	req := &AddTransactionRequest{}
 	err := proto.Unmarshal(payload, req)
 	if err != nil {
-		log.Error("transactor: unable to unmarshal AddTransaction", fld.Err(err))
-		return nil, fmt.Errorf("transactor: add_transaction unmarshaling error: %v", err)
+		log.Error("sbac: unable to unmarshal AddTransaction", fld.Err(err))
+		return nil, fmt.Errorf("sbac: add_transaction unmarshaling error: %v", err)
 	}
 
 	ids, err := MakeIDs(req.Tx)
@@ -245,9 +245,9 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte, id uint64)
 	txbytes, _ := proto.Marshal(req.Tx)
 	if !s.verifySignatures(txbytes, req.Evidences) {
 		log.Error("invalid evidences from nodes")
-		return nil, errors.New("transactor: invalid evidences from nodes")
+		return nil, errors.New("sbac: invalid evidences from nodes")
 	}
-	log.Info("transactor: all evidence verified with success")
+	log.Info("sbac: all evidence verified with success")
 
 	objects := map[string]*ObjectList{}
 	for _, v := range ids.TraceObjectPairs {
@@ -267,7 +267,7 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte, id uint64)
 	}
 	b, err := proto.Marshal(consensusTx)
 	if err != nil {
-		return nil, fmt.Errorf("transactor: unable to marshal consensus tx: %v", err)
+		return nil, fmt.Errorf("sbac: unable to marshal consensus tx: %v", err)
 	}
 	if s.isNodeInitiatingBroadcast(ID(ids.TxID)) {
 		s.broadcaster.AddTransaction(b, 0)
@@ -278,9 +278,9 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte, id uint64)
 
 	b, err = proto.Marshal(res)
 	if err != nil {
-		return nil, fmt.Errorf("transactor: unable to marshal add_transaction response, %v", err)
+		return nil, fmt.Errorf("sbac: unable to marshal add_transaction response, %v", err)
 	}
-	log.Info("transactor: transaction added successfully")
+	log.Info("sbac: transaction added successfully")
 	return &service.Message{
 		ID:      id,
 		Opcode:  int32(Opcode_ADD_TRANSACTION),
@@ -338,19 +338,19 @@ func (s *Service) queryObject(ctx context.Context, payload []byte, id uint64) (*
 	err := proto.Unmarshal(payload, req)
 	res := &QueryObjectResponse{}
 	if err != nil {
-		res.Error = fmt.Errorf("transactor: query_object unmarshaling error: %v", err).Error()
+		res.Error = fmt.Errorf("sbac: query_object unmarshaling error: %v", err).Error()
 		return queryPayload(id, res)
 	}
 
 	if req.ObjectKey == nil {
-		res.Error = fmt.Errorf("transactor: nil object key").Error()
+		res.Error = fmt.Errorf("sbac: nil object key").Error()
 		return queryPayload(id, res)
 	}
 	objects, err := GetObjects(s.store, [][]byte{req.ObjectKey})
 	if err != nil {
 		res.Error = err.Error()
 	} else if len(objects) != 1 {
-		res.Error = fmt.Errorf("transactor: invalid number of objects found, expected %v found %v", 1, len(objects)).Error()
+		res.Error = fmt.Errorf("sbac: invalid number of objects found, expected %v found %v", 1, len(objects)).Error()
 	} else {
 		res.Object = objects[0]
 	}
@@ -370,7 +370,7 @@ func (s *Service) handleStates(ctx context.Context, payload []byte, id uint64) (
 	}
 	b, err := proto.Marshal(res)
 	if err != nil {
-		return nil, fmt.Errorf("transactor: unable to marshal states reports response")
+		return nil, fmt.Errorf("sbac: unable to marshal states reports response")
 	}
 	return &service.Message{
 		ID:      id,
@@ -393,12 +393,12 @@ func (s *Service) deleteObject(ctx context.Context, payload []byte, id uint64) (
 	res := &DeleteObjectResponse{}
 	err := proto.Unmarshal(payload, req)
 	if err != nil {
-		res.Error = fmt.Errorf("transactor: remove_object unmarshaling error: %v", err).Error()
+		res.Error = fmt.Errorf("sbac: remove_object unmarshaling error: %v", err).Error()
 		return deletePayload(id, res)
 	}
 
 	if req.ObjectKey == nil {
-		res.Error = fmt.Errorf("transactor: nil object key").Error()
+		res.Error = fmt.Errorf("sbac: nil object key").Error()
 		return deletePayload(id, res)
 	}
 	err = DeleteObjects(s.store, [][]byte{req.ObjectKey})
@@ -409,7 +409,7 @@ func (s *Service) deleteObject(ctx context.Context, payload []byte, id uint64) (
 	if err != nil {
 		res.Error = err.Error()
 	} else if len(objects) != 1 {
-		res.Error = fmt.Errorf("transactor: invalid number of objects removed, expected %v found %v", 1, len(objects)).Error()
+		res.Error = fmt.Errorf("sbac: invalid number of objects removed, expected %v found %v", 1, len(objects)).Error()
 	} else {
 		res.Object = objects[0]
 	}
@@ -430,24 +430,24 @@ func (s *Service) createObject(ctx context.Context, payload []byte, id uint64) (
 	err := proto.Unmarshal(payload, req)
 	res := &NewObjectResponse{}
 	if err != nil {
-		res.Error = fmt.Errorf("transactor: new_object unmarshaling error: %v", err).Error()
+		res.Error = fmt.Errorf("sbac: new_object unmarshaling error: %v", err).Error()
 		return createPayload(id, res)
 	}
 
 	if req.Object == nil || len(req.Object) <= 0 {
-		res.Error = fmt.Errorf("transactor: nil object key").Error()
+		res.Error = fmt.Errorf("sbac: nil object key").Error()
 		return createPayload(id, res)
 	}
 	ch := combihash.New()
 	ch.Write([]byte(req.Object))
 	key := ch.Digest()
 	if log.AtDebug() {
-		log.Debug("transactor: creating new object", log.String("objet", string(req.Object)), log.Uint32("object.id", ID(key)))
+		log.Debug("sbac: creating new object", log.String("objet", string(req.Object)), log.Uint32("object.id", ID(key)))
 	}
 	o, err := CreateObject(s.store, key, req.Object)
 	if err != nil {
 		if log.AtDebug() {
-			log.Debug("transactor: unable to create object", log.String("objet", string(req.Object)), log.Uint32("object.id", ID(key)), fld.Err(err))
+			log.Debug("sbac: unable to create object", log.String("objet", string(req.Object)), log.Uint32("object.id", ID(key)), fld.Err(err))
 		}
 		res.Error = err.Error()
 	} else {
@@ -457,7 +457,7 @@ func (s *Service) createObject(ctx context.Context, payload []byte, id uint64) (
 }
 
 func (s *Service) Name() string {
-	return "transactor"
+	return "sbac"
 }
 
 func (s *Service) Stop() error {
@@ -489,7 +489,7 @@ func New(cfg *Config) (*Service, error) {
 
 	s := &Service{
 		broadcaster: cfg.Broadcaster,
-		conns:       NewConnsPool(20, cfg.NodeID, cfg.Top, cfg.MaxPayload, cfg.Key, service.CONNECTION_TRANSACTOR),
+		conns:       NewConnsPool(20, cfg.NodeID, cfg.Top, cfg.MaxPayload, cfg.Key, service.CONNECTION_SBAC),
 		kvstore:     cfg.KVStore,
 		nodeID:      cfg.NodeID,
 		privkey:     privkey,

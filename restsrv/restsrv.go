@@ -32,7 +32,7 @@ type Config struct {
 	MaxPayload config.ByteSize
 	SelfID     uint64
 	Store      *kv.Service
-	Transactor *sbac.Service
+	SBAC       *sbac.Service
 }
 
 type Service struct {
@@ -42,7 +42,7 @@ type Service struct {
 	top        *network.Topology
 	maxPayload config.ByteSize
 	client     sbacclient.Client
-	transactor *sbac.Service
+	sbac       *sbac.Service
 	checker    *checkerclient.Client
 }
 
@@ -309,7 +309,7 @@ func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	tx, err := req.ToTransactor()
+	tx, err := req.ToSBAC()
 	if err != nil {
 		fail(rw, http.StatusBadRequest, err.Error())
 		return
@@ -434,7 +434,7 @@ func New(cfg *Config) *Service {
 		maxPayload: cfg.MaxPayload,
 		client:     txclient,
 		store:      cfg.Store,
-		transactor: cfg.Transactor,
+		sbac:       cfg.SBAC,
 		checker:    checkrclt,
 	}
 	s.srv = s.makeServ(cfg.Addr, cfg.Port)

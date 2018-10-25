@@ -197,7 +197,7 @@ func cmdGenLoad(args []string, usage string) {
 		RateIncrease: *rateIncrease,
 	}
 
-	nodeCfg.DisableTransactor = true
+	nodeCfg.DisableSBAC = true
 	nodeCfg.Logging.FileLevel = log.InfoLevel
 	log.ToConsole(log.InfoLevel)
 

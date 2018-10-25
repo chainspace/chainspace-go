@@ -68,7 +68,7 @@ func MakeTraceID(trace *Trace) ([]byte, error) {
 	}
 	_, err := ch.Write(data)
 	if err != nil {
-		return nil, fmt.Errorf("transactor: unable to create hash: %v", err)
+		return nil, fmt.Errorf("sbac: unable to create hash: %v", err)
 	}
 
 	return ch.Digest(), nil
@@ -89,7 +89,7 @@ func MakeObjectIDs(pair *TraceIdentifierPair) ([]*Object, error) {
 		id = append(id, index...)
 		_, err := ch.Write(id)
 		if err != nil {
-			return nil, fmt.Errorf("transactor: unable to create hash: %v", err)
+			return nil, fmt.Errorf("sbac: unable to create hash: %v", err)
 		}
 		var labels []string
 		if len(pair.Trace.Labels) > i {
@@ -135,7 +135,7 @@ func MakeTransactionID(top []TraceObjectPair) ([]byte, error) {
 	}
 	_, err := ch.Write(bytes)
 	if err != nil {
-		return nil, fmt.Errorf("transactor: unable to create hash: %v", err)
+		return nil, fmt.Errorf("sbac: unable to create hash: %v", err)
 	}
 	return ch.Digest(), nil
 }

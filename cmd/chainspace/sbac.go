@@ -37,7 +37,7 @@ func getRequiredParams(
 }
 
 func cmdSBAC(args []string, usage string) {
-	opts := newOpts("transactor NETWORK_NAME COMMAND [OPTIONS]", usage)
+	opts := newOpts("sbac NETWORK_NAME COMMAND [OPTIONS]", usage)
 	configRoot := opts.Flags("-c", "--config-root").Label("PATH").String("path to the chainspace root directory [$HOME/.chainspace]", defaultRootDir())
 	consoleLog := opts.Flags("--console-log").Label("LEVEL").String("set the minimum console log level")
 	payloadPath := opts.Flags("-p", "--payload-path").Label("PATH").String("path to the payload of the transaction to send", "")
@@ -104,7 +104,7 @@ func cmdSBAC(args []string, usage string) {
 			log.Fatal("Invalid payload format for transaction", fld.Err(err))
 		}
 
-		ttx, _ := tx.ToTransactor()
+		ttx, _ := tx.ToSBAC()
 		objects, err := sbacclt.SendTransaction(ttx, map[uint64][]byte{})
 		if err != nil {
 			log.Fatal("unable to send transaction", fld.Err(err))
@@ -186,7 +186,7 @@ func cmdSBAC(args []string, usage string) {
 		}
 		fmt.Printf("%v\n", string(b))
 	default:
-		log.Fatal("invalid/unknown command", fld.TransactorCmd(cmd))
+		log.Fatal("invalid/unknown command", fld.SBACCmd(cmd))
 	}
 
 }

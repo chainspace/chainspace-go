@@ -118,18 +118,18 @@ func (n *Network) Hash() ([]byte, error) {
 // Node represents the configuration of an individual node in a Chainspace
 // network.
 type Node struct {
-	Announce          *Announce      `yaml:"announce,omitempty"`
-	Bootstrap         *Bootstrap     `yaml:"bootstrap"`
-	Broadcast         *Broadcast     `yaml:"broadcast"`
-	Connections       *Connections   `yaml:"connections"`
-	Consensus         *NodeConsensus `yaml:"consensus"`
-	Contracts         *NodeContracts `yaml:"contracts"`
-	DisableTransactor bool           `yaml:"disable.transactor,omitempty"`
-	HTTP              HTTP           `yaml:"http,omitempty"`
-	Logging           *Logging       `yaml:"logging"`
-	Pubsub            *Pubsub        `yaml:"pubsub"`
-	Registries        []Registry     `yaml:"registries,omitempty"`
-	Storage           *Storage       `yaml:"storage"`
+	Announce    *Announce      `yaml:"announce,omitempty"`
+	Bootstrap   *Bootstrap     `yaml:"bootstrap"`
+	Broadcast   *Broadcast     `yaml:"broadcast"`
+	Connections *Connections   `yaml:"connections"`
+	Consensus   *NodeConsensus `yaml:"consensus"`
+	Contracts   *NodeContracts `yaml:"contracts"`
+	DisableSBAC bool           `yaml:"disable.sbac,omitempty"`
+	HTTP        HTTP           `yaml:"http,omitempty"`
+	Logging     *Logging       `yaml:"logging"`
+	Pubsub      *Pubsub        `yaml:"pubsub"`
+	Registries  []Registry     `yaml:"registries,omitempty"`
+	Storage     *Storage       `yaml:"storage"`
 }
 
 // NodeConsensus represents the node-specific configuration for the consensus

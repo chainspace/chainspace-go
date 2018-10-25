@@ -19,10 +19,10 @@ type Transaction struct {
 	Mappings map[string]interface{} `json:"mappings"`
 }
 
-func (ct *Transaction) ToTransactor() (*sbac.Transaction, error) {
+func (ct *Transaction) ToSBAC() (*sbac.Transaction, error) {
 	traces := make([]*sbac.Trace, 0, len(ct.Traces))
 	for _, t := range ct.Traces {
-		ttrace, err := t.ToTransactor(ct.Mappings)
+		ttrace, err := t.ToSBAC(ct.Mappings)
 		if err != nil {
 			return nil, err
 		}
@@ -45,7 +45,7 @@ type Trace struct {
 	Dependencies        []Trace       `json:"dependencies"`
 }
 
-func (ct *Trace) ToTransactor(mappings map[string]interface{}) (*sbac.Trace, error) {
+func (ct *Trace) ToSBAC(mappings map[string]interface{}) (*sbac.Trace, error) {
 	fromB64String := func(s []string) [][]byte {
 		out := make([][]byte, 0, len(s))
 		for _, v := range s {
@@ -64,7 +64,7 @@ func (ct *Trace) ToTransactor(mappings map[string]interface{}) (*sbac.Trace, err
 	}
 	deps := make([]*sbac.Trace, 0, len(ct.Dependencies))
 	for _, d := range ct.Dependencies {
-		ttrace, err := d.ToTransactor(mappings)
+		ttrace, err := d.ToSBAC(mappings)
 		if err != nil {
 			return nil, err
 		}

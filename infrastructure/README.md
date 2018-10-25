@@ -9,7 +9,7 @@ This should have generated a chainspace.upx in the infrastructure folder.
 
 Then generate the configuration for the network you want to deploy, e.g for 7 nodes (do this in the infrastructure directory):
 ```
-$ chainspace init testnet --registry acoustic-atom-211511.appspot.com --shard-count 1 --shard-size 7 --disable-transactor true --config-root ./conf --http-port 8080
+$ chainspace init testnet --registry acoustic-atom-211511.appspot.com --shard-count 1 --shard-size 7 --disable-sbac true --config-root ./conf --http-port 8080
 ```
 
 Then run terraform. You can customize variable in terraform using environnment variable. Some are setup in the .envrc file (to use with direnv). You should edit the variable "TF_VAR_node_count" to match the number of node for the network you just created, currently 7.

@@ -82,7 +82,7 @@ func (s *Service) kvGet(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	objectraw, err := s.transactor.QueryObjectByKey(objectID)
+	objectraw, err := s.sbac.QueryObjectByKey(objectID)
 	if err != nil {
 		fail(rw, http.StatusInternalServerError, err.Error())
 		return

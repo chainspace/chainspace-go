@@ -168,8 +168,8 @@ func ToState(value fmt.Stringer) log.Field {
 	return log.String("status.to", value.String())
 }
 
-// TransactorCmd log field.
-func TransactorCmd(value string) log.Field {
+// SBACCmd log field.
+func SBACCmd(value string) log.Field {
 	return log.String("cmd", value)
 }
 

@@ -76,7 +76,7 @@ type Server struct {
 	restsrv         *restsrv.Service
 	sharder         service.Handler
 	top             *network.Topology
-	transactor      service.Handler
+	sbac            service.Handler
 	writeTimeout    time.Duration
 }
 
@@ -102,8 +102,8 @@ func (s *Server) handleConnection(conn net.Conn) {
 			log.Error("Unable to verify peer ID from the hello message", fld.Err(err))
 			return
 		}
-	case service.CONNECTION_TRANSACTOR:
-		svc = s.transactor
+	case service.CONNECTION_SBAC:
+		svc = s.sbac
 		peerID, err = s.verifyPeerID(hello)
 		if err != nil {
 			log.Error("Unable to verify peer ID from the hello message", fld.Err(err))
@@ -413,7 +413,7 @@ func Run(cfg *Config) (*Server, error) {
 	var (
 		kvstore *kv.Service
 		rstsrv  *restsrv.Service
-		txtor   *sbac.Service
+		ssbac   *sbac.Service
 		pbsb    *pubsub.Server
 		checkr  *checker.Service
 	)
@@ -437,7 +437,7 @@ func Run(cfg *Config) (*Server, error) {
 		tcheckers = append(tcheckers, v)
 	}
 
-	if !cfg.Node.DisableTransactor {
+	if !cfg.Node.DisableSBAC {
 		checkercfg := &checker.Config{
 			Checkers:   tcheckers,
 			SigningKey: cfg.Keys.SigningKey,
@@ -469,10 +469,10 @@ func Run(cfg *Config) (*Server, error) {
 			Top:         top,
 			Pubsub:      pbsb,
 		}
-		txtor, err = sbac.New(tcfg)
+		ssbac, err = sbac.New(tcfg)
 		if err != nil {
 			cancel()
-			return nil, fmt.Errorf("node: unable to instantiate the transactor service: %s", err)
+			return nil, fmt.Errorf("node: unable to instantiate the sbac service: %s", err)
 		}
 		if cfg.Node.HTTP.Enabled {
 			var rport int
@@ -488,7 +488,7 @@ func Run(cfg *Config) (*Server, error) {
 				Top:        top,
 				SelfID:     cfg.NodeID,
 				MaxPayload: config.ByteSize(maxPayload),
-				Transactor: txtor,
+				SBAC:       ssbac,
 				Store:      kvstore,
 			}
 			rstsrv = restsrv.New(restsrvcfg)
@@ -509,7 +509,7 @@ func Run(cfg *Config) (*Server, error) {
 		readTimeout:     cfg.Node.Connections.ReadTimeout,
 		restsrv:         rstsrv,
 		top:             top,
-		transactor:      txtor,
+		sbac:            ssbac,
 		writeTimeout:    cfg.Node.Connections.WriteTimeout,
 	}
 

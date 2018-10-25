@@ -805,7 +805,7 @@ func (s *Service) toConsensus2Triggered(tx *TxDetails) (State, error) {
 	}
 	b, err := proto.Marshal(consensusTx)
 	if err != nil {
-		return StateAborted, fmt.Errorf("transactor: unable to marshal consensus tx: %v", err)
+		return StateAborted, fmt.Errorf("sbac: unable to marshal consensus tx: %v", err)
 	}
 
 	// choose the node to start the consensus based on the hash id of the transaction
@@ -825,7 +825,7 @@ func (s *Service) toConsensusCommitTriggered(tx *TxDetails) (State, error) {
 	}
 	b, err := proto.Marshal(consensusTx)
 	if err != nil {
-		return StateAborted, fmt.Errorf("transactor: unable to marshal consensus tx: %v", err)
+		return StateAborted, fmt.Errorf("sbac: unable to marshal consensus tx: %v", err)
 	}
 
 	if s.isNodeInitiatingBroadcast(tx.HashID) {

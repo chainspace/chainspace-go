@@ -17,7 +17,7 @@ import (
 )
 
 // Config represent the configuration required to send messages
-// using the transactor
+// using the sbac
 type Config struct {
 	Top        *network.Topology
 	MaxPayload config.ByteSize
@@ -45,7 +45,7 @@ type client struct {
 }
 
 func New(cfg *Config) Client {
-	cp := sbac.NewConnsPool(20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key, service.CONNECTION_TRANSACTOR)
+	cp := sbac.NewConnsPool(20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key, service.CONNECTION_SBAC)
 	c := &client{
 		maxPaylod:   cfg.MaxPayload,
 		top:         cfg.Top,
@@ -70,7 +70,7 @@ func (c *client) addTransaction(nodes []uint64, t *sbac.Transaction, evidences m
 	}
 	txbytes, err := proto.Marshal(req)
 	if err != nil {
-		log.Error("transactor client: unable to marshal transaction", fld.Err(err))
+		log.Error("sbac client: unable to marshal transaction", fld.Err(err))
 		return nil, err
 	}
 	msg := &service.Message{
