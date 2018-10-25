@@ -76,7 +76,7 @@ func setObjectsInactive(txn *badger.Txn, objkeys [][]byte) error {
 
 func createObjects(txn *badger.Txn, objs []*Object) error {
 	for _, obj := range objs {
-		objkey := objectKey(obj.Key)
+		objkey := objectKey(obj.VersionID)
 		_, err := txn.Get(objkey)
 		if err == nil {
 			return ErrObjectAlreadyExists
@@ -85,7 +85,7 @@ func createObjects(txn *badger.Txn, objs []*Object) error {
 		if err != nil {
 			return err
 		}
-		objstatuskey := objectStatusKey(obj.Key)
+		objstatuskey := objectStatusKey(obj.VersionID)
 		_, err = txn.Get(objstatuskey)
 		if err == nil {
 			return ErrObjectAlreadyExists
@@ -244,16 +244,16 @@ func GetTransaction(store *badger.DB, txkey []byte) ([]byte, bool, error) {
 	return txvalue, txcommitted, nil
 }
 
-// GetObjectsFromStore return the list of objects corresponding to the list of keys
+// GetObjectsFromStore return the list of objects corresponding to the list of versionIDs
 // order the same. if any of the keys do not match in database an error is returned
-func GetObjects(store *badger.DB, keys [][]byte) ([]*Object, error) {
-	objects := make([]*Object, 0, len(keys))
+func GetObjects(store *badger.DB, vids [][]byte) ([]*Object, error) {
+	objects := make([]*Object, 0, len(vids))
 	err := store.View(func(txn *badger.Txn) error {
-		for _, key := range keys {
+		for _, vid := range vids {
 			o := &Object{
-				Key: key,
+				VersionID: vid,
 			}
-			objkey := objectKey(key)
+			objkey := objectKey(vid)
 			item, err := txn.Get(objkey)
 			if err != nil {
 				return err
@@ -264,7 +264,7 @@ func GetObjects(store *badger.DB, keys [][]byte) ([]*Object, error) {
 			}
 			o.Value = make([]byte, len(val))
 			copy(o.Value, val)
-			statuskey := objectStatusKey(key)
+			statuskey := objectStatusKey(vid)
 			item, err = txn.Get(statuskey)
 			rawStatus, err := item.Value()
 			if err != nil {
@@ -298,10 +298,10 @@ func CreateObjects(store *badger.DB, objs []*Object) error {
 
 // testing purpose only, allow us to create an new object in the node without consensus
 // in a completely arbitrary way
-func CreateObject(store *badger.DB, key, value []byte) (*Object, error) {
+func CreateObject(store *badger.DB, vid, value []byte) (*Object, error) {
 	var o *Object
 	return o, store.Update(func(txn *badger.Txn) error {
-		objkey := objectKey(key)
+		objkey := objectKey(vid)
 		_, err := txn.Get(objkey)
 		if err == nil {
 			return ErrObjectAlreadyExists
@@ -310,7 +310,7 @@ func CreateObject(store *badger.DB, key, value []byte) (*Object, error) {
 		if err != nil {
 			return err
 		}
-		objstatuskey := objectStatusKey(key)
+		objstatuskey := objectStatusKey(vid)
 		_, err = txn.Get(objstatuskey)
 		if err == nil {
 			return ErrObjectAlreadyExists
@@ -320,9 +320,9 @@ func CreateObject(store *badger.DB, key, value []byte) (*Object, error) {
 			return err
 		}
 		o = &Object{
-			Key:    key,
-			Value:  value,
-			Status: ObjectStatus_ACTIVE,
+			VersionID: vid,
+			Value:     value,
+			Status:    ObjectStatus_ACTIVE,
 		}
 		return nil
 	})

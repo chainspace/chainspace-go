@@ -9,9 +9,9 @@ import (
 )
 
 type Object struct {
-	Key    string      `json:"key"`
-	Value  interface{} `json:"value"`
-	Status string      `json:"status"`
+	VersionID string      `json:"version_id"`
+	Value     interface{} `json:"value"`
+	Status    string      `json:"status"`
 }
 
 type Transaction struct {
@@ -34,15 +34,15 @@ func (ct *Transaction) ToSBAC() (*sbac.Transaction, error) {
 }
 
 type Trace struct {
-	ContractID          string        `json:"contract_id"`
-	Procedure           string        `json:"procedure"`
-	InputObjectsKeys    []string      `json:"input_objects_keys"`
-	InputReferencesKeys []string      `json:"input_references_keys"`
-	OutputObjects       []interface{} `json:"output_objects"`
-	Parameters          []interface{} `json:"parameters"`
-	Returns             []interface{} `json:"returns"`
-	Labels              [][]string    `json:"labels"`
-	Dependencies        []Trace       `json:"dependencies"`
+	ContractID               string        `json:"contract_id"`
+	Procedure                string        `json:"procedure"`
+	InputObjectVersionIDs    []string      `json:"input_object_version_ids"`
+	InputReferenceVersionIDs []string      `json:"input_reference_version_ids"`
+	OutputObjects            []interface{} `json:"output_objects"`
+	Parameters               []interface{} `json:"parameters"`
+	Returns                  []interface{} `json:"returns"`
+	Labels                   [][]string    `json:"labels"`
+	Dependencies             []Trace       `json:"dependencies"`
 }
 
 func (ct *Trace) ToSBAC(mappings map[string]interface{}) (*sbac.Trace, error) {
@@ -71,8 +71,8 @@ func (ct *Trace) ToSBAC(mappings map[string]interface{}) (*sbac.Trace, error) {
 		deps = append(deps, ttrace)
 	}
 
-	inputObjects := make([][]byte, 0, len(ct.InputObjectsKeys))
-	for _, v := range ct.InputObjectsKeys {
+	inputObjects := make([][]byte, 0, len(ct.InputObjectVersionIDs))
+	for _, v := range ct.InputObjectVersionIDs {
 		object, ok := mappings[v]
 		if !ok {
 			return nil, fmt.Errorf("missing object mapping for key [%v]", v)
@@ -81,8 +81,8 @@ func (ct *Trace) ToSBAC(mappings map[string]interface{}) (*sbac.Trace, error) {
 		inputObjects = append(inputObjects, bobject)
 
 	}
-	inputReferences := make([][]byte, 0, len(ct.InputReferencesKeys))
-	for _, v := range ct.InputReferencesKeys {
+	inputReferences := make([][]byte, 0, len(ct.InputReferenceVersionIDs))
+	for _, v := range ct.InputReferenceVersionIDs {
 		object, ok := mappings[v]
 		if !ok {
 			return nil, fmt.Errorf("missing object mapping for key [%v]", v)
@@ -92,16 +92,16 @@ func (ct *Trace) ToSBAC(mappings map[string]interface{}) (*sbac.Trace, error) {
 
 	}
 	return &sbac.Trace{
-		ContractID:          ct.ContractID,
-		Procedure:           ct.Procedure,
-		InputObjectsKeys:    fromB64String(ct.InputObjectsKeys),
-		InputReferencesKeys: fromB64String(ct.InputReferencesKeys),
-		InputObjects:        inputObjects,
-		InputReferences:     inputReferences,
-		OutputObjects:       toJsonList(ct.OutputObjects),
-		Parameters:          toJsonList(ct.Parameters),
-		Returns:             toJsonList(ct.Returns),
-		Labels:              sbac.StringsSlice{}.FromSlice(ct.Labels),
-		Dependencies:        deps,
+		ContractID:               ct.ContractID,
+		Procedure:                ct.Procedure,
+		InputObjectVersionIDs:    fromB64String(ct.InputObjectVersionIDs),
+		InputReferenceVersionIDs: fromB64String(ct.InputReferenceVersionIDs),
+		InputObjects:             inputObjects,
+		InputReferences:          inputReferences,
+		OutputObjects:            toJsonList(ct.OutputObjects),
+		Parameters:               toJsonList(ct.Parameters),
+		Returns:                  toJsonList(ct.Returns),
+		Labels:                   sbac.StringsSlice{}.FromSlice(ct.Labels),
+		Dependencies:             deps,
 	}, nil
 }

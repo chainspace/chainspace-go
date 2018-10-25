@@ -187,11 +187,11 @@ func (s *Service) shardsInvolvedWithoutSelf(tx *Transaction) []uint64 {
 func (s *Service) shardsInvolvedInTx(tx *Transaction) []uint64 {
 	uniqids := map[uint64]struct{}{}
 	for _, trace := range tx.Traces {
-		for _, obj := range trace.InputObjectsKeys {
-			uniqids[s.top.ShardForKey(obj)] = struct{}{}
+		for _, obj := range trace.InputObjectVersionIDs {
+			uniqids[s.top.ShardForVersionID(obj)] = struct{}{}
 		}
-		for _, ref := range trace.InputReferencesKeys {
-			uniqids[s.top.ShardForKey(ref)] = struct{}{}
+		for _, ref := range trace.InputReferenceVersionIDs {
+			uniqids[s.top.ShardForVersionID(ref)] = struct{}{}
 		}
 	}
 	ids := make([]uint64, 0, len(uniqids))
@@ -331,15 +331,15 @@ func (s *Service) onWaitingForCommit(tx *TxDetails) (State, error) {
 	}
 }
 
-func (s *Service) objectsExists(objs, refs [][]byte) ([]*Object, bool) {
-	keys := [][]byte{}
-	for _, v := range append(objs, refs...) {
-		if s.top.ShardForKey(v) == s.shardID {
-			keys = append(keys, v)
+func (s *Service) objectsExists(vids, refvids [][]byte) ([]*Object, bool) {
+	ownvids := [][]byte{}
+	for _, v := range append(vids, refvids...) {
+		if s.top.ShardForVersionID(v) == s.shardID {
+			ownvids = append(ownvids, v)
 		}
 	}
 
-	objects, err := GetObjects(s.store, keys)
+	objects, err := GetObjects(s.store, ownvids)
 	if err != nil {
 		return nil, false
 	}
@@ -357,7 +357,8 @@ func (s *Service) onWaitingForConsensus1(tx *TxDetails) (State, error) {
 
 	// check that all inputs objects and references part of the state of this node exists.
 	for _, trace := range tx.Tx.Traces {
-		objects, ok := s.objectsExists(trace.InputObjectsKeys, trace.InputReferencesKeys)
+		objects, ok := s.objectsExists(
+			trace.InputObjectVersionIDs, trace.InputReferenceVersionIDs)
 		if !ok {
 			log.Error("consensus1 some objects do not exists", fld.TxID(tx.HashID))
 			return StateRejectPhase1Broadcasted, nil
@@ -407,17 +408,17 @@ func (s *Service) inputObjectsForShard(shardID uint64, tx *Transaction) (objects
 	// get all objects part of this current shard state
 	allInShard = true
 	for _, t := range tx.Traces {
-		for _, o := range t.InputObjectsKeys {
+		for _, o := range t.InputObjectVersionIDs {
 			o := o
-			if shardID := s.top.ShardForKey(o); shardID == s.shardID {
+			if shardID := s.top.ShardForVersionID(o); shardID == s.shardID {
 				objects = append(objects, o)
 				continue
 			}
 			allInShard = false
 		}
-		for _, ref := range t.InputReferencesKeys {
+		for _, ref := range t.InputReferenceVersionIDs {
 			ref := ref
-			if shardID := s.top.ShardForKey(ref); shardID == s.shardID {
+			if shardID := s.top.ShardForVersionID(ref); shardID == s.shardID {
 				continue
 			}
 			allInShard = false
@@ -655,7 +656,7 @@ func (s *Service) toObjectsCreated(tx *TxDetails) (State, error) {
 		v := v
 		for _, o := range v.OutputObjects {
 			o := o
-			if shardID := s.top.ShardForKey(o.Key); shardID == s.shardID {
+			if shardID := s.top.ShardForVersionID(o.VersionID); shardID == s.shardID {
 				objects = append(objects, o)
 				continue
 			}
@@ -770,7 +771,7 @@ func (s *Service) toCommitObjectsBroadcasted(tx *TxDetails) (State, error) {
 	for _, v := range ids.TraceObjectPairs {
 		v := v
 		for _, o := range v.OutputObjects {
-			shard := s.top.ShardForKey(o.Key)
+			shard := s.top.ShardForVersionID(o.VersionID)
 			if _, ok := shardsUniq[shard]; !ok {
 				shardsInvolvedUniq[shard] = struct{}{}
 			}

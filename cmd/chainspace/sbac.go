@@ -113,9 +113,9 @@ func cmdSBAC(args []string, usage string) {
 		for _, v := range objects {
 			v := v
 			o := restsrv.Object{
-				Key:    base64.StdEncoding.EncodeToString(v.Key),
-				Value:  base64.StdEncoding.EncodeToString(v.Value),
-				Status: v.Status.String(),
+				VersionID: base64.StdEncoding.EncodeToString(v.VersionID),
+				Value:     base64.StdEncoding.EncodeToString(v.Value),
+				Status:    v.Status.String(),
 			}
 			data = append(data, o)
 		}

@@ -62,11 +62,11 @@ func makeTransactionPayload(seed []string, labels [][]string, objsdata []interfa
 	tx := restsrv.Transaction{
 		Traces: []restsrv.Trace{
 			{
-				ContractID:       contractID,
-				Procedure:        procedure,
-				InputObjectsKeys: seed,
-				OutputObjects:    outputs,
-				Labels:           labels,
+				ContractID:            contractID,
+				Procedure:             procedure,
+				InputObjectVersionIDs: seed,
+				OutputObjects:         outputs,
+				Labels:                labels,
 			},
 		},
 		Mappings: mappings,
@@ -158,7 +158,7 @@ func (w *worker) run(ctx context.Context, wg *sync.WaitGroup) {
 	data := res.Data.([]interface{})
 	w.objsdata = []interface{}{}
 	for i, v := range data {
-		w.seed[i] = v.(map[string]interface{})["key"].(string)
+		w.seed[i] = v.(map[string]interface{})["version_id"].(string)
 		w.pendingIDs[w.seed[i]] = struct{}{}
 		subscribr.Subscribe(w.seed[i], w.cb)
 		w.objsdata = append(

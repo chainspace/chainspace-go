@@ -263,8 +263,8 @@ func (t *Topology) SeedPublicKeys() map[uint64]signature.PublicKey {
 	return keys
 }
 
-// ShardForKey returns the shard ID for the given object key.
-func (t *Topology) ShardForKey(key []byte) uint64 {
+// ShardForVersionID returns the shard ID for the given object key.
+func (t *Topology) ShardForVersionID(key []byte) uint64 {
 	hash := highwayhash.Sum64(key, t.rawID)
 	return (hash % t.shardCount) + 1
 }

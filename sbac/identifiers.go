@@ -52,10 +52,10 @@ func MakeTraceID(trace *Trace) ([]byte, error) {
 	data := []byte{}
 	data = append(data, []byte(trace.ContractID)...)
 	data = append(data, []byte(trace.Procedure)...)
-	for _, v := range trace.InputObjectsKeys {
+	for _, v := range trace.InputObjectVersionIDs {
 		data = append(data, v...)
 	}
-	for _, v := range trace.InputReferencesKeys {
+	for _, v := range trace.InputReferenceVersionIDs {
 		data = append(data, v...)
 	}
 	for _, v := range trace.Dependencies {
@@ -96,10 +96,10 @@ func MakeObjectIDs(pair *TraceIdentifierPair) ([]*Object, error) {
 			labels = pair.Trace.Labels[i].AsSlice()
 		}
 		o := &Object{
-			Value:  outobj,
-			Key:    ch.Digest(),
-			Labels: labels,
-			Status: ObjectStatus_ACTIVE,
+			Value:     outobj,
+			VersionID: ch.Digest(),
+			Labels:    labels,
+			Status:    ObjectStatus_ACTIVE,
 		}
 
 		out = append(out, o)
@@ -130,7 +130,7 @@ func MakeTransactionID(top []TraceObjectPair) ([]byte, error) {
 	for _, v := range top {
 		bytes = append(bytes, v.Trace.ID...)
 		for _, o := range v.OutputObjects {
-			bytes = append(bytes, o.Key...)
+			bytes = append(bytes, o.VersionID...)
 		}
 	}
 	_, err := ch.Write(bytes)

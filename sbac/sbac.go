@@ -289,8 +289,8 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte, id uint64)
 	}, nil
 }
 
-func (s *Service) QueryObjectByKey(key []byte) ([]byte, error) {
-	objects, err := GetObjects(s.store, [][]byte{key})
+func (s *Service) QueryObjectByVersionID(versionid []byte) ([]byte, error) {
+	objects, err := GetObjects(s.store, [][]byte{versionid})
 	if err != nil {
 		return nil, err
 	} else if len(objects) != 1 {
@@ -302,9 +302,9 @@ func (s *Service) QueryObjectByKey(key []byte) ([]byte, error) {
 func (s *Service) publishObjects(ids *IDs, success bool) {
 	for _, topair := range ids.TraceObjectPairs {
 		for _, outo := range topair.OutputObjects {
-			shard := s.top.ShardForKey(outo.GetKey())
+			shard := s.top.ShardForVersionID(outo.GetVersionID())
 			if shard == s.shardID {
-				s.ps.Publish(outo.Key, outo.Labels, success)
+				s.ps.Publish(outo.VersionID, outo.Labels, success)
 			}
 		}
 	}
@@ -313,10 +313,10 @@ func (s *Service) publishObjects(ids *IDs, success bool) {
 func (s *Service) saveLabels(ids *IDs) error {
 	for _, topair := range ids.TraceObjectPairs {
 		for _, outo := range topair.OutputObjects {
-			shard := s.top.ShardForKey(outo.GetKey())
+			shard := s.top.ShardForVersionID(outo.GetVersionID())
 			if shard == s.shardID {
 				for _, label := range outo.Labels {
-					s.kvstore.Set([]byte(label), outo.Key)
+					s.kvstore.Set([]byte(label), outo.VersionID)
 				}
 			}
 		}
@@ -343,11 +343,11 @@ func (s *Service) queryObject(ctx context.Context, payload []byte, id uint64) (*
 		return queryPayload(id, res)
 	}
 
-	if req.ObjectKey == nil {
-		res.Error = fmt.Errorf("sbac: nil object key").Error()
+	if req.VersionID == nil {
+		res.Error = fmt.Errorf("sbac: nil versionid").Error()
 		return queryPayload(id, res)
 	}
-	objects, err := GetObjects(s.store, [][]byte{req.ObjectKey})
+	objects, err := GetObjects(s.store, [][]byte{req.VersionID})
 	if err != nil {
 		res.Error = err.Error()
 	} else if len(objects) != 1 {
@@ -398,15 +398,15 @@ func (s *Service) deleteObject(ctx context.Context, payload []byte, id uint64) (
 		return deletePayload(id, res)
 	}
 
-	if req.ObjectKey == nil {
-		res.Error = fmt.Errorf("sbac: nil object key").Error()
+	if req.VersionID == nil {
+		res.Error = fmt.Errorf("sbac: nil object versionid").Error()
 		return deletePayload(id, res)
 	}
-	err = DeleteObjects(s.store, [][]byte{req.ObjectKey})
+	err = DeleteObjects(s.store, [][]byte{req.VersionID})
 	if err != nil {
 		res.Error = err.Error()
 	}
-	objects, err := GetObjects(s.store, [][]byte{req.ObjectKey})
+	objects, err := GetObjects(s.store, [][]byte{req.VersionID})
 	if err != nil {
 		res.Error = err.Error()
 	} else if len(objects) != 1 {
@@ -436,23 +436,23 @@ func (s *Service) createObject(ctx context.Context, payload []byte, id uint64) (
 	}
 
 	if req.Object == nil || len(req.Object) <= 0 {
-		res.Error = fmt.Errorf("sbac: nil object key").Error()
+		res.Error = fmt.Errorf("sbac: nil object").Error()
 		return createPayload(id, res)
 	}
 	ch := combihash.New()
 	ch.Write([]byte(req.Object))
-	key := ch.Digest()
+	versionid := ch.Digest()
 	if log.AtDebug() {
-		log.Debug("sbac: creating new object", log.String("objet", string(req.Object)), log.Uint32("object.id", ID(key)))
+		log.Debug("sbac: creating new object", log.String("objet", string(req.Object)), log.Uint32("object.id", ID(versionid)))
 	}
-	o, err := CreateObject(s.store, key, req.Object)
+	o, err := CreateObject(s.store, versionid, req.Object)
 	if err != nil {
 		if log.AtDebug() {
-			log.Debug("sbac: unable to create object", log.String("objet", string(req.Object)), log.Uint32("object.id", ID(key)), fld.Err(err))
+			log.Debug("sbac: unable to create object", log.String("objet", string(req.Object)), log.Uint32("object.id", ID(versionid)), fld.Err(err))
 		}
 		res.Error = err.Error()
 	} else {
-		res.ID = o.Key
+		res.ID = o.VersionID
 	}
 	return createPayload(id, res)
 }

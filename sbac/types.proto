@@ -30,8 +30,8 @@ message strings {
 message Trace {
   string contractID = 1 [(gogoproto.customname) = "ContractID"];
   string procedure = 2;
-  repeated bytes inputObjectsKeys = 3;
-  repeated bytes inputReferencesKeys = 4;
+  repeated bytes inputObjectVersionIDs = 3 [(gogoproto.customname) = "InputObjectVersionIDs"];
+  repeated bytes inputReferenceVersionIDs = 4 [(gogoproto.customname) = "InputReferenceVersionIDs"];
   repeated bytes outputObjects = 5;
   repeated bytes parameters = 6;
   repeated bytes returns = 7;
@@ -42,8 +42,8 @@ message Trace {
 }
 
 message Object {
-  bytes value = 1;
-  bytes key = 2;
+  bytes versionID = 1 [(gogoproto.customname) = "VersionID"];
+  bytes value = 2;
   ObjectStatus status = 3;
   repeated string labels = 4;
 }
@@ -81,7 +81,7 @@ message StatesReportResponse {
 }
 
 message QueryObjectRequest {
-  bytes objectKey = 1;
+  bytes versionID = 1 [(gogoproto.customname) = "VersionID"];
 }
 
 message QueryObjectResponse {
@@ -90,7 +90,7 @@ message QueryObjectResponse {
 }
 
 message DeleteObjectRequest {
-  bytes objectKey = 1;
+  bytes versionID = 1 [(gogoproto.customname) = "VersionID"];
 }
 
 message DeleteObjectResponse {

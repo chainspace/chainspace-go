@@ -36,12 +36,12 @@ func (c *Client) nodesForTx(t *sbac.Transaction) []uint64 {
 	shardIDs := map[uint64]struct{}{}
 	// for each input object / reference, send the transaction.
 	for _, trace := range t.Traces {
-		for _, v := range trace.InputObjectsKeys {
-			shardID := c.top.ShardForKey([]byte(v))
+		for _, v := range trace.InputObjectVersionIDs {
+			shardID := c.top.ShardForVersionID([]byte(v))
 			shardIDs[shardID] = struct{}{}
 		}
-		for _, v := range trace.InputReferencesKeys {
-			shardID := c.top.ShardForKey([]byte(v))
+		for _, v := range trace.InputReferenceVersionIDs {
+			shardID := c.top.ShardForVersionID([]byte(v))
 			shardIDs[shardID] = struct{}{}
 		}
 	}

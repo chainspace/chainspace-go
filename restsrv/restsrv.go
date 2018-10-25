@@ -145,9 +145,9 @@ func BuildObjectResponse(objects []*sbac.Object) (Object, error) {
 			return Object{}, fmt.Errorf("unable to unmarshal value: %v", err)
 		}
 		o := Object{
-			Key:    base64.StdEncoding.EncodeToString(v.Key),
-			Value:  val,
-			Status: v.Status.String(),
+			VersionID: base64.StdEncoding.EncodeToString(v.VersionID),
+			Value:     val,
+			Status:    v.Status.String(),
 		}
 		data = append(data, o)
 
@@ -305,7 +305,7 @@ func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
 	}
 	// require at least input object.
 	for _, v := range req.Traces {
-		if len(v.InputObjectsKeys) <= 0 {
+		if len(v.InputObjectVersionIDs) <= 0 {
 			fail(rw, http.StatusBadRequest, "no input objects for a trace")
 			return
 		}
@@ -336,9 +336,9 @@ func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 		o := Object{
-			Key:    base64.StdEncoding.EncodeToString(v.Key),
-			Value:  val,
-			Status: v.Status.String(),
+			VersionID: base64.StdEncoding.EncodeToString(v.VersionID),
+			Value:     val,
+			Status:    v.Status.String(),
 		}
 		data = append(data, o)
 	}
@@ -382,7 +382,7 @@ func (s *Service) objectsReady(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, v := range objs {
-			if !bytes.Equal(v.Key, objs[0].Key) {
+			if !bytes.Equal(v.VersionID, objs[0].VersionID) {
 				fail(rw, http.StatusInternalServerError, "inconsistent data")
 				return
 			}

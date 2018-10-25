@@ -182,11 +182,11 @@ func makeTransactionPayload(seed []string, objectsData []interface{}, labels [][
 	tx := restsrv.Transaction{
 		Traces: []restsrv.Trace{
 			{
-				ContractID:       contractID,
-				Procedure:        procedure,
-				InputObjectsKeys: seed,
-				OutputObjects:    outputs,
-				Labels:           labels,
+				ContractID:            contractID,
+				Procedure:             procedure,
+				InputObjectVersionIDs: seed,
+				OutputObjects:         outputs,
+				Labels:                labels,
 			},
 		},
 		Mappings: mappings,

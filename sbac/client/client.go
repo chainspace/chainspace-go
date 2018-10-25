@@ -86,8 +86,8 @@ func (c *client) addTransaction(nodes []uint64, t *sbac.Transaction, evidences m
 		for _, v := range res.Objects {
 			for _, object := range v.List {
 				object := object
-				log.Info("add transaction answer", fld.PeerID(n), log.String("object.id", b64(object.Key)))
-				objects[string(object.Key)] = object
+				log.Info("add transaction answer", fld.PeerID(n), log.String("object.id", b64(object.VersionID)))
+				objects[string(object.VersionID)] = object
 			}
 		}
 		mu.Unlock()
@@ -113,12 +113,12 @@ func (c *client) nodesForTx(t *sbac.Transaction) []uint64 {
 	shardIDs := map[uint64]struct{}{}
 	// for each input object / reference, send the transaction.
 	for _, trace := range t.Traces {
-		for _, v := range trace.InputObjectsKeys {
-			shardID := c.top.ShardForKey([]byte(v))
+		for _, v := range trace.InputObjectVersionIDs {
+			shardID := c.top.ShardForVersionID([]byte(v))
 			shardIDs[shardID] = struct{}{}
 		}
-		for _, v := range trace.InputReferencesKeys {
-			shardID := c.top.ShardForKey([]byte(v))
+		for _, v := range trace.InputReferenceVersionIDs {
+			shardID := c.top.ShardForVersionID([]byte(v))
 			shardIDs[shardID] = struct{}{}
 		}
 	}
@@ -138,10 +138,10 @@ func (c *client) SendTransaction(tx *sbac.Transaction, evidences map[uint64][]by
 	return objs, err
 }
 
-func (c *client) Query(key []byte) ([]*sbac.Object, error) {
-	nodes := c.top.NodesInShard(c.top.ShardForKey(key))
+func (c *client) Query(vid []byte) ([]*sbac.Object, error) {
+	nodes := c.top.NodesInShard(c.top.ShardForVersionID(vid))
 	req := &sbac.QueryObjectRequest{
-		ObjectKey: key,
+		VersionID: vid,
 	}
 	bytes, err := proto.Marshal(req)
 	if err != nil {
@@ -185,7 +185,7 @@ func (c *client) Create(obj []byte) ([][]byte, error) {
 	ch := combihash.New()
 	ch.Write(obj)
 	key := ch.Digest()
-	nodes := c.top.NodesInShard(c.top.ShardForKey(key))
+	nodes := c.top.NodesInShard(c.top.ShardForVersionID(key))
 
 	req := &sbac.NewObjectRequest{
 		Object: obj,
@@ -230,7 +230,7 @@ func (c *client) Create(obj []byte) ([][]byte, error) {
 }
 
 func (c *client) Delete(key []byte) ([]*sbac.Object, error) {
-	nodes := c.top.NodesInShard(c.top.ShardForKey(key))
+	nodes := c.top.NodesInShard(c.top.ShardForVersionID(key))
 	req := &sbac.DeleteObjectRequest{
 		ObjectKey: key,
 	}
