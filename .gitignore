@@ -2,8 +2,8 @@ coverage.txt
 coverhtml.txt
 /Gopkg.lock
 /cmd/chainspace/chainspace
-/cmd/chainspace/httptest
-/cmd/chainspace/httptest2
+/cmd/httptest/httptest
+/cmd/httptest2/httptest2
 /infrastructure/.terraform/
 /infrastructure/conf/
 /infrastructure/terraform.tfstate

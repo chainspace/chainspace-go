@@ -51,7 +51,7 @@ func (s *Server) listen(ln net.Listener) {
 	}
 }
 
-func (s *Server) Publish(objectID []byte, success bool) {
+func (s *Server) Publish(objectID []byte, labels []string, success bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	log.Error("sending object id", log.String("id", base64.StdEncoding.EncodeToString(objectID)))
@@ -59,6 +59,7 @@ func (s *Server) Publish(objectID []byte, success bool) {
 		ObjectID: base64.StdEncoding.EncodeToString(objectID),
 		Success:  success,
 		NodeID:   s.nodeID,
+		Labels:   labels,
 	}
 	b, _ := json.Marshal(&payload)
 	badconns := []string{}

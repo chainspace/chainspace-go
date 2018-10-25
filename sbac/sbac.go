@@ -304,7 +304,7 @@ func (s *Service) publishObjects(ids *IDs, success bool) {
 		for _, outo := range topair.OutputObjects {
 			shard := s.top.ShardForKey(outo.GetKey())
 			if shard == s.shardID {
-				s.ps.Publish(outo.Key, success)
+				s.ps.Publish(outo.Key, outo.Labels, success)
 			}
 		}
 	}

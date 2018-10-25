@@ -10,7 +10,7 @@ import (
 	"chainspace.io/prototype/pubsub/internal"
 )
 
-type Callback func(nodeID uint64, objectID string, success bool)
+type Callback func(nodeID uint64, objectID string, success bool, labels []string)
 
 type Client struct {
 	usercb      Callback
@@ -63,7 +63,7 @@ func (c *Client) run(nodeID uint64, addr string) error {
 					continue
 				}
 				if payload != nil {
-					c.usercb(payload.NodeID, payload.ObjectID, payload.Success)
+					c.usercb(payload.NodeID, payload.ObjectID, payload.Success, payload.Labels)
 				}
 			}
 		}
