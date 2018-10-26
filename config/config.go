@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"chainspace.io/prototype/log"
+	"chainspace.io/prototype/internal/log"
 	"gopkg.in/yaml.v2"
 )
 
@@ -118,17 +118,18 @@ func (n *Network) Hash() ([]byte, error) {
 // Node represents the configuration of an individual node in a Chainspace
 // network.
 type Node struct {
-	Announce          *Announce      `yaml:"announce,omitempty"`
-	Bootstrap         *Bootstrap     `yaml:"bootstrap"`
-	Broadcast         *Broadcast     `yaml:"broadcast"`
-	Connections       *Connections   `yaml:"connections"`
-	Consensus         *NodeConsensus `yaml:"consensus"`
-	Contracts         *NodeContracts `yaml:"contracts"`
-	DisableTransactor bool           `yaml:"disable.transactor,omitempty"`
-	HTTP              HTTP           `yaml:"http,omitempty"`
-	Logging           *Logging       `yaml:"logging"`
-	Registries        []Registry     `yaml:"registries,omitempty"`
-	Storage           *Storage       `yaml:"storage"`
+	Announce    *Announce      `yaml:"announce,omitempty"`
+	Bootstrap   *Bootstrap     `yaml:"bootstrap"`
+	Broadcast   *Broadcast     `yaml:"broadcast"`
+	Connections *Connections   `yaml:"connections"`
+	Consensus   *NodeConsensus `yaml:"consensus"`
+	Contracts   *NodeContracts `yaml:"contracts"`
+	DisableSBAC bool           `yaml:"disable.sbac,omitempty"`
+	HTTP        HTTP           `yaml:"http,omitempty"`
+	Logging     *Logging       `yaml:"logging"`
+	Pubsub      *Pubsub        `yaml:"pubsub"`
+	Registries  []Registry     `yaml:"registries,omitempty"`
+	Storage     *Storage       `yaml:"storage"`
 }
 
 // NodeConsensus represents the node-specific configuration for the consensus
@@ -150,6 +151,13 @@ type Peer struct {
 type PeerKey struct {
 	Type  string
 	Value string
+}
+
+// Pubsub represent the configuration for the pub sub system
+type Pubsub struct {
+	Enabled bool `yaml:"enabled"`
+	// if not specified choose random port and announce with mdns
+	Port *int `yaml:"port,omitempty"`
 }
 
 // RateLimit represents the configuration for rate-limiting within the system.

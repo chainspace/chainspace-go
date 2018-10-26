@@ -6,7 +6,7 @@ Chainspace is a smart contract system offering speedy consensus and unlimited ho
 
 At present, our running code has two main components:
 
-* the `transactor` is a sharding component. It provides an implementation of the Sharded Byzantine Atomic Commit (S-BAC) protocol detailed in the [Chainspace](https://arxiv.org/abs/1708.03778) academic paper.
+* the `sbac` is a sharding component. It provides an implementation of the Sharded Byzantine Atomic Commit (S-BAC) protocol detailed in the [Chainspace](https://arxiv.org/abs/1708.03778) academic paper.
 * the consensus component, which implements the leaderless consensus protocol detailed in the [Blockmania](https://arxiv.org/abs/1809.01620) paper.
 
 Eventually, it's likely that we will split these two components. A project wanting only fast consensus, but no sharding, should be able use Blockmania by itself. For projects that need the added horizontal scalability of sharding, the S-BAC component would be added. But for the moment, the two components co-exist in the same codebase.

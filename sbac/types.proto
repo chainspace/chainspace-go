@@ -1,0 +1,143 @@
+syntax = "proto3";
+package sbac;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+enum Opcode {
+  UNKNOWN = 0;
+  ADD_TRANSACTION = 1;
+  QUERY_OBJECT = 2;
+  CREATE_OBJECT = 3;
+  DELETE_OBJECT = 4;
+  STATES = 5;
+  SBAC = 6;
+}
+
+enum ObjectStatus {
+  ACTIVE = 0;
+  INACTIVE = 1;
+  LOCKED = 2;
+}
+
+message Transaction {
+  repeated Trace traces = 1;
+}
+
+message strings {
+  repeated string strs = 1;
+}
+
+message Trace {
+  string contractID = 1 [(gogoproto.customname) = "ContractID"];
+  string procedure = 2;
+  repeated bytes inputObjectVersionIDs = 3 [(gogoproto.customname) = "InputObjectVersionIDs"];
+  repeated bytes inputReferenceVersionIDs = 4 [(gogoproto.customname) = "InputReferenceVersionIDs"];
+  repeated bytes outputObjects = 5;
+  repeated bytes parameters = 6;
+  repeated bytes returns = 7;
+  repeated strings labels = 8;
+  repeated Trace dependencies = 9;
+  repeated bytes inputObjects = 10;
+  repeated bytes inputReferences = 11;
+}
+
+message Object {
+  bytes versionID = 1 [(gogoproto.customname) = "VersionID"];
+  bytes value = 2;
+  ObjectStatus status = 3;
+  repeated string labels = 4;
+}
+
+message AddTransactionRequest {
+  Transaction tx = 1;
+  map<uint64, bytes> evidences = 2;
+}
+
+message ObjectTraceIDPair {
+  bytes traceID = 1 [(gogoproto.customname) = "TraceID"];
+  repeated Object objects = 2;
+}
+
+message ObjectList {
+  repeated Object list = 1;
+}
+
+message AddTransactionResponse {
+  map<string, ObjectList> objects = 1;
+}
+
+message StateReport {
+  uint32 hashID = 1;
+  map<uint64, bool> commitDecisions = 2;
+  map<uint64, bool> phase1Decisions = 3;
+  map<uint64, bool> phase2Decisions = 4;
+  string state = 5;
+  int32 pendingEvents = 6;
+}
+
+message StatesReportResponse {
+  repeated StateReport states = 1;
+  int32 eventsInQueue = 2;
+}
+
+message QueryObjectRequest {
+  bytes versionID = 1 [(gogoproto.customname) = "VersionID"];
+}
+
+message QueryObjectResponse {
+  Object object = 1;
+  string error = 2;
+}
+
+message DeleteObjectRequest {
+  bytes versionID = 1 [(gogoproto.customname) = "VersionID"];
+}
+
+message DeleteObjectResponse {
+  Object object = 1;
+  string error = 2;
+}
+
+message NewObjectRequest {
+  bytes object = 1;
+}
+
+message NewObjectResponse {
+  bytes id = 1 [(gogoproto.customname) = "ID"];
+  string error = 2;
+}
+
+// SBAC
+
+enum SBACOpcode {
+  CONSENSUS1 = 0; // consensus 1 - new transaction
+  CONSENSUS2 = 1; // consensus 2
+  PHASE1 = 2; // 2-phase commit phase 1 - accept transaction
+  PHASE2 = 3; // 2-phase commit phase 2 - commit transaction
+  COMMIT = 4; // create objects in other shards
+  CONSENSUS_COMMIT = 5;
+}
+
+enum SBACDecision {
+  ACCEPT = 0;
+  REJECT = 1;
+}
+
+message SBACMessage {
+  SBACOpcode op = 1;
+  SBACDecision decision = 2;
+  SBACTransaction tx = 3;
+  uint64 peerId = 4 [(gogoproto.customname) = "PeerID"];
+}
+
+message SBACMessageAck {
+  uint64 lastId = 1 [(gogoproto.customname) = "LastID"];
+}
+
+message SBACTransaction {
+  bytes id = 1 [(gogoproto.customname) = "ID"];
+  Transaction tx = 2;
+  map<uint64, bytes> evidences = 3;
+  SBACOpcode op = 4;
+  bytes signature = 5;
+}

@@ -17,7 +17,7 @@ fuser 8080/tcp
 rm -rf ~/.chainspace/${session}
 
 # inializes the network
-chainspace init ${session} --shard-count ${1};
+chainspace init ${session} --shard-count ${1} --enable-pubsub true;
 #chainspace init testnet -u https://acoustic-atom-211511.appspot.com --shard-count ${1};
 
 # start the contracts if needed

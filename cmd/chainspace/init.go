@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/log"
-	"chainspace.io/prototype/log/fld"
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
 )
 
 func cmdInit(args []string, usage string) {
@@ -26,8 +26,10 @@ func cmdInit(args []string, usage string) {
 	shardCount := opts.Flags("--shard-count").Label("N").Int("Number of shards in the network [3]")
 	shardSize := opts.Flags("--shard-size").Label("N").Int("Number of nodes in each shard [4]")
 	httpPort := opts.Flags("--http-port").Label("PORT").Int("HTTP port to use with the shards")
-	disableTransactor := opts.Flags("--disable-transactor").Label("BOOL").Bool("Disable transactor")
+	disableSBAC := opts.Flags("--disable-sbac").Label("BOOL").Bool("Disable sbac")
 	manageContracts := opts.Flags("--manage-contracts").Label("BOOL").Bool("Manage docker contracts")
+	enablePubsub := opts.Flags("--enable-pubsub").Label("BOOL").Bool("Enable pubsub")
+	pubsubPort := opts.Flags("--pubsub-port").Label("PORT").Int("Port to use for the pubsub server")
 
 	params := opts.Parse(args)
 
@@ -111,6 +113,20 @@ func cmdInit(args []string, usage string) {
 		Type: "badger",
 	}
 
+	var epb bool
+	if enablePubsub != nil {
+		epb = *enablePubsub
+	}
+
+	var psPort *int
+	if pubsubPort != nil && *pubsubPort != 0 {
+		psPort = pubsubPort
+	}
+	pubsub := &config.Pubsub{
+		Enabled: epb,
+		Port:    psPort,
+	}
+
 	var mContracts bool
 	if manageContracts != nil {
 		mContracts = *manageContracts
@@ -178,23 +194,24 @@ func cmdInit(args []string, usage string) {
 		}
 
 		var disableTxtor bool
-		if disableTransactor != nil {
-			disableTxtor = *disableTransactor
+		if disableSBAC != nil {
+			disableTxtor = *disableSBAC
 		}
 
 		// Create node.yaml
 		cfg := &config.Node{
-			Announce:          announce,
-			Bootstrap:         bootstrap,
-			Broadcast:         broadcast,
-			Connections:       connections,
-			Consensus:         consensus,
-			Contracts:         nodecontracts,
-			DisableTransactor: disableTxtor,
-			HTTP:              httpcfg,
-			Logging:           logging,
-			Registries:        registries,
-			Storage:           storage,
+			Announce:    announce,
+			Bootstrap:   bootstrap,
+			Broadcast:   broadcast,
+			Connections: connections,
+			Consensus:   consensus,
+			Contracts:   nodecontracts,
+			DisableSBAC: disableTxtor,
+			HTTP:        httpcfg,
+			Logging:     logging,
+			Pubsub:      pubsub,
+			Registries:  registries,
+			Storage:     storage,
 		}
 
 		if err := writeYAML(filepath.Join(nodeDir, "node.yaml"), cfg); err != nil {

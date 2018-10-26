@@ -7,8 +7,9 @@ import "google/protobuf/timestamp.proto";
 enum CONNECTION {
   UNKNOWN = 0;
   BROADCAST = 1;
-  TRANSACTOR = 2;
+  SBAC = 2;
   KV = 3;
+  CHECKER = 4;
 }
 
 message Hello {

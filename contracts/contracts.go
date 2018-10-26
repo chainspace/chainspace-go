@@ -1,4 +1,4 @@
-package contracts
+package contracts // import "chainspace.io/prototype/contracts"
 
 import (
 	"context"
@@ -10,8 +10,9 @@ import (
 	"path"
 
 	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/log"
-	"chainspace.io/prototype/log/fld"
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
+
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"

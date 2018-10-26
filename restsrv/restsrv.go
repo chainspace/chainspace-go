@@ -12,14 +12,16 @@ import (
 	"sort"
 	"strings"
 
+	checkerclient "chainspace.io/prototype/checker/client"
 	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/crypto/signature"
+	"chainspace.io/prototype/internal/crypto/signature"
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
 	"chainspace.io/prototype/kv"
-	"chainspace.io/prototype/log"
-	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
-	"chainspace.io/prototype/transactor"
-	"chainspace.io/prototype/transactor/transactorclient"
+	"chainspace.io/prototype/sbac"
+	sbacclient "chainspace.io/prototype/sbac/client"
+
 	"github.com/rs/cors"
 )
 
@@ -31,7 +33,7 @@ type Config struct {
 	MaxPayload config.ByteSize
 	SelfID     uint64
 	Store      *kv.Service
-	Transactor *transactor.Service
+	SBAC       *sbac.Service
 }
 
 type Service struct {
@@ -40,8 +42,9 @@ type Service struct {
 	store      *kv.Service
 	top        *network.Topology
 	maxPayload config.ByteSize
-	client     transactorclient.Client
-	transactor *transactor.Service
+	client     sbacclient.Client
+	sbac       *sbac.Service
+	checker    *checkerclient.Client
 }
 
 type resp struct {
@@ -124,7 +127,7 @@ func readdata(rw http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	return key, true
 }
 
-func BuildObjectResponse(objects []*transactor.Object) (Object, error) {
+func BuildObjectResponse(objects []*sbac.Object) (Object, error) {
 	if len(objects) <= 0 {
 		return Object{}, errors.New("object already inactive")
 	}
@@ -142,9 +145,9 @@ func BuildObjectResponse(objects []*transactor.Object) (Object, error) {
 			return Object{}, fmt.Errorf("unable to unmarshal value: %v", err)
 		}
 		o := Object{
-			Key:    base64.StdEncoding.EncodeToString(v.Key),
-			Value:  val,
-			Status: v.Status.String(),
+			VersionID: base64.StdEncoding.EncodeToString(v.VersionID),
+			Value:     val,
+			Status:    v.Status.String(),
 		}
 		data = append(data, o)
 
@@ -302,17 +305,23 @@ func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
 	}
 	// require at least input object.
 	for _, v := range req.Traces {
-		if len(v.InputObjectsKeys) <= 0 {
+		if len(v.InputObjectVersionIDs) <= 0 {
 			fail(rw, http.StatusBadRequest, "no input objects for a trace")
 			return
 		}
 	}
-	tx, err := req.ToTransactor()
+	tx, err := req.ToSBAC()
 	if err != nil {
 		fail(rw, http.StatusBadRequest, err.Error())
 		return
 	}
-	objects, err := s.client.SendTransaction(tx)
+
+	evidences, err := s.checker.Check(tx)
+	if err != nil {
+		errorr(rw, http.StatusInternalServerError, err.Error())
+		return
+	}
+	objects, err := s.client.SendTransaction(tx, evidences)
 	if err != nil {
 		errorr(rw, http.StatusInternalServerError, err.Error())
 		return
@@ -327,9 +336,9 @@ func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 		o := Object{
-			Key:    base64.StdEncoding.EncodeToString(v.Key),
-			Value:  val,
-			Status: v.Status.String(),
+			VersionID: base64.StdEncoding.EncodeToString(v.VersionID),
+			Value:     val,
+			Status:    v.Status.String(),
 		}
 		data = append(data, o)
 	}
@@ -373,7 +382,7 @@ func (s *Service) objectsReady(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, v := range objs {
-			if !bytes.Equal(v.Key, objs[0].Key) {
+			if !bytes.Equal(v.VersionID, objs[0].VersionID) {
 				fail(rw, http.StatusInternalServerError, "inconsistent data")
 				return
 			}
@@ -406,20 +415,28 @@ func (s *Service) makeServ(addr string, port int) *http.Server {
 }
 
 func New(cfg *Config) *Service {
-	clcfg := transactorclient.Config{
+	checkrcfg := checkerclient.Config{
 		NodeID:     cfg.SelfID,
 		Top:        cfg.Top,
 		MaxPayload: cfg.MaxPayload,
 		Key:        cfg.Key,
 	}
-	txclient := transactorclient.New(&clcfg)
+	checkrclt := checkerclient.New(&checkrcfg)
+	clcfg := sbacclient.Config{
+		NodeID:     cfg.SelfID,
+		Top:        cfg.Top,
+		MaxPayload: cfg.MaxPayload,
+		Key:        cfg.Key,
+	}
+	txclient := sbacclient.New(&clcfg)
 	s := &Service{
 		port:       cfg.Port,
 		top:        cfg.Top,
 		maxPayload: cfg.MaxPayload,
 		client:     txclient,
 		store:      cfg.Store,
-		transactor: cfg.Transactor,
+		sbac:       cfg.SBAC,
+		checker:    checkrclt,
 	}
 	s.srv = s.makeServ(cfg.Addr, cfg.Port)
 	go func() {

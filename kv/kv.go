@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"path"
 
-	"chainspace.io/prototype/log"
-	"chainspace.io/prototype/log/fld"
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
 	"chainspace.io/prototype/service"
 	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"

@@ -18,10 +18,11 @@ import (
 	"time"
 
 	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/crypto/signature"
-	"chainspace.io/prototype/log"
-	"chainspace.io/prototype/log/fld"
-	"chainspace.io/prototype/x509certs"
+	"chainspace.io/prototype/internal/crypto/signature"
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
+	"chainspace.io/prototype/internal/x509certs"
+
 	"github.com/grandcat/zeroconf"
 	"github.com/minio/highwayhash"
 )
@@ -214,6 +215,7 @@ func (t *Topology) BootstrapStatic(addresses map[uint64]string) error {
 // Dial opens a connection to a node in the given network. It will block if
 // unable to find a routing address for the given node.
 func (t *Topology) Dial(nodeID uint64, timeout time.Duration) (*Conn, error) {
+	// log.Error("NEW DIAL", fld.NodeID(nodeID))
 	t.mu.RLock()
 	cfg, cfgExists := t.nodes[nodeID]
 	t.mu.RUnlock()
@@ -261,8 +263,8 @@ func (t *Topology) SeedPublicKeys() map[uint64]signature.PublicKey {
 	return keys
 }
 
-// ShardForKey returns the shard ID for the given object key.
-func (t *Topology) ShardForKey(key []byte) uint64 {
+// ShardForVersionID returns the shard ID for the given object key.
+func (t *Topology) ShardForVersionID(key []byte) uint64 {
 	hash := highwayhash.Sum64(key, t.rawID)
 	return (hash % t.shardCount) + 1
 }

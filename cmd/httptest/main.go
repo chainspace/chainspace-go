@@ -182,11 +182,11 @@ func makeTransactionPayload(seed []string, objectsData []interface{}, labels [][
 	tx := restsrv.Transaction{
 		Traces: []restsrv.Trace{
 			{
-				ContractID:       contractID,
-				Procedure:        procedure,
-				InputObjectsKeys: seed,
-				OutputObjects:    outputs,
-				Labels:           labels,
+				ContractID:            contractID,
+				Procedure:             procedure,
+				InputObjectVersionIDs: seed,
+				OutputObjects:         outputs,
+				Labels:                labels,
 			},
 		},
 		Mappings: mappings,
@@ -355,13 +355,13 @@ func main() {
 	}
 
 	fmt.Printf("seeds generated successfully\n")
+	t := time.NewTimer(time.Duration(duration) * time.Second)
 	// start txs
 	for i := 0; i < workers; i += 1 {
 		fmt.Printf("starting worker %v\n", i)
 		go worker(ctx, seeds[i], labels[i], wg, i)
 	}
 
-	t := time.NewTimer(time.Duration(duration) * time.Second)
 	fmt.Printf("starting tests (at %v) for %v seconds (until %v)\n", time.Now(), time.Duration(duration)*time.Second, time.Now().Add(time.Duration(duration)*time.Second).Format(time.Stamp))
 	select {
 	case <-t.C:

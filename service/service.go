@@ -5,7 +5,8 @@ import (
 	"crypto/rand"
 	"time"
 
-	"chainspace.io/prototype/crypto/signature"
+	"chainspace.io/prototype/internal/crypto/signature"
+
 	"github.com/gogo/protobuf/proto"
 )
 

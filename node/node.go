@@ -14,17 +14,19 @@ import (
 	"time"
 
 	"chainspace.io/prototype/broadcast"
+	"chainspace.io/prototype/checker"
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/contracts"
-	"chainspace.io/prototype/crypto/signature"
-	"chainspace.io/prototype/freeport"
+	"chainspace.io/prototype/internal/crypto/signature"
+	"chainspace.io/prototype/internal/freeport"
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
 	"chainspace.io/prototype/kv"
-	"chainspace.io/prototype/log"
-	"chainspace.io/prototype/log/fld"
 	"chainspace.io/prototype/network"
+	"chainspace.io/prototype/pubsub"
 	"chainspace.io/prototype/restsrv"
+	"chainspace.io/prototype/sbac"
 	"chainspace.io/prototype/service"
-	"chainspace.io/prototype/transactor"
 	"github.com/gogo/protobuf/proto"
 	"github.com/tav/golly/process"
 )
@@ -61,6 +63,7 @@ type Config struct {
 type Server struct {
 	Broadcast       *broadcast.Service
 	cancel          context.CancelFunc
+	checker         *checker.Service
 	ctx             context.Context
 	id              uint64
 	key             signature.KeyPair
@@ -73,7 +76,7 @@ type Server struct {
 	restsrv         *restsrv.Service
 	sharder         service.Handler
 	top             *network.Topology
-	transactor      service.Handler
+	sbac            service.Handler
 	writeTimeout    time.Duration
 }
 
@@ -99,8 +102,15 @@ func (s *Server) handleConnection(conn net.Conn) {
 			log.Error("Unable to verify peer ID from the hello message", fld.Err(err))
 			return
 		}
-	case service.CONNECTION_TRANSACTOR:
-		svc = s.transactor
+	case service.CONNECTION_SBAC:
+		svc = s.sbac
+		peerID, err = s.verifyPeerID(hello)
+		if err != nil {
+			log.Error("Unable to verify peer ID from the hello message", fld.Err(err))
+			return
+		}
+	case service.CONNECTION_CHECKER:
+		svc = s.checker
 		peerID, err = s.verifyPeerID(hello)
 		if err != nil {
 			log.Error("Unable to verify peer ID from the hello message", fld.Err(err))
@@ -403,16 +413,41 @@ func Run(cfg *Config) (*Server, error) {
 	var (
 		kvstore *kv.Service
 		rstsrv  *restsrv.Service
-		txtor   *transactor.Service
+		ssbac   *sbac.Service
+		pbsb    *pubsub.Server
+		checkr  *checker.Service
 	)
 
-	tcheckers := []transactor.Checker{}
+	if cfg.Node.Pubsub.Enabled {
+		cfg := &pubsub.Config{
+			Port:      cfg.Node.Pubsub.Port,
+			NetworkID: cfg.NetworkName,
+			NodeID:    cfg.NodeID,
+		}
+		pbsb, err = pubsub.New(cfg)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("node: unable to instantiate the pubsub server %v", err)
+		}
+	}
+
+	tcheckers := []checker.Checker{}
 	checkers := cts.GetCheckers()
 	for _, v := range checkers {
 		tcheckers = append(tcheckers, v)
 	}
 
-	if !cfg.Node.DisableTransactor {
+	if !cfg.Node.DisableSBAC {
+		checkercfg := &checker.Config{
+			Checkers:   tcheckers,
+			SigningKey: cfg.Keys.SigningKey,
+		}
+		checkr, err = checker.New(checkercfg)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("node unable to instantiate checker service: %v", err)
+		}
+
 		kvcfg := &kv.Config{
 			RuntimeDir: dir,
 		}
@@ -421,9 +456,8 @@ func Run(cfg *Config) (*Server, error) {
 			cancel()
 			return nil, fmt.Errorf("node: unable to instantiate the kv service: %v", err)
 		}
-		tcfg := &transactor.Config{
+		tcfg := &sbac.Config{
 			Broadcaster: broadcaster,
-			Checkers:    tcheckers,
 			KVStore:     kvstore,
 			Directory:   dir,
 			Key:         key,
@@ -433,11 +467,12 @@ func Run(cfg *Config) (*Server, error) {
 			ShardSize:   uint64(cfg.Network.Shard.Size),
 			SigningKey:  cfg.Keys.SigningKey,
 			Top:         top,
+			Pubsub:      pbsb,
 		}
-		txtor, err = transactor.New(tcfg)
+		ssbac, err = sbac.New(tcfg)
 		if err != nil {
 			cancel()
-			return nil, fmt.Errorf("node: unable to instantiate the transactor service: %s", err)
+			return nil, fmt.Errorf("node: unable to instantiate the sbac service: %s", err)
 		}
 		if cfg.Node.HTTP.Enabled {
 			var rport int
@@ -453,7 +488,7 @@ func Run(cfg *Config) (*Server, error) {
 				Top:        top,
 				SelfID:     cfg.NodeID,
 				MaxPayload: config.ByteSize(maxPayload),
-				Transactor: txtor,
+				SBAC:       ssbac,
 				Store:      kvstore,
 			}
 			rstsrv = restsrv.New(restsrvcfg)
@@ -463,6 +498,7 @@ func Run(cfg *Config) (*Server, error) {
 	node := &Server{
 		Broadcast:       broadcaster,
 		cancel:          cancel,
+		checker:         checkr,
 		ctx:             ctx,
 		id:              cfg.NodeID,
 		key:             key,
@@ -473,7 +509,7 @@ func Run(cfg *Config) (*Server, error) {
 		readTimeout:     cfg.Node.Connections.ReadTimeout,
 		restsrv:         rstsrv,
 		top:             top,
-		transactor:      txtor,
+		sbac:            ssbac,
 		writeTimeout:    cfg.Node.Connections.WriteTimeout,
 	}
 

@@ -25,7 +25,7 @@ fuser 8080/tcp
 rm -rf ~/.chainspace/${session}
 
 # initialize the network
-chainspace init ${session} --shard-count 1 --shard-size ${node_count} --disable-transactor true
+chainspace init ${session} --shard-count 1 --shard-size ${node_count} --disable-sbac true
 
 echo ">> Setting up tmux session ${session}"
 tmux new-session -d -s ${session}

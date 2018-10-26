@@ -1,4 +1,4 @@
-package contracts
+package contracts // import "chainspace.io/prototype/contracts"
 
 import (
 	"bytes"
@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/log"
-	"chainspace.io/prototype/log/fld"
-	"chainspace.io/prototype/transactor"
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
+	"chainspace.io/prototype/sbac"
 )
 
 type Checker struct {
@@ -56,7 +56,7 @@ func unmarshalIfaceSlice(ls [][]byte) []interface{} {
 	return out
 }
 
-func makeTrace(inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string, traces []*transactor.Trace) trace {
+func makeTrace(inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string, traces []*sbac.Trace) trace {
 	deps := []trace{}
 	for _, t := range traces {
 		t := t
@@ -66,7 +66,7 @@ func makeTrace(inputs, refInputs, parameters, outputs, returns [][]byte, labels 
 			t.Parameters,
 			t.OutputObjects,
 			t.Returns,
-			transactor.StringsSlice(t.Labels).AsSlice(),
+			sbac.StringsSlice(t.Labels).AsSlice(),
 			t.Dependencies)
 		deps = append(deps, trace)
 	}
@@ -87,7 +87,7 @@ func (c Checker) Name() string { return c.procedureName }
 func (c Checker) ContractID() string { return c.iD }
 
 func (c Checker) Check(
-	inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string, dependencies []*transactor.Trace) bool {
+	inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string, dependencies []*sbac.Trace) bool {
 	body := makeTrace(inputs, refInputs, parameters, outputs, returns, labels, dependencies)
 	bbody, _ := json.Marshal(body)
 	payload := bytes.NewBuffer(bbody)
