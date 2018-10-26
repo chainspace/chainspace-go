@@ -283,23 +283,26 @@ func Run(cfg *Config) (*Server, error) {
 		}
 	}
 
+	var cts *contracts.Contracts
 	// start the different contracts
-	cts, err := contracts.New(cfg.Contracts)
-	if err != nil {
-		log.Fatal("unable to instantiate contacts", fld.Err(err))
-	}
-
-	// initialize the contracts
-	if cfg.Node.Contracts.Manage {
-		err = cts.Start()
+	if !cfg.Node.DisableSBAC {
+		cts, err = contracts.New(cfg.Contracts)
 		if err != nil {
-			log.Fatal("unable to start contracts", fld.Err(err))
+			log.Fatal("unable to instantiate contacts", fld.Err(err))
 		}
-	}
 
-	// ensure all the contracts are working
-	if err := cts.EnsureUp(); err != nil {
-		log.Fatal("some contracts are unavailable", fld.Err(err))
+		// initialize the contracts
+		if cfg.Node.Contracts.Manage {
+			err = cts.Start()
+			if err != nil {
+				log.Fatal("unable to start contracts", fld.Err(err))
+			}
+		}
+
+		// ensure all the contracts are working
+		if err := cts.EnsureUp(); err != nil {
+			log.Fatal("some contracts are unavailable", fld.Err(err))
+		}
 	}
 
 	// Initialise the topology.
@@ -431,13 +434,13 @@ func Run(cfg *Config) (*Server, error) {
 		}
 	}
 
-	tcheckers := []checker.Checker{}
-	checkers := cts.GetCheckers()
-	for _, v := range checkers {
-		tcheckers = append(tcheckers, v)
-	}
-
 	if !cfg.Node.DisableSBAC {
+		tcheckers := []checker.Checker{}
+		checkers := cts.GetCheckers()
+		for _, v := range checkers {
+			tcheckers = append(tcheckers, v)
+		}
+
 		checkercfg := &checker.Config{
 			Checkers:   tcheckers,
 			SigningKey: cfg.Keys.SigningKey,
