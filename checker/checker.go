@@ -79,6 +79,7 @@ func (s *Service) check(
 	}
 	res := &CheckResponse{ok, s.privkey.Sign(txbytes)}
 	resbytes, err := proto.Marshal(res)
+	log.Error("SEND TO CHECKER", log.Int("SIZE", len(txbytes)))
 	if err != nil {
 		log.Error("checker: marshal error", fld.Err(err))
 		return nil, fmt.Errorf("checker: marshal error [err=%v]", err)

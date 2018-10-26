@@ -66,6 +66,7 @@ func (c *Cache) dial(nodeID uint64) (*MuConn, error) {
 		c.mu.Unlock()
 		return cc, nil
 	}
+
 	defer c.mu.Unlock()
 	log.Error("NEED TO DIAL", fld.NodeID(nodeID))
 	// need to dial
@@ -161,7 +162,7 @@ func (c *Cache) readAckMessage(nodeID uint64, conn *network.Conn, die chan bool)
 			if err == nil {
 				go c.processAckMessage(nodeID, msg)
 			}
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 		}
 	}
 }

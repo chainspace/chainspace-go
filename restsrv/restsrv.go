@@ -206,6 +206,65 @@ func (s *Service) createObject(rw http.ResponseWriter, r *http.Request) {
 	success(rw, http.StatusOK, res)
 }
 
+func readlistifacedata(rw http.ResponseWriter, r *http.Request) ([][]byte, bool) {
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to read request: %v", err))
+		return nil, false
+	}
+	req := struct {
+		Data []interface{} `json:"data"`
+	}{}
+	if err := json.Unmarshal(body, &req); err != nil {
+		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to unmarshal: %v", err))
+		return nil, false
+	}
+	if req.Data == nil {
+		fail(rw, http.StatusBadRequest, "empty data")
+		return nil, false
+	}
+	out := [][]byte{}
+	for _, v := range req.Data {
+		v := v
+		b, err := json.Marshal(v)
+		if err != nil {
+			fail(rw, http.StatusBadRequest, "invalid data")
+			return nil, false
+		}
+		out = append(out, b)
+
+	}
+
+	return out, true
+}
+
+func (s *Service) createObjects(rw http.ResponseWriter, r *http.Request) {
+	rawObjects, ok := readlistifacedata(rw, r)
+	if !ok {
+		return
+	}
+	ids, err := s.client.CreateObjects(rawObjects)
+	if err != nil {
+		errorr(rw, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for _, v := range ids {
+		if len(v) != len(ids[0]) {
+			errorr(rw, http.StatusInternalServerError, "inconsistent data")
+			return
+		}
+	}
+	res := struct {
+		IDs []string `json:"ids"`
+	}{}
+	for _, v := range ids[0] {
+		v := v
+		res.IDs = append(res.IDs, base64.StdEncoding.EncodeToString(v))
+	}
+
+	success(rw, http.StatusOK, res)
+}
+
 func (s *Service) swaggerJson(rw http.ResponseWriter, r *http.Request) {
 	fp := path.Join("restsrv", "swagger", "swagger.json")
 	http.ServeFile(rw, r, fp)
@@ -396,6 +455,7 @@ func (s *Service) makeServ(addr string, port int) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/swagger.json", s.swaggerJson)
 	mux.HandleFunc("/object", s.object)
+	mux.HandleFunc("/objects", s.createObjects)
 	mux.HandleFunc("/object/get", s.objectGet)
 	mux.HandleFunc("/object/ready", s.objectsReady)
 	mux.HandleFunc("/states", s.states)

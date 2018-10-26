@@ -107,6 +107,8 @@ func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, e
 		return s.handleStates(ctx, m.Payload, m.ID)
 	case Opcode_SBAC:
 		return s.handleSBAC(ctx, m.Payload, peerID, m.ID)
+	case Opcode_CREATE_OBJECTS:
+		return s.createObjects(ctx, m.Payload, m.ID)
 	default:
 		log.Error("sbac: unknown message opcode", log.Int32("opcode", m.Opcode), fld.PeerID(peerID), log.Int("len", len(m.Payload)))
 		return nil, fmt.Errorf("sbac: unknown message opcode: %v", m.Opcode)
@@ -455,6 +457,48 @@ func (s *Service) createObject(ctx context.Context, payload []byte, id uint64) (
 		res.ID = o.VersionID
 	}
 	return createPayload(id, res)
+}
+
+func createObjectsPayload(id uint64, res *CreateObjectsResponse) (*service.Message, error) {
+	b, _ := proto.Marshal(res)
+	return &service.Message{
+		ID:      id,
+		Opcode:  int32(Opcode_CREATE_OBJECT),
+		Payload: b,
+	}, nil
+}
+
+func (s *Service) createObjects(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
+	req := &CreateObjectsRequest{}
+	err := proto.Unmarshal(payload, req)
+	res := &CreateObjectsResponse{}
+	if err != nil {
+		res.Error = fmt.Errorf("sbac: new_object unmarshaling error: %v", err).Error()
+		return createObjectsPayload(id, res)
+	}
+
+	if req.Objects == nil || len(req.Objects) <= 0 {
+		res.Error = fmt.Errorf("sbac: nil object").Error()
+		return createObjectsPayload(id, res)
+	}
+
+	ch := combihash.New()
+	out := make([][]byte, 0, len(req.Objects))
+	for _, object := range req.Objects {
+		ch.Reset()
+		ch.Write(object)
+		versionid := ch.Digest()
+		o, err := CreateObject(s.store, versionid, object)
+		if err != nil {
+			res.Error = err.Error()
+			break
+		}
+		out = append(out, o.VersionID)
+	}
+	if len(res.Error) <= 0 {
+		res.IDs = out
+	}
+	return createObjectsPayload(id, res)
 }
 
 func (s *Service) Name() string {

@@ -24,6 +24,7 @@ func main() {
 		"run":       cmdRun,
 		"sbac":      cmdSBAC,
 		"contracts": cmdContracts,
+		"check":     cmdCheck,
 	}
 	info := map[string]string{
 		"genkeys":   "Generate new keys for a node",
@@ -33,6 +34,7 @@ func main() {
 		"run":       "Run a node in a Chainspace network",
 		"sbac":      "Send transactions in a chainspace network",
 		"contracts": "Manage chainspace contracts",
+		"check":     "Run the checker over a transaction payload",
 	}
 	optparse.Commands("chainspace", "0.0.1", cmds, info, logo)
 }

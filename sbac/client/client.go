@@ -31,6 +31,7 @@ type Client interface {
 	SendTransaction(t *sbac.Transaction, evidences map[uint64][]byte) ([]*sbac.Object, error)
 	Query(key []byte) ([]*sbac.Object, error)
 	Create(obj []byte) ([][]byte, error)
+	CreateObjects([][]byte) ([][][]byte, error)
 	Delete(key []byte) ([]*sbac.Object, error)
 	States(nodeID uint64) (*sbac.StatesReportResponse, error)
 	Close()
@@ -71,6 +72,7 @@ func (c *client) addTransaction(nodes []uint64, t *sbac.Transaction, evidences m
 		Opcode:  int32(sbac.Opcode_ADD_TRANSACTION),
 		Payload: txbytes,
 	}
+	log.Error("TRANSACTION SIZE", log.Int("SIZE", len(txbytes)))
 	mu := sync.Mutex{}
 	wg := &sync.WaitGroup{}
 	objects := map[string]*sbac.Object{}
@@ -227,6 +229,55 @@ func (c *client) Create(obj []byte) ([][]byte, error) {
 	log.Error("TIME ELAPSED TO CREATE OBJECT", log.String("duration", time.Since(now).String()))
 
 	return objs, nil
+}
+
+func (c *client) CreateObjects(objs [][]byte) ([][][]byte, error) {
+	nodes := []uint64{}
+	var i uint64
+	for ; i < c.top.TotalNodes(); i += 1 {
+		nodes = append(nodes, i+1)
+	}
+
+	req := &sbac.CreateObjectsRequest{
+		Objects: objs,
+	}
+	bytes, err := proto.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	msg := service.Message{
+		Opcode:  int32(sbac.Opcode_CREATE_OBJECTS),
+		Payload: bytes,
+	}
+
+	mu := sync.Mutex{}
+	wg := sync.WaitGroup{}
+	ids := [][][]byte{}
+	f := func(n uint64, msg *service.Message) {
+		defer wg.Done()
+		log.Error("TIME ELAPSED TO CREATE OBJECTS FROM NODE", log.Uint64("NODEID", n), log.String("duration", time.Since(now).String()))
+		res := sbac.CreateObjectsResponse{}
+		err = proto.Unmarshal(msg.Payload, &res)
+		if err != nil {
+			return
+		}
+		mu.Lock()
+		ids = append(ids, res.IDs)
+		mu.Unlock()
+		return
+	}
+	conns := c.conns.Borrow()
+	for _, nid := range nodes {
+		nid := nid
+		wg.Add(1)
+		msg := msg
+		go conns.WriteRequest(nid, &msg, 5*time.Second, true, f)
+	}
+	wg.Wait()
+	log.Error("TIME ELAPSED TO CREATE OBJECT", log.String("duration", time.Since(now).String()))
+
+	return ids, nil
 }
 
 func (c *client) Delete(versionid []byte) ([]*sbac.Object, error) {

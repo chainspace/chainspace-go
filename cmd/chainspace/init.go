@@ -99,7 +99,7 @@ func cmdInit(args []string, usage string) {
 
 	logging := &config.Logging{
 		ConsoleLevel: log.DebugLevel,
-		FileLevel:    log.DebugLevel,
+		FileLevel:    log.ErrorLevel,
 		FilePath:     "log/chainspace.log",
 	}
 

@@ -32,7 +32,7 @@ func (s *subscriber) Subscribe(objectID string, cb okcallback) {
 func (s *subscriber) cb(nodeID uint64, objectID string, success bool, labels []string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if cnt, ok := s.results[objectID]; ok {
+	if cnt, ok := s.results[objectID]; ok && success == true {
 		cnt.i += 1
 		s.results[objectID] = cnt
 		if cnt.i >= s.nodeCount {

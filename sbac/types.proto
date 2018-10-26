@@ -11,6 +11,7 @@ enum Opcode {
   DELETE_OBJECT = 4;
   STATES = 5;
   SBAC = 6;
+  CREATE_OBJECTS = 7;
 }
 
 enum ObjectStatus {
@@ -104,6 +105,15 @@ message NewObjectRequest {
 
 message NewObjectResponse {
   bytes id = 1 [(gogoproto.customname) = "ID"];
+  string error = 2;
+}
+
+message CreateObjectsRequest {
+  repeated bytes objects = 1;
+}
+
+message CreateObjectsResponse {
+  repeated bytes ids = 1 [(gogoproto.customname) = "IDs"];
   string error = 2;
 }
 

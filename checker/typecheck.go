@@ -23,6 +23,10 @@ type statedata struct {
 
 type idmap map[string]statedata
 
+func TypeCheck(tx *sbac.Transaction) error {
+	return typeCheck(idmap{}, tx.Traces)
+}
+
 func typeCheck(ids idmap, traces []*sbac.Trace) error {
 	// type checks all traces
 	for _, trace := range traces {
@@ -54,7 +58,7 @@ func typeCheck(ids idmap, traces []*sbac.Trace) error {
 				if sd.state == inactive {
 					return fmt.Errorf("%v.%v using inactive versionid(%v) as input", trace.ContractID, trace.Procedure, b64(v))
 				}
-				if sd.state == active && sd.contract != trace.ContractID {
+				if sd.state == active {
 					return fmt.Errorf("%v.%v using versionid(%v) previously reference by another contract(%v)", trace.ContractID, trace.Procedure, b64(v), sd.contract)
 				}
 				sd.state = inactive
@@ -69,9 +73,6 @@ func typeCheck(ids idmap, traces []*sbac.Trace) error {
 			if sd, ok := ids[string(v)]; ok {
 				if sd.state == inactive {
 					return fmt.Errorf("%v.%v using inactive versionid(%v) as reference", trace.ContractID, trace.Procedure, b64(v))
-				}
-				if sd.contract != trace.ContractID {
-					return fmt.Errorf("%v.%v using versionid(%v) previously reference by another contract(%v)", trace.ContractID, trace.Procedure, b64(v), sd.contract)
 				}
 			} else {
 				ids[string(v)] = statedata{active, trace.ContractID}
