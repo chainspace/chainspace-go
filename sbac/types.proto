@@ -151,3 +151,33 @@ message SBACTransaction {
   SBACOpcode op = 4;
   bytes signature = 5;
 }
+
+enum ConsensusOp {
+  Consensus1 = 0;
+  Consensus2 = 1;
+  Consensus3 = 2;
+}
+
+message ConsensusTransaction {
+  bytes txId = 1 [(gogoproto.customname) = "TxID"];
+  Transaction tx = 2;
+  map<uint64, bytes> evidences = 3;
+  ConsensusOp op = 4;
+  uint64 initiator = 5;
+}
+
+enum SBACOp {
+  Phase1 = 0;
+  Phase2 = 1;
+  PhaseCommit = 2;
+}
+
+message SBACMessage2 {
+  SBACOp op = 1;
+  SBACDecision decision = 2;
+  bytes txId = 3 [(gogoproto.customname) = "TxID"];
+  Transaction tx = 4;
+  map<uint64, bytes> evidences = 5;
+  bytes signature = 6;
+  uint64 peerId = 7 [(gogoproto.customname) = "PeerID"];
+}

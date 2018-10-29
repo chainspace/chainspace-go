@@ -73,22 +73,26 @@ func (s *Service) handleDeliver(round uint64, blocks []*broadcast.SignedData) {
 		for it.Valid() {
 			it.Next()
 			// TODO(): do stuff with the fee?
-			tx := SBACTransaction{}
+			tx := ConsensusTransaction{}
 			err := proto.Unmarshal(it.TxData, &tx)
 			if err != nil {
 				log.Error("Unable to unmarshal transaction data", fld.Err(err))
 				continue
 			}
-			e := &Event{
-				msg: &SBACMessage{
-					Op:       tx.Op,
-					Decision: SBACDecision_ACCEPT,
-					Tx:       &tx,
-				},
-				peerID: 99,
-			}
+			e := NewConsensusEvent(&tx)
+			s.checkEvent(e)
 			s.pe.OnEvent(e)
 		}
+	}
+}
+
+// checkEvent check the event Op and create a new StateMachine if
+// the OpCode is Consensus1 or ConsensusCommit
+func (s *Service) checkEvent(e *ConsensusEvent) {
+	if e.data.Op == ConsensusOp_Consensus1 {
+		txbytes, _ := proto.Marshal(e.data.Tx)
+		detail := DetailTx{ID: e.data.TxID, RawTx: txbytes, Tx: e.data.Tx}
+		s.addStateMachine(&detail, StateWaitingForConsensus1)
 	}
 }
 
@@ -115,36 +119,39 @@ func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, e
 	}
 }
 
-func (s *Service) consumeEvents(e *Event) bool {
+func (s *Service) consumeEvents(e EventExt) bool {
 	// check if statemachine is finished
-	ok, err := TxnFinished(s.store, e.msg.GetTx().GetID())
+	ok, err := TxnFinished(s.store, e.TxID())
 	if err != nil {
 		log.Error("error calling TxnFinished", fld.Err(err))
 		// do nothing
 		return true
 	}
 	if ok {
-		log.Error("event for a finished transaction, skipping it", fld.TxID(ID(e.msg.GetTx().ID)), log.Uint64("PEERID", e.peerID))
+		log.Error("event for a finished transaction, skipping it",
+			fld.TxID(ID(e.TxID())), log.Uint64("peer.id", e.PeerID()))
 		// txn already finished. move on
 		return true
 	}
 
-	sm, ok := s.getSateMachine(e.msg.Tx.ID)
+	sm, ok := s.getSateMachine(e.TxID())
 	if ok {
 		if log.AtDebug() {
-			log.Debug("sending new event to statemachine", fld.TxID(ID(e.msg.Tx.ID)), fld.PeerID(e.peerID), fld.PeerShard(s.top.ShardForNode(e.peerID)))
+			log.Debug("sending new event to statemachine", fld.TxID(ID(e.TxID())), fld.PeerID(e.PeerID()), fld.PeerShard(s.top.ShardForNode(e.PeerID())))
 		}
 		sm.OnEvent(e)
 		return true
 	}
 	if log.AtDebug() {
-		log.Debug("statemachine not ready", fld.TxID(ID(e.msg.Tx.ID)))
+		log.Debug("statemachine not ready", fld.TxID(ID(e.TxID())))
 	}
 	return false
 }
 
-func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64, msgID uint64) (*service.Message, error) {
-	req := &SBACMessage{}
+func (s *Service) handleSBAC(
+	ctx context.Context, payload []byte, peerID uint64, msgID uint64,
+) (*service.Message, error) {
+	req := &SBACMessage2{}
 	err := proto.Unmarshal(payload, req)
 	if err != nil {
 		log.Error("sbac: sbac unmarshaling error", fld.Err(err))
@@ -152,11 +159,13 @@ func (s *Service) handleSBAC(ctx context.Context, payload []byte, peerID uint64,
 	}
 	// if we received a COMMIT opcode, the statemachine may not exists
 	// lets check and create it here.
-	if req.Op == SBACOpcode_COMMIT {
-		txdetails := NewTxDetails(req.Tx.ID, []byte{}, req.Tx.Tx, req.Tx.Evidences)
-		_ = s.getOrCreateStateMachine(txdetails, StateWaitingForCommit)
+	if req.Op == SBACOp_PhaseCommit {
+		// txdetails := NewTxDetails(req.Tx.ID, []byte{}, req.Tx.Tx, req.Tx.Evidences)
+		// _ = s.getOrCreateStateMachine(txdetails, StateWaitingForCommit)
 	}
-	e := &Event{msg: req, peerID: peerID}
+	// e := &Event{msg: req, peerID: peerID}
+	req.PeerID = peerID
+	e := NewSBACEvent(req)
 	s.pe.OnEvent(e)
 	res := SBACMessageAck{LastID: msgID}
 	payloadres, err := proto.Marshal(&res)
@@ -176,21 +185,31 @@ func (s *Service) verifySignatures(txID []byte, evidences map[uint64][]byte) boo
 	}
 	for nodeID, sig := range evidences {
 		key := keys[nodeID]
-		if !key.Verify(txID, sig) {
-			log.Errorf("invalid signature")
-			if log.AtDebug() {
-				log.Debug("invalid signature", fld.PeerID(nodeID))
+		if nodeID == s.nodeID {
+			if !key.Verify(txID, sig) {
+				log.Errorf("invalid signature")
+				if log.AtDebug() {
+					log.Debug("invalid signature", fld.PeerID(nodeID))
+				}
+				ok = false
 			}
-			ok = false
 		}
 	}
 	return ok
 }
 
-func (s *Service) addStateMachine(txdetails *TxDetails, initialState State) *StateMachine {
+func (s *Service) addStateMachine(detail *DetailTx, initialState State) *StateMachine {
 	s.txstatesmu.Lock()
-	sm := NewStateMachine(s.table, txdetails, initialState)
-	s.txstates[string(txdetails.ID)] = sm
+	cfg := &StateMachineConfig{
+		Consensus1Action: s.onConsensusEvent,
+		Consensus2Action: s.onConsensusEvent,
+		Consensus3Action: s.onConsensusEvent,
+		Table:            s.table,
+		Detail:           detail,
+		InitialState:     initialState,
+	}
+	sm := NewStateMachine(cfg)
+	s.txstates[string(detail.ID)] = sm
 	s.txstatesmu.Unlock()
 	return sm
 }
@@ -202,15 +221,24 @@ func (s *Service) getSateMachine(txID []byte) (*StateMachine, bool) {
 	return sm, ok
 }
 
-func (s *Service) getOrCreateStateMachine(txdetails *TxDetails, initialState State) *StateMachine {
+func (s *Service) getOrCreateStateMachine(
+	detail *DetailTx, initialState State) *StateMachine {
 	s.txstatesmu.Lock()
 	defer s.txstatesmu.Unlock()
-	sm, ok := s.txstates[string(txdetails.ID)]
+	sm, ok := s.txstates[string(detail.ID)]
 	if ok {
 		return sm
 	}
-	sm = NewStateMachine(s.table, txdetails, initialState)
-	s.txstates[string(txdetails.ID)] = sm
+	cfg := &StateMachineConfig{
+		Consensus1Action: s.onConsensusEvent,
+		Consensus2Action: s.onConsensusEvent,
+		Consensus3Action: s.onConsensusEvent,
+		Table:            s.table,
+		Detail:           detail,
+		InitialState:     initialState,
+	}
+	sm = NewStateMachine(cfg)
+	s.txstates[string(detail.ID)] = sm
 	return sm
 }
 
@@ -223,12 +251,53 @@ func (s *Service) gcStateMachines() {
 				if log.AtDebug() {
 					log.Debug("removing statemachine", log.String("finale_state", v.State().String()), fld.TxID(ID([]byte(k))))
 				}
-				v.Close()
+				// v.Close()
 				delete(s.txstates, k)
 			}
 		}
 		s.txstatesmu.Unlock()
 	}
+}
+
+func (s *Service) AddTransaction(
+	ctx context.Context, tx *Transaction, evidences map[uint64][]byte,
+) ([]*Object, error) {
+	ids, err := MakeIDs(tx)
+	if err != nil {
+		log.Error("unable to create IDs", fld.Err(err))
+		return nil, err
+	}
+
+	txbytes, _ := proto.Marshal(tx)
+	if !s.verifySignatures(txbytes, evidences) {
+		log.Error("invalid evidences from nodes")
+		return nil, errors.New("sbac: invalid evidences from nodes")
+	}
+	log.Info("sbac: all evidence verified with success")
+
+	objects := []*Object{}
+	for _, v := range ids.TraceObjectPairs {
+		objects = append(objects, v.OutputObjects...)
+	}
+
+	detail := DetailTx{ID: ids.TxID, RawTx: txbytes, Tx: tx}
+	s.addStateMachine(&detail, StateWaitingForConsensus1)
+
+	// broadcast transaction
+	consensusTx := &ConsensusTransaction{
+		TxID:      ids.TxID,
+		Tx:        tx,
+		Evidences: evidences,
+		Op:        ConsensusOp_Consensus1,
+		Initiator: s.nodeID,
+	}
+	b, err := proto.Marshal(consensusTx)
+	if err != nil {
+		return nil, fmt.Errorf("sbac: unable to marshal consensus tx: %v", err)
+	}
+	s.broadcaster.AddTransaction(b, 0)
+	log.Info("sbac: transaction added successfully")
+	return objects, nil
 }
 
 func (s *Service) addTransaction(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
@@ -257,16 +326,18 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte, id uint64)
 		trID := base64.StdEncoding.EncodeToString(v.Trace.ID)
 		objects[trID] = &ObjectList{v.OutputObjects}
 	}
-	txdetails := NewTxDetails(ids.TxID, txbytes, req.Tx, req.Evidences)
+	// txdetails := NewTxDetails(ids.TxID, txbytes, req.Tx, req.Evidences)
 
-	s.addStateMachine(txdetails, StateWaitingForConsensus1)
+	detail := DetailTx{ID: ids.TxID, RawTx: txbytes, Tx: req.Tx}
+	s.addStateMachine(&detail, StateWaitingForConsensus1)
 
 	// broadcast transaction
-	consensusTx := &SBACTransaction{
+	consensusTx := &ConsensusTransaction{
+		TxID:      ids.TxID,
 		Tx:        req.Tx,
-		ID:        ids.TxID,
 		Evidences: req.Evidences,
-		Op:        SBACOpcode_CONSENSUS1,
+		Op:        ConsensusOp_Consensus1,
+		Initiator: s.nodeID,
 	}
 	b, err := proto.Marshal(consensusTx)
 	if err != nil {
@@ -364,7 +435,8 @@ func (s *Service) handleStates(ctx context.Context, payload []byte, id uint64) (
 	sr := []*StateReport{}
 	s.txstatesmu.Lock()
 	for _, v := range s.txstates {
-		sr = append(sr, v.StateReport())
+		_ = v
+		// sr = append(sr, v.StateReport())
 	}
 	s.txstatesmu.Unlock()
 	res := &StatesReportResponse{
