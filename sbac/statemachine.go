@@ -35,9 +35,8 @@ type Action func(s *States) (State, error)
 type Transition func(s *States) (State, error)
 
 type StateMachineConfig struct {
-	Consensus1Action ConsensusEventAction
-	Consensus2Action ConsensusEventAction
-	Consensus3Action ConsensusEventAction
+	ConsensusAction ConsensusEventAction
+	SBACAction      SBACEventAction
 
 	Table        *StateTable
 	Detail       *DetailTx
@@ -51,16 +50,17 @@ type DetailTx struct {
 	HashID uint32
 }
 
+type Decisions struct {
+	Phase1 map[uint64]SignedDecision
+	Phase2 map[uint64]SignedDecision
+	Commit map[uint64]SignedDecision
+}
+
 type States struct {
 	consensus map[ConsensusOp]*ConsensusStateMachine
 	sbac      map[SBACOp]*SBACStateMachine
+	decisions Decisions
 	detail    *DetailTx
-
-	/*
-		commitDec map[uint64]SignedDecision
-		phase1Dec map[uint64]SignedDecision
-		phase2Dec map[uint64]SignedDecision
-	*/
 }
 
 type StateMachine struct {
@@ -159,11 +159,11 @@ func (sm *StateMachine) onEvent(rawe EventExt) error {
 	switch rawe.Kind() {
 	case EventKindConsensus:
 		e := rawe.(*ConsensusEvent)
-		sm.states.consensus[e.data.Op].processEvent(e)
+		sm.states.consensus[e.data.Op].processEvent(sm.states, e)
 		return nil
 	case EventKindSBACMessage:
 		e := rawe.(*SBACEvent)
-		sm.states.sbac[e.msg.Op].processEvent(e)
+		sm.states.sbac[e.msg.Op].processEvent(sm.states, e)
 		return nil
 	default:
 		return fmt.Errorf("unknown event")
@@ -207,15 +207,28 @@ func NewStateMachine(cfg *StateMachineConfig) *StateMachine {
 		states: &States{
 			detail:    cfg.Detail,
 			consensus: map[ConsensusOp]*ConsensusStateMachine{},
+			sbac:      map[SBACOp]*SBACStateMachine{},
+			decisions: Decisions{
+				map[uint64]SignedDecision{},
+				map[uint64]SignedDecision{},
+				map[uint64]SignedDecision{},
+			},
 		},
 		state: cfg.InitialState,
 	}
 	sm.states.consensus[ConsensusOp_Consensus1] =
-		NewConsensuStateMachine(ConsensusOp_Consensus1, cfg.Consensus1Action)
+		NewConsensuStateMachine(ConsensusOp_Consensus1, cfg.ConsensusAction)
 	sm.states.consensus[ConsensusOp_Consensus2] =
-		NewConsensuStateMachine(ConsensusOp_Consensus2, cfg.Consensus2Action)
+		NewConsensuStateMachine(ConsensusOp_Consensus2, cfg.ConsensusAction)
 	sm.states.consensus[ConsensusOp_Consensus3] =
-		NewConsensuStateMachine(ConsensusOp_Consensus3, cfg.Consensus3Action)
+		NewConsensuStateMachine(ConsensusOp_Consensus3, cfg.ConsensusAction)
+
+	sm.states.sbac[SBACOp_Phase1] =
+		NewSBACStateMachine(SBACOp_Phase1, cfg.SBACAction)
+	sm.states.sbac[SBACOp_Phase2] =
+		NewSBACStateMachine(SBACOp_Phase2, cfg.SBACAction)
+	sm.states.sbac[SBACOp_Commit] =
+		NewSBACStateMachine(SBACOp_Commit, cfg.SBACAction)
 	sm.events = NewPendingEvents(sm.consumeEvent)
 	go sm.events.Run()
 	return sm

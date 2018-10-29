@@ -157,12 +157,15 @@ func (s *Service) handleSBAC(
 		log.Error("sbac: sbac unmarshaling error", fld.Err(err))
 		return nil, fmt.Errorf("sbac: sbac unmarshaling error: %v", err)
 	}
+
 	// if we received a COMMIT opcode, the statemachine may not exists
 	// lets check and create it here.
-	if req.Op == SBACOp_PhaseCommit {
-		// txdetails := NewTxDetails(req.Tx.ID, []byte{}, req.Tx.Tx, req.Tx.Evidences)
-		// _ = s.getOrCreateStateMachine(txdetails, StateWaitingForCommit)
+	if req.Op == SBACOp_Commit {
+		txbytes, _ := proto.Marshal(req.Tx)
+		detail := DetailTx{ID: req.TxID, RawTx: txbytes, Tx: req.Tx}
+		_ = s.getOrCreateStateMachine(&detail, StateWaitingForCommit)
 	}
+
 	// e := &Event{msg: req, peerID: peerID}
 	req.PeerID = peerID
 	e := NewSBACEvent(req)
@@ -201,12 +204,10 @@ func (s *Service) verifySignatures(txID []byte, evidences map[uint64][]byte) boo
 func (s *Service) addStateMachine(detail *DetailTx, initialState State) *StateMachine {
 	s.txstatesmu.Lock()
 	cfg := &StateMachineConfig{
-		Consensus1Action: s.onConsensusEvent,
-		Consensus2Action: s.onConsensusEvent,
-		Consensus3Action: s.onConsensusEvent,
-		Table:            s.table,
-		Detail:           detail,
-		InitialState:     initialState,
+		ConsensusAction: s.onConsensusEvent,
+		Table:           s.table,
+		Detail:          detail,
+		InitialState:    initialState,
 	}
 	sm := NewStateMachine(cfg)
 	s.txstates[string(detail.ID)] = sm
@@ -230,12 +231,10 @@ func (s *Service) getOrCreateStateMachine(
 		return sm
 	}
 	cfg := &StateMachineConfig{
-		Consensus1Action: s.onConsensusEvent,
-		Consensus2Action: s.onConsensusEvent,
-		Consensus3Action: s.onConsensusEvent,
-		Table:            s.table,
-		Detail:           detail,
-		InitialState:     initialState,
+		ConsensusAction: s.onConsensusEvent,
+		Table:           s.table,
+		Detail:          detail,
+		InitialState:    initialState,
 	}
 	sm = NewStateMachine(cfg)
 	s.txstates[string(detail.ID)] = sm

@@ -385,13 +385,6 @@ func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
 		errorr(rw, http.StatusInternalServerError, err.Error())
 		return
 	}
-	/*
-		objects, err := s.client.SendTransaction(tx, evidences)
-		if err != nil {
-			errorr(rw, http.StatusInternalServerError, err.Error())
-			return
-		}
-	*/
 	data := []Object{}
 	for _, v := range objects {
 		v := v

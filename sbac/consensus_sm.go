@@ -3,6 +3,8 @@ package sbac
 import (
 	"fmt"
 
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
 	proto "github.com/gogo/protobuf/proto"
 )
 
@@ -10,24 +12,24 @@ type StateConsensus uint8
 
 const (
 	StateConsensusWaiting StateConsensus = iota
-	StateConsensusAccept
-	StateConsensusReject
+	StateConsensusAccepted
+	StateConsensusRejected
 )
 
 func (e StateConsensus) String() string {
 	switch e {
 	case StateConsensusWaiting:
 		return "StateConsensusWaiting"
-	case StateConsensusAccept:
-		return "StateConsensusAccept"
-	case StateConsensusReject:
-		return "StateConsensusReject"
+	case StateConsensusAccepted:
+		return "StateConsensusAccepted"
+	case StateConsensusRejected:
+		return "StateConsensusRejected"
 	default:
 		return "error"
 	}
 }
 
-type ConsensusEventAction func(e *ConsensusEvent) (StateConsensus, error)
+type ConsensusEventAction func(st *States, e *ConsensusEvent) (StateConsensus, error)
 
 type ConsensusStateMachine struct {
 	action ConsensusEventAction
@@ -36,7 +38,7 @@ type ConsensusStateMachine struct {
 	state  StateConsensus
 }
 
-func (c *ConsensusStateMachine) processEvent(e *ConsensusEvent) error {
+func (c *ConsensusStateMachine) processEvent(st *States, e *ConsensusEvent) error {
 	if e.Kind() != EventKindConsensus {
 		return fmt.Errorf("ConsensusStateMachine, invalid EventKind(%v)",
 			e.Kind().String())
@@ -49,7 +51,7 @@ func (c *ConsensusStateMachine) processEvent(e *ConsensusEvent) error {
 
 	var err error
 	c.data = e.data
-	c.state, err = c.action(e)
+	c.state, err = c.action(st, e)
 	return err
 }
 
@@ -73,11 +75,13 @@ func NewConsensuStateMachine(phase ConsensusOp, action ConsensusEventAction) *Co
 	}
 }
 
-func (s *Service) onConsensusEvent(e *ConsensusEvent) (StateConsensus, error) {
+func (s *Service) onConsensusEvent(st *States, e *ConsensusEvent) (StateConsensus, error) {
 	txbytes, _ := proto.Marshal(e.data.Tx)
 	if !s.verifySignatures(txbytes, e.data.Evidences) {
-		// log.Error("consensus1 missing/invalid signatures", fld.TxID(e.data.HashID))
-		return StateConsensusReject, nil
+		log.Error("consensus missing/invalid signatures",
+			fld.TxID(st.detail.HashID),
+			log.String("phase", e.data.Op.String()))
+		return StateConsensusRejected, nil
 	}
-	return StateConsensusAccept, nil
+	return StateConsensusAccepted, nil
 }

@@ -192,6 +192,7 @@ func (s *Service) verifySignature(tx *Transaction, signature []byte, nodeID uint
 	return key.Verify(b, signature), nil
 }
 
+/*
 func (s *Service) onWaitingFor(st *States, decisions map[uint64]SignedDecision, phaseName string) WaitingDecisionResult {
 	shards := s.shardsInvolvedWithoutSelf(st.detail.Tx)
 	var somePending bool
@@ -262,47 +263,40 @@ func (s *Service) onWaitingFor(st *States, decisions map[uint64]SignedDecision, 
 
 	return WaitingDecisionResultAccept
 }
+*/
 
 func (s *Service) onWaitingForPhase1(st *States) (State, error) {
-	/*
-		switch s.onWaitingFor(tx, st.detail.Phase1Decisions, "phase1") {
-		case WaitingDecisionResultAbort:
-			return StateAborted, nil
-		case WaitingDecisionResultPending:
-			return StateWaitingForPhase1, nil
-		default:
-			return StateConsensus2Triggered, nil
-		}
-	*/
-	return StateAborted, nil
+	switch st.sbac[SBACOp_Phase1].State() {
+	case StateSBACRejected:
+		return StateAborted, nil
+	case StateSBACWaiting:
+		return StateWaitingForPhase1, nil
+	default:
+		return StateConsensus2Triggered, nil
+	}
 }
 
 func (s *Service) onWaitingForPhase2(st *States) (State, error) {
-	/*
-		switch s.onWaitingFor(tx, st.detail.Phase2Decisions, "phase2") {
-		case WaitingDecisionResultAbort:
-			return StateAborted, nil
-		case WaitingDecisionResultPending:
-			return StateWaitingForPhase2, nil
-		default:
-			return StateObjectsDeactivated, nil
-		}
-	*/
-	return StateAborted, nil
+	switch st.sbac[SBACOp_Phase2].State() {
+	case StateSBACRejected:
+		return StateAborted, nil
+	case StateSBACWaiting:
+		return StateWaitingForPhase2, nil
+	default:
+		return StateObjectsDeactivated, nil
+	}
 }
 
 func (s *Service) onWaitingForCommit(st *States) (State, error) {
-	/*
-		switch s.onWaitingFor(tx, st.detail.CommitDecisions, "commit") {
-		case WaitingDecisionResultAbort:
-			return StateAborted, nil
-		case WaitingDecisionResultPending:
-			return StateWaitingForCommit, nil
-		default:
-			return StateConsensusCommitTriggered, nil
-		}
-	*/
-	return StateAborted, nil
+	switch st.sbac[SBACOp_Commit].State() {
+	case StateSBACRejected:
+		return StateAborted, nil
+	case StateSBACWaiting:
+		return StateWaitingForCommit, nil
+	default:
+		return StateConsensusCommitTriggered, nil
+	}
+
 }
 
 func (s *Service) objectsExists(vids, refvids [][]byte) ([]*Object, bool) {
@@ -324,7 +318,7 @@ func (s *Service) onWaitingForConsensus1(st *States) (State, error) {
 	state := st.consensus[ConsensusOp_Consensus1].State()
 	if state == StateConsensusWaiting {
 		return StateWaitingForConsensus1, nil
-	} else if state == StateConsensusReject {
+	} else if state == StateConsensusRejected {
 		return StateRejectPhase1Broadcasted, nil
 	}
 
@@ -351,73 +345,26 @@ func (s *Service) onWaitingForConsensus1(st *States) (State, error) {
 	return StateObjectLocked, nil
 }
 
-/*
-func (s *Service) onWaitingForConsensus1(st *States) (State, error) {
-				if tx.Consensus1Tx == nil {
-					return StateWaitingForConsensus1, nil
-				}
-				if !s.verifySignatures(tx.Raw, tx.Consensus1Tx.GetEvidences()) {
-					log.Error("consensus1 missing/invalid signatures", fld.TxID(tx.HashID))
-					return StateRejectPhase1Broadcasted, nil
-				}
-
-				// check that all inputs objects and references part of the state of this node exists.
-				for _, trace := range tx.Tx.Traces {
-					objects, ok := s.objectsExists(
-						trace.InputObjectVersionIDs, trace.InputReferenceVersionIDs)
-					if !ok {
-						log.Error("consensus1 some objects do not exists", fld.TxID(tx.HashID))
-						return StateRejectPhase1Broadcasted, nil
-					}
-					for _, v := range objects {
-						if v.Status == ObjectStatus_INACTIVE {
-							log.Error("consensus1 some objects are inactive", fld.TxID(tx.HashID))
-							return StateRejectPhase1Broadcasted, nil
-						}
-					}
-				}
-
-				if log.AtDebug() {
-					log.Debug("consensus1 evidences and input objects/references checked successfully", fld.TxID(tx.HashID))
-				}
-		return StateObjectLocked, nil
-
-	if
-
-	return StateAborted, nil
-}
-*/
-
 // TODO(): kick bad node here ? not sure which one are bad
 func (s *Service) onWaitingForConsensus2(st *States) (State, error) {
-	/*
-		if tx.Consensus2Tx == nil {
-			return StateWaitingForConsensus2, nil
-		}
-		if !s.verifySignatures(tx.Raw, tx.Consensus2Tx.GetEvidences()) {
-			log.Error("consensus2 missing/invalid signatures", fld.TxID(tx.HashID))
-			return StateRejectPhase2Broadcasted, nil
-		}
-
-		return StateAcceptPhase2Broadcasted, nil
-	*/
-	return StateAborted, nil
+	state := st.consensus[ConsensusOp_Consensus2].State()
+	if state == StateConsensusWaiting {
+		return StateWaitingForConsensus2, nil
+	} else if state == StateConsensusRejected {
+		return StateRejectPhase2Broadcasted, nil
+	}
+	return StateAcceptPhase2Broadcasted, nil
 }
 
 // TODO(): verify signatures here, but need to be passed to first.
 func (s *Service) onWaitingForConsensusCommit(st *States) (State, error) {
-	/*
-		if tx.ConsensusCommitTx == nil {
-			return StateWaitingForConsensusCommit, nil
-		}
-		if !s.verifySignatures(tx.Raw, tx.ConsensusCommitTx.GetEvidences()) {
-			log.Error("consensus_commit missing/invalid signatures", fld.TxID(tx.HashID))
-			return StateAborted, nil
-
-		}
-		return StateObjectsCreated, nil
-	*/
-	return StateAborted, nil
+	state := st.consensus[ConsensusOp_Consensus2].State()
+	if state == StateConsensusWaiting {
+		return StateWaitingForConsensusCommit, nil
+	} else if state == StateConsensusRejected {
+		return StateAborted, nil
+	}
+	return StateObjectsCreated, nil
 }
 
 func (s *Service) inputObjectsForShard(shardID uint64, tx *Transaction) (objects [][]byte, allInShard bool) {

@@ -1,29 +1,34 @@
 package sbac
 
-import "fmt"
+import (
+	"fmt"
+
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
+)
 
 type StateSBAC uint8
 
 const (
 	StateSBACWaiting StateSBAC = iota
-	StateSBACAccept
-	StateSBACReject
+	StateSBACAccepted
+	StateSBACRejected
 )
 
 func (e StateSBAC) String() string {
 	switch e {
 	case StateSBACWaiting:
 		return "StateSBACWaiting"
-	case StateSBACAccept:
-		return "StateSBACAccept"
-	case StateSBACReject:
-		return "StateSBACReject"
+	case StateSBACAccepted:
+		return "StateSBACAccepted"
+	case StateSBACRejected:
+		return "StateSBACRejected"
 	default:
 		return "error"
 	}
 }
 
-type SBACEventAction func(e *SBACEvent) (StateSBAC, error)
+type SBACEventAction func(st *States, e *SBACEvent) (StateSBAC, error)
 
 type SBACStateMachine struct {
 	action SBACEventAction
@@ -32,7 +37,11 @@ type SBACStateMachine struct {
 	state  StateSBAC
 }
 
-func (c *SBACStateMachine) processEvent(e *SBACEvent) error {
+func (c *SBACStateMachine) State() StateSBAC {
+	return c.state
+}
+
+func (c *SBACStateMachine) processEvent(st *States, e *SBACEvent) error {
 	if e.Kind() != EventKindSBACMessage {
 		return fmt.Errorf("SBACStateMachine, invalid EventKind(%v)",
 			e.Kind().String())
@@ -45,7 +54,7 @@ func (c *SBACStateMachine) processEvent(e *SBACEvent) error {
 
 	var err error
 	c.msgs[e.msg.PeerID] = e.msg
-	c.state, err = c.action(e)
+	c.state, err = c.action(st, e)
 	return err
 }
 
@@ -65,6 +74,111 @@ func NewSBACStateMachine(phase SBACOp, action SBACEventAction) *SBACStateMachine
 	}
 }
 
-func (s *Service) onSBACEvent(e *SBACEvent) (StateSBAC, error) {
-	return StateSBACReject, nil
+func (s *States) getDecisions(op SBACOp) map[uint64]SignedDecision {
+	switch op {
+	case SBACOp_Phase1:
+		return s.decisions.Phase1
+	case SBACOp_Phase2:
+		return s.decisions.Phase2
+	case SBACOp_Commit:
+		return s.decisions.Commit
+	default:
+		return nil
+	}
+}
+
+func (s *States) setDecisions(op SBACOp, d map[uint64]SignedDecision) {
+	switch op {
+	case SBACOp_Phase1:
+		s.decisions.Phase1 = d
+	case SBACOp_Phase2:
+		s.decisions.Phase2 = d
+	case SBACOp_Commit:
+		s.decisions.Commit = d
+	default:
+	}
+}
+
+func (s *Service) onSBACMessage(st *States, e *SBACEvent) (StateSBAC, error) {
+	shards := s.shardsInvolvedWithoutSelf(st.detail.Tx)
+	var somePending bool
+	// for each shards, get the nodes id, and checks if they answered
+	vtwotplusone := twotplusone(s.shardSize)
+	vtplusone := tplusone(s.shardSize)
+	decisions := st.getDecisions(e.msg.Op)
+	for _, v := range shards {
+		nodes := s.top.NodesInShard(v)
+		var accepted uint64
+		var rejected uint64
+		for _, nodeID := range nodes {
+			if d, ok := decisions[nodeID]; ok {
+				if d.Decision == SBACDecision_ACCEPT {
+					accepted += 1
+					continue
+				}
+				rejected += 1
+			}
+		}
+		if rejected >= vtplusone {
+			if log.AtDebug() {
+				log.Debug("transaction rejected",
+					log.String("sbac.phase", e.msg.Op.String()),
+					fld.TxID(st.detail.HashID),
+					fld.PeerShard(v),
+					log.Uint64("t+1", vtplusone),
+					log.Uint64("rejected", rejected),
+				)
+			}
+			return StateSBACRejected, nil
+		}
+		if accepted >= vtwotplusone {
+			if log.AtDebug() {
+				log.Debug("transaction accepted",
+					log.String("sbac.phase", e.msg.Op.String()),
+					fld.TxID(st.detail.HashID),
+					fld.PeerShard(v),
+					log.Uint64s("shards_involved", shards),
+					log.Uint64("2t+1", vtwotplusone),
+					log.Uint64("accepted", accepted),
+				)
+			}
+			continue
+		}
+		somePending = true
+	}
+
+	if somePending {
+		if log.AtDebug() {
+			log.Debug("transaction pending, not enough answers from shards",
+				fld.TxID(st.detail.HashID),
+				log.String("sbac.phase", e.msg.Op.String()))
+		}
+		return StateSBACWaiting, nil
+	}
+
+	if log.AtDebug() {
+		log.Debug("transaction accepted by all shards",
+			fld.TxID(st.detail.HashID),
+			log.String("sbac.phase", e.msg.Op.String()))
+	}
+
+	// verify signatures now
+	for k, v := range decisions {
+		// TODO(): what to do with nodes with invalid signature
+		ok, err := s.verifySignature(st.detail.Tx, v.Signature, k)
+		if err != nil {
+			log.Error("unable to verify signature",
+				log.String("sbac.phase", e.msg.Op.String()),
+				fld.TxID(st.detail.HashID),
+				fld.Err(err))
+		}
+		if !ok {
+			log.Error("invalid signature for a decision",
+				log.String("sbac.phase", e.msg.Op.String()),
+				fld.TxID(st.detail.HashID),
+				fld.PeerID(k))
+		}
+	}
+
+	return StateSBACAccepted, nil
 }
