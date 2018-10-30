@@ -89,7 +89,7 @@ func cmdSBAC(args []string, usage string) {
 	defer sbacclt.Close()
 
 	switch cmd {
-	case "transaction":
+	case "add":
 		if payloadPath == nil || len(*payloadPath) <= 0 {
 			log.Fatal("missing required payload path")
 		}
@@ -105,20 +105,23 @@ func cmdSBAC(args []string, usage string) {
 		}
 
 		ttx, _ := tx.ToSBAC()
-		objects, err := sbacclt.SendTransaction(ttx, map[uint64][]byte{})
+		_ = ttx
+		// objects, err := sbacclt.SendTransaction(ttx, map[uint64][]byte{})
 		if err != nil {
 			log.Fatal("unable to send transaction", fld.Err(err))
 		}
 		data := []restsrv.Object{}
-		for _, v := range objects {
-			v := v
-			o := restsrv.Object{
-				VersionID: base64.StdEncoding.EncodeToString(v.VersionID),
-				Value:     base64.StdEncoding.EncodeToString(v.Value),
-				Status:    v.Status.String(),
+		/*
+			for _, v := range objects {
+				v := v
+				o := restsrv.Object{
+					VersionID: base64.StdEncoding.EncodeToString(v.VersionID),
+					Value:     base64.StdEncoding.EncodeToString(v.Value),
+					Status:    v.Status.String(),
+				}
+				data = append(data, o)
 			}
-			data = append(data, o)
-		}
+		*/
 		b, err := json.Marshal(data)
 		if err != nil {
 			log.Fatal("unable to marshal result", fld.Err(err))
@@ -163,24 +166,6 @@ func cmdSBAC(args []string, usage string) {
 			ID: base64.StdEncoding.EncodeToString(ids[0]),
 		}
 		b, err := json.Marshal(res)
-		if err != nil {
-			log.Fatal("unable to marshal result", fld.Err(err))
-		}
-		fmt.Printf("%v\n", string(b))
-	case "delete":
-		if key == nil || len(*key) == 0 {
-			log.Fatal("missing object key")
-		}
-		keybytes := readkey(*key)
-		objs, err := sbacclt.Delete(keybytes)
-		if err != nil {
-			log.Fatal("unable to delete object", fld.Err(err))
-		}
-		obj, err := restsrv.BuildObjectResponse(objs)
-		if err != nil {
-			log.Fatal("error building result", fld.Err(err))
-		}
-		b, err := json.Marshal(obj)
 		if err != nil {
 			log.Fatal("unable to marshal result", fld.Err(err))
 		}

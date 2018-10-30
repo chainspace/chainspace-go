@@ -45,6 +45,8 @@ type Service struct {
 	client     sbacclient.Client
 	sbac       *sbac.Service
 	checker    *checkerclient.Client
+	shardID    uint64
+	nodeID     uint64
 }
 
 type resp struct {
@@ -92,9 +94,6 @@ func (s *Service) object(rw http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
 		s.createObject(rw, r)
-		return
-	case http.MethodDelete:
-		s.deleteObject(rw, r)
 		return
 	default:
 		fail(rw, http.StatusMethodNotAllowed, "method not allowed")
@@ -294,25 +293,6 @@ func (s *Service) queryObject(rw http.ResponseWriter, r *http.Request) {
 	success(rw, http.StatusOK, obj)
 }
 
-func (s *Service) deleteObject(rw http.ResponseWriter, r *http.Request) {
-	key, ok := readdata(rw, r)
-	if !ok {
-		return
-	}
-	objs, err := s.client.Delete(key)
-	if err != nil {
-		errorr(rw, http.StatusInternalServerError, err.Error())
-		return
-	}
-	obj, err := BuildObjectResponse(objs)
-	if err != nil {
-		errorr(rw, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	success(rw, http.StatusOK, obj)
-}
-
 func (s *Service) states(rw http.ResponseWriter, r *http.Request) {
 	if !strings.EqualFold(r.Header.Get("Content-Type"), "application/json") {
 		fail(rw, http.StatusBadRequest, "unsupported content-type")
@@ -342,6 +322,30 @@ func (s *Service) states(rw http.ResponseWriter, r *http.Request) {
 
 	sort.Slice(states.States, func(i, j int) bool { return states.States[i].HashID < states.States[j].HashID })
 	success(rw, http.StatusOK, states)
+}
+
+func (s *Service) shardsForTraces(
+	shards map[uint64]struct{}, ts []*sbac.Trace) map[uint64]struct{} {
+	for _, t := range ts {
+		for _, vid := range t.InputObjectVersionIDs {
+			shards[s.top.ShardForVersionID(vid)] = struct{}{}
+		}
+		for _, vid := range t.InputReferenceVersionIDs {
+			shards[s.top.ShardForVersionID(vid)] = struct{}{}
+		}
+		shards = s.shardsForTraces(shards, t.Dependencies)
+	}
+	return shards
+
+}
+
+func (s *Service) shardsForTx(tx *sbac.Transaction) []uint64 {
+	ids := s.shardsForTraces(map[uint64]struct{}{}, tx.Traces)
+	out := []uint64{}
+	for id, _ := range ids {
+		out = append(out, id)
+	}
+	return out
 }
 
 func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
@@ -380,11 +384,33 @@ func (s *Service) transaction(rw http.ResponseWriter, r *http.Request) {
 		errorr(rw, http.StatusInternalServerError, err.Error())
 		return
 	}
-	objects, err := s.sbac.AddTransaction(r.Context(), tx, evidences)
-	if err != nil {
-		errorr(rw, http.StatusInternalServerError, err.Error())
-		return
+
+	objects := []*sbac.Object{}
+	shards := s.shardsForTx(tx)
+	peerids := []uint64{}
+	var self bool
+	for _, shrd := range shards {
+		if shrd == s.shardID {
+			self = true
+		} else {
+			peerids = append(peerids, s.top.RandNodeInShard(shrd))
+		}
 	}
+	if self {
+		objects, err = s.sbac.AddTransaction(r.Context(), tx, evidences)
+		if err != nil {
+			errorr(rw, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+	if len(peerids) > 0 {
+		objects, err = s.client.AddTransaction(peerids, tx, evidences)
+		if err != nil {
+			errorr(rw, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
 	data := []Object{}
 	for _, v := range objects {
 		v := v
@@ -497,6 +523,8 @@ func New(cfg *Config) *Service {
 		store:      cfg.Store,
 		sbac:       cfg.SBAC,
 		checker:    checkrclt,
+		nodeID:     cfg.SelfID,
+		shardID:    cfg.Top.ShardForNode(cfg.SelfID),
 	}
 	s.srv = s.makeServ(cfg.Addr, cfg.Port)
 	go func() {

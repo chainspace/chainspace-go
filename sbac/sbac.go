@@ -3,7 +3,6 @@ package sbac // import "chainspace.io/prototype/sbac"
 import (
 	"context"
 	"encoding/base32"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"path"
@@ -93,6 +92,7 @@ func (s *Service) checkEvent(e *ConsensusEvent) {
 			RawTx:     txbytes,
 			Tx:        e.data.Tx,
 			Evidences: e.data.Evidences,
+			HashID:    ID(e.data.TxID),
 		}
 		s.txstates.Add(&detail, StateWaitingForConsensus1)
 	}
@@ -102,23 +102,56 @@ func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, e
 	ctx := context.TODO()
 	switch Opcode(m.Opcode) {
 	case Opcode_ADD_TRANSACTION:
-		return s.addTransaction(ctx, m.Payload, m.ID)
+		return s.handleAddTransaction(ctx, m.Payload, m.ID)
 	case Opcode_QUERY_OBJECT:
-		return s.queryObject(ctx, m.Payload, m.ID)
-	case Opcode_DELETE_OBJECT:
-		return s.deleteObject(ctx, m.Payload, m.ID)
+		return s.handleQueryObject(ctx, m.Payload, m.ID)
 	case Opcode_CREATE_OBJECT:
-		return s.createObject(ctx, m.Payload, m.ID)
+		return s.handleCreateObject(ctx, m.Payload, m.ID)
 	case Opcode_STATES:
 		return s.handleStates(ctx, m.Payload, m.ID)
 	case Opcode_SBAC:
 		return s.handleSBAC(ctx, m.Payload, peerID, m.ID)
 	case Opcode_CREATE_OBJECTS:
-		return s.createObjects(ctx, m.Payload, m.ID)
+		return s.handleCreateObjects(ctx, m.Payload, m.ID)
 	default:
 		log.Error("sbac: unknown message opcode", log.Int32("opcode", m.Opcode), fld.PeerID(peerID), log.Int("len", len(m.Payload)))
 		return nil, fmt.Errorf("sbac: unknown message opcode: %v", m.Opcode)
 	}
+}
+
+func (s *Service) handleSBAC(
+	ctx context.Context, payload []byte, peerID uint64, msgID uint64,
+) (*service.Message, error) {
+	req := &SBACMessage{}
+	err := proto.Unmarshal(payload, req)
+	if err != nil {
+		log.Error("sbac: sbac unmarshaling error", fld.Err(err))
+		return nil, fmt.Errorf("sbac: sbac unmarshaling error: %v", err)
+	}
+
+	// if we received a COMMIT opcode, the statemachine may not exists
+	// lets check and create it here.
+	if req.Op == SBACOp_Commit {
+		txbytes, _ := proto.Marshal(req.Tx)
+		detail := DetailTx{
+			ID:        req.TxID,
+			RawTx:     txbytes,
+			Tx:        req.Tx,
+			Evidences: req.Evidences,
+			HashID:    ID(req.TxID),
+		}
+		_ = s.txstates.GetOrCreate(&detail, StateWaitingForCommit)
+	}
+
+	e := NewSBACEvent(req)
+	s.pe.OnEvent(e)
+	res := SBACMessageAck{LastID: msgID}
+	payloadres, err := proto.Marshal(&res)
+	if err != nil {
+		log.Error("unable to marshall handleSBAC response", fld.Err(err))
+		return nil, err
+	}
+	return &service.Message{ID: msgID, Opcode: int32(Opcode_SBAC), Payload: payloadres}, nil
 }
 
 func (s *Service) consumeEvents(e Event) bool {
@@ -150,82 +183,9 @@ func (s *Service) consumeEvents(e Event) bool {
 	return false
 }
 
-func (s *Service) handleSBAC(
-	ctx context.Context, payload []byte, peerID uint64, msgID uint64,
-) (*service.Message, error) {
-	req := &SBACMessage{}
-	err := proto.Unmarshal(payload, req)
-	if err != nil {
-		log.Error("sbac: sbac unmarshaling error", fld.Err(err))
-		return nil, fmt.Errorf("sbac: sbac unmarshaling error: %v", err)
-	}
+// handlers
 
-	// if we received a COMMIT opcode, the statemachine may not exists
-	// lets check and create it here.
-	if req.Op == SBACOp_Commit {
-		txbytes, _ := proto.Marshal(req.Tx)
-		detail := DetailTx{
-			ID:        req.TxID,
-			RawTx:     txbytes,
-			Tx:        req.Tx,
-			Evidences: req.Evidences,
-		}
-		_ = s.txstates.GetOrCreate(&detail, StateWaitingForCommit)
-	}
-
-	e := NewSBACEvent(req)
-	s.pe.OnEvent(e)
-	res := SBACMessageAck{LastID: msgID}
-	payloadres, err := proto.Marshal(&res)
-	if err != nil {
-		log.Error("unable to marshall handleSBAC response", fld.Err(err))
-		return nil, err
-	}
-	return &service.Message{ID: msgID, Opcode: int32(Opcode_SBAC), Payload: payloadres}, nil
-}
-
-func (s *Service) AddTransaction(
-	ctx context.Context, tx *Transaction, evidences map[uint64][]byte,
-) ([]*Object, error) {
-	ids, err := MakeIDs(tx)
-	if err != nil {
-		log.Error("unable to create IDs", fld.Err(err))
-		return nil, err
-	}
-
-	txbytes, _ := proto.Marshal(tx)
-	if !s.verifyEvidenceSignature(txbytes, evidences) {
-		log.Error("invalid evidences from nodes")
-		return nil, errors.New("sbac: invalid evidences from nodes")
-	}
-	log.Info("sbac: all evidence verified with success")
-
-	objects := []*Object{}
-	for _, v := range ids.TraceObjectPairs {
-		objects = append(objects, v.OutputObjects...)
-	}
-
-	detail := DetailTx{ID: ids.TxID, RawTx: txbytes, Tx: tx, Evidences: evidences}
-	s.txstates.Add(&detail, StateWaitingForConsensus1)
-
-	// broadcast transaction
-	consensusTx := &ConsensusTransaction{
-		TxID:      ids.TxID,
-		Tx:        tx,
-		Evidences: evidences,
-		Op:        ConsensusOp_Consensus1,
-		Initiator: s.nodeID,
-	}
-	b, err := proto.Marshal(consensusTx)
-	if err != nil {
-		return nil, fmt.Errorf("sbac: unable to marshal consensus tx: %v", err)
-	}
-	s.broadcaster.AddTransaction(b, 0)
-	log.Info("sbac: transaction added successfully")
-	return objects, nil
-}
-
-func (s *Service) addTransaction(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
+func (s *Service) handleAddTransaction(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
 	req := &AddTransactionRequest{}
 	err := proto.Unmarshal(payload, req)
 	if err != nil {
@@ -233,49 +193,16 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte, id uint64)
 		return nil, fmt.Errorf("sbac: add_transaction unmarshaling error: %v", err)
 	}
 
-	ids, err := MakeIDs(req.Tx)
+	objects, err := s.AddTransaction(ctx, req.Tx, req.Evidences)
 	if err != nil {
-		log.Error("unable to create IDs", fld.Err(err))
 		return nil, err
 	}
 
-	txbytes, _ := proto.Marshal(req.Tx)
-	if !s.verifyEvidenceSignature(txbytes, req.Evidences) {
-		log.Error("invalid evidences from nodes")
-		return nil, errors.New("sbac: invalid evidences from nodes")
-	}
-	log.Info("sbac: all evidence verified with success")
-
-	objects := map[string]*ObjectList{}
-	for _, v := range ids.TraceObjectPairs {
-		trID := base64.StdEncoding.EncodeToString(v.Trace.ID)
-		objects[trID] = &ObjectList{v.OutputObjects}
-	}
-	// txdetails := NewTxDetails(ids.TxID, txbytes, req.Tx, req.Evidences)
-
-	detail := DetailTx{ID: ids.TxID, RawTx: txbytes, Tx: req.Tx}
-	s.txstates.Add(&detail, StateWaitingForConsensus1)
-
-	// broadcast transaction
-	consensusTx := &ConsensusTransaction{
-		TxID:      ids.TxID,
-		Tx:        req.Tx,
-		Evidences: req.Evidences,
-		Op:        ConsensusOp_Consensus1,
-		Initiator: s.nodeID,
-	}
-	b, err := proto.Marshal(consensusTx)
-	if err != nil {
-		return nil, fmt.Errorf("sbac: unable to marshal consensus tx: %v", err)
-	}
-	if s.isNodeInitiatingBroadcast(ID(ids.TxID)) {
-		s.broadcaster.AddTransaction(b, 0)
-	}
 	res := &AddTransactionResponse{
 		Objects: objects,
 	}
 
-	b, err = proto.Marshal(res)
+	b, err := proto.Marshal(res)
 	if err != nil {
 		return nil, fmt.Errorf("sbac: unable to marshal add_transaction response, %v", err)
 	}
@@ -287,42 +214,6 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte, id uint64)
 	}, nil
 }
 
-func (s *Service) QueryObjectByVersionID(versionid []byte) ([]byte, error) {
-	objects, err := GetObjects(s.store, [][]byte{versionid})
-	if err != nil {
-		return nil, err
-	} else if len(objects) != 1 {
-		return nil, fmt.Errorf("invalid number of objects found, expected %v found %v", 1, len(objects))
-	}
-	return objects[0].Value, nil
-}
-
-func (s *Service) publishObjects(ids *IDs, success bool) {
-	for _, topair := range ids.TraceObjectPairs {
-		for _, outo := range topair.OutputObjects {
-			shard := s.top.ShardForVersionID(outo.GetVersionID())
-			if shard == s.shardID {
-				s.ps.Publish(outo.VersionID, outo.Labels, success)
-			}
-		}
-	}
-}
-
-func (s *Service) saveLabels(ids *IDs) error {
-	for _, topair := range ids.TraceObjectPairs {
-		for _, outo := range topair.OutputObjects {
-			shard := s.top.ShardForVersionID(outo.GetVersionID())
-			if shard == s.shardID {
-				for _, label := range outo.Labels {
-					s.kvstore.Set([]byte(label), outo.VersionID)
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
 func queryPayload(id uint64, res *QueryObjectResponse) (*service.Message, error) {
 	b, _ := proto.Marshal(res)
 	return &service.Message{
@@ -332,7 +223,8 @@ func queryPayload(id uint64, res *QueryObjectResponse) (*service.Message, error)
 	}, nil
 }
 
-func (s *Service) queryObject(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
+func (s *Service) handleQueryObject(
+	ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
 	req := &QueryObjectRequest{}
 	err := proto.Unmarshal(payload, req)
 	res := &QueryObjectResponse{}
@@ -373,43 +265,6 @@ func (s *Service) handleStates(ctx context.Context, payload []byte, id uint64) (
 	}, nil
 }
 
-func deletePayload(id uint64, res *DeleteObjectResponse) (*service.Message, error) {
-	b, _ := proto.Marshal(res)
-	return &service.Message{
-		ID:      id,
-		Opcode:  int32(Opcode_DELETE_OBJECT),
-		Payload: b,
-	}, nil
-}
-
-func (s *Service) deleteObject(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
-	req := &DeleteObjectRequest{}
-	res := &DeleteObjectResponse{}
-	err := proto.Unmarshal(payload, req)
-	if err != nil {
-		res.Error = fmt.Errorf("sbac: remove_object unmarshaling error: %v", err).Error()
-		return deletePayload(id, res)
-	}
-
-	if req.VersionID == nil {
-		res.Error = fmt.Errorf("sbac: nil object versionid").Error()
-		return deletePayload(id, res)
-	}
-	err = DeleteObjects(s.store, [][]byte{req.VersionID})
-	if err != nil {
-		res.Error = err.Error()
-	}
-	objects, err := GetObjects(s.store, [][]byte{req.VersionID})
-	if err != nil {
-		res.Error = err.Error()
-	} else if len(objects) != 1 {
-		res.Error = fmt.Errorf("sbac: invalid number of objects removed, expected %v found %v", 1, len(objects)).Error()
-	} else {
-		res.Object = objects[0]
-	}
-	return deletePayload(id, res)
-}
-
 func createPayload(id uint64, res *CreateObjectResponse) (*service.Message, error) {
 	b, _ := proto.Marshal(res)
 	return &service.Message{
@@ -419,7 +274,7 @@ func createPayload(id uint64, res *CreateObjectResponse) (*service.Message, erro
 	}, nil
 }
 
-func (s *Service) createObject(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
+func (s *Service) handleCreateObject(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
 	req := &CreateObjectRequest{}
 	err := proto.Unmarshal(payload, req)
 	res := &CreateObjectResponse{}
@@ -459,7 +314,7 @@ func createObjectsPayload(id uint64, res *CreateObjectsResponse) (*service.Messa
 	}, nil
 }
 
-func (s *Service) createObjects(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
+func (s *Service) handleCreateObjects(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
 	req := &CreateObjectsRequest{}
 	err := proto.Unmarshal(payload, req)
 	res := &CreateObjectsResponse{}
@@ -490,6 +345,65 @@ func (s *Service) createObjects(ctx context.Context, payload []byte, id uint64) 
 		res.IDs = out
 	}
 	return createObjectsPayload(id, res)
+}
+
+// direct methods
+
+func (s *Service) AddTransaction(
+	ctx context.Context, tx *Transaction, evidences map[uint64][]byte,
+) ([]*Object, error) {
+	ids, err := MakeIDs(tx)
+	if err != nil {
+		log.Error("unable to create IDs", fld.Err(err))
+		return nil, err
+	}
+
+	txbytes, _ := proto.Marshal(tx)
+	if !s.verifyEvidenceSignature(txbytes, evidences) {
+		log.Error("invalid evidences from nodes")
+		return nil, errors.New("sbac: invalid evidences from nodes")
+	}
+	log.Info("sbac: all evidence verified with success")
+
+	objects := []*Object{}
+	for _, v := range ids.TraceObjectPairs {
+		objects = append(objects, v.OutputObjects...)
+	}
+
+	detail := DetailTx{
+		ID:        ids.TxID,
+		RawTx:     txbytes,
+		Tx:        tx,
+		Evidences: evidences,
+		HashID:    ID(ids.TxID),
+	}
+	s.txstates.Add(&detail, StateWaitingForConsensus1)
+
+	// broadcast transaction
+	consensusTx := &ConsensusTransaction{
+		TxID:      ids.TxID,
+		Tx:        tx,
+		Evidences: evidences,
+		Op:        ConsensusOp_Consensus1,
+		Initiator: s.nodeID,
+	}
+	b, err := proto.Marshal(consensusTx)
+	if err != nil {
+		return nil, fmt.Errorf("sbac: unable to marshal consensus tx: %v", err)
+	}
+	s.broadcaster.AddTransaction(b, 0)
+	log.Info("sbac: transaction added successfully")
+	return objects, nil
+}
+
+func (s *Service) QueryObjectByVersionID(versionid []byte) ([]byte, error) {
+	objects, err := GetObjects(s.store, [][]byte{versionid})
+	if err != nil {
+		return nil, err
+	} else if len(objects) != 1 {
+		return nil, fmt.Errorf("invalid number of objects found, expected %v found %v", 1, len(objects))
+	}
+	return objects[0].Value, nil
 }
 
 func (s *Service) Name() string {

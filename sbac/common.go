@@ -11,6 +11,32 @@ import (
 	proto "github.com/gogo/protobuf/proto"
 )
 
+func (s *Service) publishObjects(ids *IDs, success bool) {
+	for _, topair := range ids.TraceObjectPairs {
+		for _, outo := range topair.OutputObjects {
+			shard := s.top.ShardForVersionID(outo.GetVersionID())
+			if shard == s.shardID {
+				s.ps.Publish(outo.VersionID, outo.Labels, success)
+			}
+		}
+	}
+}
+
+func (s *Service) saveLabels(ids *IDs) error {
+	for _, topair := range ids.TraceObjectPairs {
+		for _, outo := range topair.OutputObjects {
+			shard := s.top.ShardForVersionID(outo.GetVersionID())
+			if shard == s.shardID {
+				for _, label := range outo.Labels {
+					s.kvstore.Set([]byte(label), outo.VersionID)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 func (s *Service) verifyEvidenceSignature(txID []byte, evidences map[uint64][]byte) bool {
 	sig, ok := evidences[s.nodeID]
 	if !ok {

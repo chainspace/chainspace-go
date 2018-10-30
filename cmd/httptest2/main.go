@@ -30,6 +30,7 @@ var (
 	subPort     int
 	networkName string
 	nodeCount   int
+	shardCount  int
 
 	metrics = map[int][]time.Duration{}
 	mu      sync.Mutex
@@ -59,6 +60,7 @@ func init() {
 	flag.IntVar(&subPort, "pubsub-port", 0, "pubsub port, this is the same port for all nodes")
 	flag.StringVar(&networkName, "network-name", "testnet", "network name")
 	flag.IntVar(&nodeCount, "node-count", 4, "node count per shard")
+	flag.IntVar(&shardCount, "shard-count", 1, "node count per shard")
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
 }
@@ -118,7 +120,6 @@ func main() {
 		getAddressesFromGCP()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	// subscribr = NewSubscriber(ctx, subPort == 0, nodeCount)
 
 	wg := &sync.WaitGroup{}
 	tr := NewTestRunner(wg)
@@ -211,7 +212,7 @@ func getAddressesFromGCP() {
 }
 
 func getAddresses() {
-	for i := 1; i <= nodeCount; i += 1 {
+	for i := 1; i <= (nodeCount * shardCount); i += 1 {
 		addresses = append(addresses, fmt.Sprintf("%v:%v", address, port+i))
 	}
 }

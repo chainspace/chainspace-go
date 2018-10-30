@@ -107,6 +107,7 @@ func (s *Service) onSBACEvent(st *States, e *SBACEvent) (StateSBAC, error) {
 	vtwotplusone := quorum2t1(s.shardSize)
 	vtplusone := quorumt1(s.shardSize)
 	decisions := st.getDecisions(e.msg.Op)
+	decisions[e.PeerID()] = SignedDecision{e.msg.Decision, e.msg.Signature}
 	for _, v := range shards {
 		nodes := s.top.NodesInShard(v)
 		var accepted uint64

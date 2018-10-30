@@ -26,11 +26,6 @@ func readlabel(rw http.ResponseWriter, r *http.Request) ([]byte, bool) {
 		fail(rw, http.StatusBadRequest, "missing label")
 		return nil, false
 	}
-	// label, err := base64.StdEncoding.DecodeString(req.Label)
-	// if err != nil {
-	// 	fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to base64decode: %v", err))
-	//	return nil, false
-	//}
 	return []byte(req.Label), true
 }
 

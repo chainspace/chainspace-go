@@ -68,7 +68,7 @@ func (c *Cache) dial(nodeID uint64) (*MuConn, error) {
 	}
 
 	defer c.mu.Unlock()
-	log.Error("NEED TO DIAL", fld.NodeID(nodeID))
+	// log.Error("NEED TO DIAL", fld.NodeID(nodeID))
 	// need to dial
 	conn, err := c.top.Dial(nodeID, 5*time.Hour)
 	if err != nil {

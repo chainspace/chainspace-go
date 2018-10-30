@@ -28,11 +28,10 @@ type Config struct {
 }
 
 type Client interface {
-	SendTransaction(t *sbac.Transaction, evidences map[uint64][]byte) ([]*sbac.Object, error)
+	AddTransaction(nodes []uint64, t *sbac.Transaction, evidences map[uint64][]byte) ([]*sbac.Object, error)
 	Query(key []byte) ([]*sbac.Object, error)
 	Create(obj []byte) ([][]byte, error)
 	CreateObjects([][]byte) ([][][]byte, error)
-	Delete(key []byte) ([]*sbac.Object, error)
 	States(nodeID uint64) (*sbac.StatesReportResponse, error)
 	Close()
 }
@@ -58,7 +57,9 @@ func (c *client) Close() {
 	c.conns.Close()
 }
 
-func (c *client) addTransaction(nodes []uint64, t *sbac.Transaction, evidences map[uint64][]byte) ([]*sbac.Object, error) {
+func (c *client) AddTransaction(
+	nodes []uint64, t *sbac.Transaction, evidences map[uint64][]byte,
+) ([]*sbac.Object, error) {
 	req := &sbac.AddTransactionRequest{
 		Tx:        t,
 		Evidences: evidences,
@@ -68,76 +69,35 @@ func (c *client) addTransaction(nodes []uint64, t *sbac.Transaction, evidences m
 		log.Error("sbac client: unable to marshal transaction", fld.Err(err))
 		return nil, err
 	}
-	msg := &service.Message{
+	msg := service.Message{
 		Opcode:  int32(sbac.Opcode_ADD_TRANSACTION),
 		Payload: txbytes,
 	}
-	log.Error("TRANSACTION SIZE", log.Int("SIZE", len(txbytes)))
 	mu := sync.Mutex{}
 	wg := &sync.WaitGroup{}
-	objects := map[string]*sbac.Object{}
+	objects := []*sbac.Object{}
 	f := func(n uint64, msg *service.Message) {
 		defer wg.Done()
 		res := sbac.AddTransactionResponse{}
 		err = proto.Unmarshal(msg.Payload, &res)
 		if err != nil {
-			log.Error("unable to unmarshal input message", fld.PeerID(n), fld.Err(err))
+			log.Error("unable to unmarshal input message",
+				fld.PeerID(n), fld.Err(err))
 			return
 		}
 		mu.Lock()
-		for _, v := range res.Objects {
-			for _, object := range v.List {
-				object := object
-				log.Info("add transaction answer", fld.PeerID(n), log.String("object.id", b64(object.VersionID)))
-				objects[string(object.VersionID)] = object
-			}
-		}
+		objects = res.Objects
 		mu.Unlock()
 	}
 	conns := c.conns.Borrow()
 	for _, nid := range nodes {
 		nid := nid
+		msg := msg
 		wg.Add(1)
-		conns.WriteRequest(nid, msg, 5*time.Second, true, f)
+		conns.WriteRequest(nid, &msg, 5*time.Second, true, f)
 	}
 	wg.Wait()
-	objectsres := []*sbac.Object{}
-	for _, v := range objects {
-		v := v
-		objectsres = append(objectsres, v)
-
-	}
-
-	return objectsres, nil
-}
-
-func (c *client) nodesForTx(t *sbac.Transaction) []uint64 {
-	shardIDs := map[uint64]struct{}{}
-	// for each input object / reference, send the transaction.
-	for _, trace := range t.Traces {
-		for _, v := range trace.InputObjectVersionIDs {
-			shardID := c.top.ShardForVersionID([]byte(v))
-			shardIDs[shardID] = struct{}{}
-		}
-		for _, v := range trace.InputReferenceVersionIDs {
-			shardID := c.top.ShardForVersionID([]byte(v))
-			shardIDs[shardID] = struct{}{}
-		}
-	}
-	out := []uint64{}
-	for k, _ := range shardIDs {
-		out = append(out, c.top.NodesInShard(k)...)
-	}
-	return out
-}
-
-func (c *client) SendTransaction(tx *sbac.Transaction, evidences map[uint64][]byte) ([]*sbac.Object, error) {
-	nodes := c.nodesForTx(tx)
-	start := time.Now()
-	// add the transaction
-	objs, err := c.addTransaction(nodes, tx, evidences)
-	log.Info("add transaction finished", log.Duration("time_taken", time.Since(start)))
-	return objs, err
+	return objects, nil
 }
 
 func (c *client) Query(vid []byte) ([]*sbac.Object, error) {
@@ -278,45 +238,6 @@ func (c *client) CreateObjects(objs [][]byte) ([][][]byte, error) {
 	log.Error("TIME ELAPSED TO CREATE OBJECT", log.String("duration", time.Since(now).String()))
 
 	return ids, nil
-}
-
-func (c *client) Delete(versionid []byte) ([]*sbac.Object, error) {
-	nodes := c.top.NodesInShard(c.top.ShardForVersionID(versionid))
-	req := &sbac.DeleteObjectRequest{
-		VersionID: versionid,
-	}
-	bytes, err := proto.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-	msg := &service.Message{
-		Opcode:  int32(sbac.Opcode_DELETE_OBJECT),
-		Payload: bytes,
-	}
-
-	mu := sync.Mutex{}
-	wg := &sync.WaitGroup{}
-	objs := []*sbac.Object{}
-	f := func(n uint64, msg *service.Message) {
-		defer wg.Done()
-		res := &sbac.DeleteObjectResponse{}
-		err = proto.Unmarshal(msg.Payload, res)
-		if err != nil {
-			return
-		}
-		mu.Lock()
-		objs = append(objs, res.Object)
-		mu.Unlock()
-	}
-	conns := c.conns.Borrow()
-	for _, nid := range nodes {
-		nid := nid
-		wg.Add(1)
-		conns.WriteRequest(nid, msg, 5*time.Second, true, f)
-	}
-	wg.Wait()
-
-	return objs, nil
 }
 
 func (c *client) States(nodeID uint64) (*sbac.StatesReportResponse, error) {
