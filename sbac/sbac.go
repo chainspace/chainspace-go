@@ -91,7 +91,12 @@ func (s *Service) handleDeliver(round uint64, blocks []*broadcast.SignedData) {
 func (s *Service) checkEvent(e *ConsensusEvent) {
 	if e.data.Op == ConsensusOp_Consensus1 {
 		txbytes, _ := proto.Marshal(e.data.Tx)
-		detail := DetailTx{ID: e.data.TxID, RawTx: txbytes, Tx: e.data.Tx}
+		detail := DetailTx{
+			ID:        e.data.TxID,
+			RawTx:     txbytes,
+			Tx:        e.data.Tx,
+			Evidences: e.data.Evidences,
+		}
 		s.addStateMachine(&detail, StateWaitingForConsensus1)
 	}
 }
@@ -162,7 +167,12 @@ func (s *Service) handleSBAC(
 	// lets check and create it here.
 	if req.Op == SBACOp_Commit {
 		txbytes, _ := proto.Marshal(req.Tx)
-		detail := DetailTx{ID: req.TxID, RawTx: txbytes, Tx: req.Tx}
+		detail := DetailTx{
+			ID:        req.TxID,
+			RawTx:     txbytes,
+			Tx:        req.Tx,
+			Evidences: req.Evidences,
+		}
 		_ = s.getOrCreateStateMachine(&detail, StateWaitingForCommit)
 	}
 
@@ -279,7 +289,7 @@ func (s *Service) AddTransaction(
 		objects = append(objects, v.OutputObjects...)
 	}
 
-	detail := DetailTx{ID: ids.TxID, RawTx: txbytes, Tx: tx}
+	detail := DetailTx{ID: ids.TxID, RawTx: txbytes, Tx: tx, Evidences: evidences}
 	s.addStateMachine(&detail, StateWaitingForConsensus1)
 
 	// broadcast transaction

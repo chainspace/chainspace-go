@@ -174,14 +174,6 @@ func tplusone(shardSize uint64) uint64 {
 	return shardSize/3 + 1
 }
 
-type WaitingDecisionResult uint8
-
-const (
-	WaitingDecisionResultAbort WaitingDecisionResult = iota
-	WaitingDecisionResultPending
-	WaitingDecisionResultAccept
-)
-
 func (s *Service) verifySignature(tx *Transaction, signature []byte, nodeID uint64) (bool, error) {
 	b, err := proto.Marshal(tx)
 	if err != nil {
@@ -191,79 +183,6 @@ func (s *Service) verifySignature(tx *Transaction, signature []byte, nodeID uint
 	key := keys[nodeID]
 	return key.Verify(b, signature), nil
 }
-
-/*
-func (s *Service) onWaitingFor(st *States, decisions map[uint64]SignedDecision, phaseName string) WaitingDecisionResult {
-	shards := s.shardsInvolvedWithoutSelf(st.detail.Tx)
-	var somePending bool
-	// for each shards, get the nodes id, and checks if they answered
-	vtwotplusone := twotplusone(s.shardSize)
-	vtplusone := tplusone(s.shardSize)
-	for _, v := range shards {
-		nodes := s.top.NodesInShard(v)
-		var accepted uint64
-		var rejected uint64
-		for _, nodeID := range nodes {
-			if d, ok := decisions[nodeID]; ok {
-				if d.Decision == SBACDecision_ACCEPT {
-					accepted += 1
-					continue
-				}
-				rejected += 1
-			}
-		}
-		if rejected >= vtplusone {
-			if log.AtDebug() {
-				log.Debug(phaseName+" transaction rejected",
-					fld.TxID(st.detail.HashID),
-					fld.PeerShard(v),
-					log.Uint64("t+1", vtplusone),
-					log.Uint64("rejected", rejected),
-				)
-			}
-			return WaitingDecisionResultAbort
-		}
-		if accepted >= vtwotplusone {
-			if log.AtDebug() {
-				log.Debug(phaseName+" transaction accepted",
-					fld.TxID(st.detail.HashID),
-					fld.PeerShard(v),
-					log.Uint64s("shards_involved", shards),
-					log.Uint64("2t+1", vtwotplusone),
-					log.Uint64("accepted", accepted),
-				)
-			}
-			continue
-		}
-		somePending = true
-	}
-
-	if somePending {
-		if log.AtDebug() {
-			log.Debug(phaseName+" transaction pending, not enough answers from shards", fld.TxID(st.detail.HashID))
-		}
-		return WaitingDecisionResultPending
-	}
-
-	if log.AtDebug() {
-		log.Debug(phaseName+" transaction accepted by all shards", fld.TxID(st.detail.HashID))
-	}
-
-	// verify signatures now
-	for k, v := range decisions {
-		// TODO(): what to do with nodes with invalid signature
-		ok, err := s.verifySignature(st.detail.Tx, v.Signature, k)
-		if err != nil {
-			log.Error(phaseName+"unable to verify signature", fld.TxID(st.detail.HashID), fld.Err(err))
-		}
-		if !ok {
-			log.Error(phaseName+" invalid signature for a decision", fld.TxID(st.detail.HashID), fld.PeerID(k))
-		}
-	}
-
-	return WaitingDecisionResultAccept
-}
-*/
 
 func (s *Service) onWaitingForPhase1(st *States) (State, error) {
 	switch st.sbac[SBACOp_Phase1].State() {
@@ -760,41 +679,45 @@ func (s *Service) toCommitObjectsBroadcasted(st *States) (State, error) {
 
 // TODO(): should we make our own evidences ourselves here ?
 func (s *Service) toConsensus2Triggered(st *States) (State, error) {
-	// broadcast transaction
-	consensusTx := &SBACTransaction{
-		Tx: st.detail.Tx,
-		ID: st.detail.ID,
-		//Evidences: st.detail.CheckersEvidences,
-		Op: SBACOpcode_CONSENSUS2,
-	}
-	b, err := proto.Marshal(consensusTx)
-	if err != nil {
-		return StateAborted, fmt.Errorf("sbac: unable to marshal consensus tx: %v", err)
-	}
-
-	// choose the node to start the consensus based on the hash id of the transaction
 	if s.isNodeInitiatingBroadcast(st.detail.HashID) {
+		// broadcast transaction
+		consensusTx := &ConsensusTransaction{
+			Tx:        st.detail.Tx,
+			TxID:      st.detail.ID,
+			Evidences: st.detail.Evidences,
+			Op:        ConsensusOp_Consensus2,
+			Initiator: s.nodeID,
+		}
+		b, err := proto.Marshal(consensusTx)
+		if err != nil {
+			return StateAborted, fmt.Errorf(
+				"sbac: unable to marshal consensus tx: %v", err)
+		}
+
 		s.broadcaster.AddTransaction(b, 0)
 	}
 	return StateWaitingForConsensus2, nil
 }
 
 func (s *Service) toConsensusCommitTriggered(st *States) (State, error) {
-	// broadcast transaction
-	consensusTx := &SBACTransaction{
-		Tx: st.detail.Tx,
-		ID: st.detail.ID,
-		//Evidences: st.detail.CheckersEvidences,
-		Op: SBACOpcode_CONSENSUS_COMMIT,
-	}
-	b, err := proto.Marshal(consensusTx)
-	if err != nil {
-		return StateAborted, fmt.Errorf("sbac: unable to marshal consensus tx: %v", err)
-	}
-
 	if s.isNodeInitiatingBroadcast(st.detail.HashID) {
+		// broadcast transaction
+		consensusTx := &ConsensusTransaction{
+			Tx:        st.detail.Tx,
+			TxID:      st.detail.ID,
+			Evidences: st.detail.Evidences,
+			Op:        ConsensusOp_Consensus3,
+			Initiator: s.nodeID,
+		}
+		b, err := proto.Marshal(consensusTx)
+		if err != nil {
+			return StateAborted, fmt.Errorf(
+				"sbac: unable to marshal consensus tx: %v", err)
+		}
+
 		s.broadcaster.AddTransaction(b, 0)
 	}
+
 	return StateWaitingForConsensusCommit, nil
 }
 

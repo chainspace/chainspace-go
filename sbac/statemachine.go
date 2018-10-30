@@ -44,10 +44,11 @@ type StateMachineConfig struct {
 }
 
 type DetailTx struct {
-	ID     []byte
-	RawTx  []byte
-	Tx     *Transaction
-	HashID uint32
+	ID        []byte
+	RawTx     []byte
+	Tx        *Transaction
+	Evidences map[uint64][]byte
+	HashID    uint32
 }
 
 type Decisions struct {
