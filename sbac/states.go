@@ -2,8 +2,6 @@ package sbac // import "chainspace.io/prototype/sbac"
 
 import (
 	"fmt"
-	"hash/fnv"
-	"time"
 
 	"chainspace.io/prototype/internal/log"
 	"chainspace.io/prototype/internal/log/fld"
@@ -136,54 +134,6 @@ func (s *Service) makeStateTable() *StateTable {
 	return &StateTable{actionTable, transitionTable}
 }
 
-func (s *Service) shardsInvolvedWithoutSelf(tx *Transaction) []uint64 {
-	shards := s.shardsInvolvedInTx(tx)
-	for i, _ := range shards {
-		if shards[i] == s.shardID {
-			shards = append(shards[:i], shards[i+1:]...)
-			break
-		}
-	}
-	return shards
-}
-
-// shardsInvolvedInTx return a list of IDs of all shards involved in the transaction either by
-// holding state for an input object or input reference.
-func (s *Service) shardsInvolvedInTx(tx *Transaction) []uint64 {
-	uniqids := map[uint64]struct{}{}
-	for _, trace := range tx.Traces {
-		for _, obj := range trace.InputObjectVersionIDs {
-			uniqids[s.top.ShardForVersionID(obj)] = struct{}{}
-		}
-		for _, ref := range trace.InputReferenceVersionIDs {
-			uniqids[s.top.ShardForVersionID(ref)] = struct{}{}
-		}
-	}
-	ids := make([]uint64, 0, len(uniqids))
-	for k, _ := range uniqids {
-		ids = append(ids, k)
-	}
-	return ids
-}
-
-func twotplusone(shardSize uint64) uint64 {
-	return (2*(shardSize/3) + 1)
-}
-
-func tplusone(shardSize uint64) uint64 {
-	return shardSize/3 + 1
-}
-
-func (s *Service) verifySignature(tx *Transaction, signature []byte, nodeID uint64) (bool, error) {
-	b, err := proto.Marshal(tx)
-	if err != nil {
-		return false, err
-	}
-	keys := s.top.SeedPublicKeys()
-	key := keys[nodeID]
-	return key.Verify(b, signature), nil
-}
-
 func (s *Service) onWaitingForPhase1(st *States) (State, error) {
 	switch st.sbac[SBACOp_Phase1].State() {
 	case StateSBACRejected:
@@ -216,21 +166,6 @@ func (s *Service) onWaitingForCommit(st *States) (State, error) {
 		return StateConsensusCommitTriggered, nil
 	}
 
-}
-
-func (s *Service) objectsExists(vids, refvids [][]byte) ([]*Object, bool) {
-	ownvids := [][]byte{}
-	for _, v := range append(vids, refvids...) {
-		if s.top.ShardForVersionID(v) == s.shardID {
-			ownvids = append(ownvids, v)
-		}
-	}
-
-	objects, err := GetObjects(s.store, ownvids)
-	if err != nil {
-		return nil, false
-	}
-	return objects, true
 }
 
 func (s *Service) onWaitingForConsensus1(st *States) (State, error) {
@@ -286,29 +221,6 @@ func (s *Service) onWaitingForConsensusCommit(st *States) (State, error) {
 	return StateObjectsCreated, nil
 }
 
-func (s *Service) inputObjectsForShard(shardID uint64, tx *Transaction) (objects [][]byte, allInShard bool) {
-	// get all objects part of this current shard state
-	allInShard = true
-	for _, t := range tx.Traces {
-		for _, o := range t.InputObjectVersionIDs {
-			o := o
-			if shardID := s.top.ShardForVersionID(o); shardID == s.shardID {
-				objects = append(objects, o)
-				continue
-			}
-			allInShard = false
-		}
-		for _, ref := range t.InputReferenceVersionIDs {
-			ref := ref
-			if shardID := s.top.ShardForVersionID(ref); shardID == s.shardID {
-				continue
-			}
-			allInShard = false
-		}
-	}
-	return
-}
-
 // can abort, if impossible to lock object
 // then check if one shard or more is involved and return StateAcceptBroadcasted
 // or StateObjectSetInactive
@@ -326,68 +238,44 @@ func (s *Service) toObjectLocked(st *States) (State, error) {
 	return StateAcceptPhase1Broadcasted, nil
 }
 
-func makeMessage(m *SBACMessage) (*service.Message, error) {
-	payload, err := proto.Marshal(m)
+func (s *Service) signSBACMessage(
+	sbacphase SBACOp, decision SBACDecision, st *States) (*service.Message, error) {
+	signature, err := s.signTransaction(st.detail.Tx)
 	if err != nil {
+		log.Error("unable to sign transaction",
+			fld.Err(err), log.String("sbac.phase", sbacphase.String()))
 		return nil, err
 	}
-	return &service.Message{
-		Opcode:  int32(Opcode_SBAC),
-		Payload: payload,
-	}, nil
-}
 
-func (s *Service) sendToAllShardInvolved(st *States, msg *service.Message) error {
-	shards := s.shardsInvolvedWithoutSelf(st.detail.Tx)
-	conns := s.conns.Borrow()
-	for _, shard := range shards {
-		nodes := s.top.NodesInShard(shard)
-		for _, node := range nodes {
-			// TODO: proper timeout ?
-			_, err := conns.WriteRequest(node, msg, time.Hour, true, nil)
-			if err != nil {
-				log.Error("unable to connect to node", fld.TxID(st.detail.HashID), fld.PeerID(node))
-				return fmt.Errorf("unable to connect to node(%v): %v", node, err)
-			}
-		}
+	sbacmsg := &SBACMessage{
+		Op:        sbacphase,
+		Decision:  decision,
+		TxID:      st.detail.ID,
+		Tx:        st.detail.Tx,
+		Evidences: st.detail.Evidences,
+		Signature: signature,
+		PeerID:    s.nodeID,
 	}
-	return nil
-}
-
-func (s *Service) signTransaction(tx *Transaction) ([]byte, error) {
-	b, err := proto.Marshal(tx)
+	payload, err := proto.Marshal(sbacmsg)
 	if err != nil {
-		return nil, fmt.Errorf("unable to marshal transaction, %v", err)
+		log.Error("unable to marshal message reject accept transaction",
+			fld.TxID(st.detail.HashID), fld.Err(err),
+			log.String("sbac.phase", sbacphase.String()))
+		return nil, err
 	}
-	return s.privkey.Sign(b), nil
+	return &service.Message{Opcode: int32(Opcode_SBAC), Payload: payload}, nil
 }
 
 func (s *Service) toRejectPhase1Broadcasted(st *States) (State, error) {
-	signature, err := s.signTransaction(st.detail.Tx)
+	msg, err := s.signSBACMessage(SBACOp_Phase1, SBACDecision_REJECT, st)
 	if err != nil {
-		log.Error("unable to sign transaction", fld.Err(err))
-		return StateAborted, err
-	}
-	sbacmsg := &SBACMessage{
-		Op:       SBACOpcode_PHASE1,
-		Decision: SBACDecision_REJECT,
-		PeerID:   s.nodeID,
-		Tx: &SBACTransaction{
-			ID:        st.detail.ID,
-			Tx:        st.detail.Tx,
-			Op:        SBACOpcode_PHASE1,
-			Signature: signature,
-		},
-	}
-	msg, err := makeMessage(sbacmsg)
-	if err != nil {
-		log.Error("unable to serialize message reject accept transaction", fld.TxID(st.detail.HashID), fld.Err(err))
-		return StateAborted, err
+		return StateAborted, nil
 	}
 
 	err = s.sendToAllShardInvolved(st, msg)
 	if err != nil {
-		log.Error("unable to sent reject transaction to all shards", fld.TxID(st.detail.HashID), fld.Err(err))
+		log.Error("unable to sent reject transaction to all shards",
+			fld.TxID(st.detail.HashID), fld.Err(err))
 	}
 
 	if log.AtDebug() {
@@ -397,26 +285,9 @@ func (s *Service) toRejectPhase1Broadcasted(st *States) (State, error) {
 }
 
 func (s *Service) toAcceptPhase1Broadcasted(st *States) (State, error) {
-	signature, err := s.signTransaction(st.detail.Tx)
+	msg, err := s.signSBACMessage(SBACOp_Phase1, SBACDecision_ACCEPT, st)
 	if err != nil {
-		log.Error("unable to sign transaction", fld.Err(err))
-		return StateAborted, err
-	}
-	sbacmsg := &SBACMessage{
-		Op:       SBACOpcode_PHASE1,
-		Decision: SBACDecision_ACCEPT,
-		PeerID:   s.nodeID,
-		Tx: &SBACTransaction{
-			ID:        st.detail.ID,
-			Tx:        st.detail.Tx,
-			Op:        SBACOpcode_PHASE1,
-			Signature: signature,
-		},
-	}
-	msg, err := makeMessage(sbacmsg)
-	if err != nil {
-		log.Error("unable to serialize message accept transaction accept", fld.TxID(st.detail.HashID), fld.Err(err))
-		return StateAborted, err
+		return StateAborted, nil
 	}
 
 	err = s.sendToAllShardInvolved(st, msg)
@@ -432,26 +303,9 @@ func (s *Service) toAcceptPhase1Broadcasted(st *States) (State, error) {
 }
 
 func (s *Service) toRejectPhase2Broadcasted(st *States) (State, error) {
-	signature, err := s.signTransaction(st.detail.Tx)
+	msg, err := s.signSBACMessage(SBACOp_Phase2, SBACDecision_REJECT, st)
 	if err != nil {
-		log.Error("unable to sign transaction", fld.Err(err))
-		return StateAborted, err
-	}
-	sbacmsg := &SBACMessage{
-		Op:       SBACOpcode_PHASE2,
-		Decision: SBACDecision_REJECT,
-		PeerID:   s.nodeID,
-		Tx: &SBACTransaction{
-			ID:        st.detail.ID,
-			Tx:        st.detail.Tx,
-			Op:        SBACOpcode_PHASE2,
-			Signature: signature,
-		},
-	}
-	msg, err := makeMessage(sbacmsg)
-	if err != nil {
-		log.Error("phase2 reject unable to serialize message", fld.TxID(st.detail.HashID), fld.Err(err))
-		return StateAborted, err
+		return StateAborted, nil
 	}
 
 	err = s.sendToAllShardInvolved(st, msg)
@@ -466,26 +320,9 @@ func (s *Service) toRejectPhase2Broadcasted(st *States) (State, error) {
 }
 
 func (s *Service) toAcceptPhase2Broadcasted(st *States) (State, error) {
-	signature, err := s.signTransaction(st.detail.Tx)
+	msg, err := s.signSBACMessage(SBACOp_Phase2, SBACDecision_ACCEPT, st)
 	if err != nil {
-		log.Error("unable to sign transaction", fld.Err(err))
-		return StateAborted, err
-	}
-	sbacmsg := &SBACMessage{
-		Op:       SBACOpcode_PHASE2,
-		Decision: SBACDecision_ACCEPT,
-		PeerID:   s.nodeID,
-		Tx: &SBACTransaction{
-			ID:        st.detail.ID,
-			Tx:        st.detail.Tx,
-			Op:        SBACOpcode_PHASE2,
-			Signature: signature,
-		},
-	}
-	msg, err := makeMessage(sbacmsg)
-	if err != nil {
-		log.Error("phase2 accept unable to serialize message", fld.TxID(st.detail.HashID), fld.Err(err))
-		return StateAborted, err
+		return StateAborted, nil
 	}
 
 	err = s.sendToAllShardInvolved(st, msg)
@@ -498,6 +335,45 @@ func (s *Service) toAcceptPhase2Broadcasted(st *States) (State, error) {
 		log.Debug("phase2 accept transaction sent to all shards", fld.TxID(st.detail.HashID))
 	}
 	return StateWaitingForPhase2, nil
+}
+
+func (s *Service) toCommitObjectsBroadcasted(st *States) (State, error) {
+	msg, err := s.signSBACMessage(SBACOp_Commit, SBACDecision_ACCEPT, st)
+	if err != nil {
+		return StateAborted, nil
+	}
+
+	// send to all shards which will hold state for new object, and was not involved before
+	shards := s.shardsInvolved(st.detail.Tx)
+	shardsUniq := touniqids(shards)
+	ids, err := MakeIDs(st.detail.Tx)
+	if err != nil {
+		return StateAborted, err
+	}
+	shardsInvolvedUniq := map[uint64]struct{}{}
+	for _, v := range ids.TraceObjectPairs {
+		v := v
+		for _, o := range v.OutputObjects {
+			shard := s.top.ShardForVersionID(o.VersionID)
+			if _, ok := shardsUniq[shard]; !ok {
+				shardsInvolvedUniq[shard] = struct{}{}
+			}
+
+		}
+	}
+	shardsInvolved := fromuniqids(shardsInvolvedUniq)
+
+	err = s.sendToShards(shardsInvolved, st, msg)
+	if err != nil {
+		log.Error("commit unable to sent accept transaction to all shards", fld.TxID(st.detail.HashID), fld.Err(err))
+		return StateAborted, err
+	}
+
+	if log.AtDebug() {
+		log.Debug("commit accept transaction sent to all shards",
+			fld.TxID(st.detail.HashID), log.Uint64s("shards_involved", shardsInvolved))
+	}
+	return StateSucceeded, nil
 }
 
 func (s *Service) toWaitingForPhase1(st *States) (State, error) {
@@ -603,80 +479,6 @@ func (s *Service) toAborted(st *States) (State, error) {
 	return StateAborted, nil
 }
 
-func (s *Service) sendToShards(shards []uint64, st *States, msg *service.Message) error {
-	conns := s.conns.Borrow()
-	for _, shard := range shards {
-		nodes := s.top.NodesInShard(shard)
-		for _, node := range nodes {
-			// TODO: proper timeout ?
-			_, err := conns.WriteRequest(node, msg, 5*time.Second, true, nil)
-			if err != nil {
-				log.Error("unable to connect to node", fld.TxID(st.detail.HashID), fld.PeerID(node))
-				return fmt.Errorf("unable to connect to node(%v): %v", node, err)
-			}
-		}
-	}
-	return nil
-}
-
-func (s *Service) toCommitObjectsBroadcasted(st *States) (State, error) {
-	signature, err := s.signTransaction(st.detail.Tx)
-	if err != nil {
-		log.Error("unable to sign transaction", fld.Err(err))
-		return StateAborted, err
-	}
-	sbacmsg := &SBACMessage{
-		Op:       SBACOpcode_COMMIT,
-		Decision: SBACDecision_ACCEPT,
-		PeerID:   s.nodeID,
-		Tx: &SBACTransaction{
-			ID:        st.detail.ID,
-			Tx:        st.detail.Tx,
-			Op:        SBACOpcode_COMMIT,
-			Signature: signature,
-		},
-	}
-	msg, err := makeMessage(sbacmsg)
-	if err != nil {
-		log.Error("commit accept unable to serialize message", fld.TxID(st.detail.HashID), fld.Err(err))
-		return StateAborted, err
-	}
-
-	// send to all shards which will hold state for new object, and was not involved before
-	shards := s.shardsInvolvedInTx(st.detail.Tx)
-	shardsUniq := IDSlice(shards).ToMapUniq()
-	ids, err := MakeIDs(st.detail.Tx)
-	if err != nil {
-		return StateAborted, err
-	}
-	shardsInvolvedUniq := map[uint64]struct{}{}
-	for _, v := range ids.TraceObjectPairs {
-		v := v
-		for _, o := range v.OutputObjects {
-			shard := s.top.ShardForVersionID(o.VersionID)
-			if _, ok := shardsUniq[shard]; !ok {
-				shardsInvolvedUniq[shard] = struct{}{}
-			}
-
-		}
-	}
-	shardsInvolved := IDSlice{}.FromMapUniq(shardsInvolvedUniq)
-
-	err = s.sendToShards(shardsInvolved, st, msg)
-	if err != nil {
-		log.Error("commit unable to sent accept transaction to all shards", fld.TxID(st.detail.HashID), fld.Err(err))
-		return StateAborted, err
-	}
-
-	// TODO(): this should be blocking here waiting for the shards to send us back the response so we can return an error
-
-	if log.AtDebug() {
-		log.Debug("commit accept transaction sent to all shards",
-			fld.TxID(st.detail.HashID), log.Uint64s("shards_involved", shardsInvolved))
-	}
-	return StateSucceeded, nil
-}
-
 // TODO(): should we make our own evidences ourselves here ?
 func (s *Service) toConsensus2Triggered(st *States) (State, error) {
 	if s.isNodeInitiatingBroadcast(st.detail.HashID) {
@@ -727,28 +529,4 @@ func (s *Service) toWaitingForConsensusCommit(st *States) (State, error) {
 
 func (s *Service) toWaitingForConsensus2(st *States) (State, error) {
 	return StateWaitingForConsensus2, nil
-}
-
-func ID(data []byte) uint32 {
-	h := fnv.New32()
-	h.Write(data)
-	return h.Sum32()
-}
-
-type IDSlice []uint64
-
-func (s IDSlice) ToMapUniq() map[uint64]struct{} {
-	out := map[uint64]struct{}{}
-	for _, v := range s {
-		out[v] = struct{}{}
-	}
-	return out
-}
-
-func (s IDSlice) FromMapUniq(m map[uint64]struct{}) []uint64 {
-	out := []uint64{}
-	for k, _ := range m {
-		out = append(out, k)
-	}
-	return out
 }

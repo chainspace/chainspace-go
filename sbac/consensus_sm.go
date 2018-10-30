@@ -77,7 +77,7 @@ func NewConsensuStateMachine(phase ConsensusOp, action ConsensusEventAction) *Co
 
 func (s *Service) onConsensusEvent(st *States, e *ConsensusEvent) (StateConsensus, error) {
 	txbytes, _ := proto.Marshal(e.data.Tx)
-	if !s.verifySignatures(txbytes, e.data.Evidences) {
+	if !s.verifyEvidenceSignature(txbytes, e.data.Evidences) {
 		log.Error("consensus missing/invalid signatures",
 			fld.TxID(st.detail.HashID),
 			log.String("phase", e.data.Op.String()))

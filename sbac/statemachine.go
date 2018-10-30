@@ -153,7 +153,7 @@ func (sm *StateMachine) moveState() error {
 	}
 }
 
-func (sm *StateMachine) onEvent(rawe EventExt) error {
+func (sm *StateMachine) onEvent(rawe Event) error {
 	if !bytes.Equal(rawe.TxID(), sm.states.detail.ID) {
 		return fmt.Errorf("event linked to another transaction")
 	}
@@ -171,7 +171,7 @@ func (sm *StateMachine) onEvent(rawe EventExt) error {
 	}
 }
 
-func (sm *StateMachine) consumeEvent(e EventExt) bool {
+func (sm *StateMachine) consumeEvent(e Event) bool {
 	curState := sm.State()
 	if log.AtDebug() {
 		log.Info("processing new event",
@@ -198,7 +198,7 @@ func (sm *StateMachine) consumeEvent(e EventExt) bool {
 	return true
 }
 
-func (sm *StateMachine) OnEvent(e EventExt) {
+func (sm *StateMachine) OnEvent(e Event) {
 	sm.events.OnEvent(e)
 }
 

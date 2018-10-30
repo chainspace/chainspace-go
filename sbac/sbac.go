@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"path"
-	"sync"
-	"time"
 
 	"chainspace.io/prototype/broadcast"
 	"chainspace.io/prototype/config"
@@ -59,8 +57,7 @@ type Service struct {
 	shardSize   uint64
 	table       *StateTable
 	top         *network.Topology
-	txstates    map[string]*StateMachine
-	txstatesmu  sync.Mutex
+	txstates    *StateMachineScheduler
 }
 
 func (s *Service) handleDeliver(round uint64, blocks []*broadcast.SignedData) {
@@ -97,7 +94,7 @@ func (s *Service) checkEvent(e *ConsensusEvent) {
 			Tx:        e.data.Tx,
 			Evidences: e.data.Evidences,
 		}
-		s.addStateMachine(&detail, StateWaitingForConsensus1)
+		s.txstates.Add(&detail, StateWaitingForConsensus1)
 	}
 }
 
@@ -124,7 +121,7 @@ func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, e
 	}
 }
 
-func (s *Service) consumeEvents(e EventExt) bool {
+func (s *Service) consumeEvents(e Event) bool {
 	// check if statemachine is finished
 	ok, err := TxnFinished(s.store, e.TxID())
 	if err != nil {
@@ -139,7 +136,7 @@ func (s *Service) consumeEvents(e EventExt) bool {
 		return true
 	}
 
-	sm, ok := s.getSateMachine(e.TxID())
+	sm, ok := s.txstates.Get(e.TxID())
 	if ok {
 		if log.AtDebug() {
 			log.Debug("sending new event to statemachine", fld.TxID(ID(e.TxID())), fld.PeerID(e.PeerID()), fld.PeerShard(s.top.ShardForNode(e.PeerID())))
@@ -156,7 +153,7 @@ func (s *Service) consumeEvents(e EventExt) bool {
 func (s *Service) handleSBAC(
 	ctx context.Context, payload []byte, peerID uint64, msgID uint64,
 ) (*service.Message, error) {
-	req := &SBACMessage2{}
+	req := &SBACMessage{}
 	err := proto.Unmarshal(payload, req)
 	if err != nil {
 		log.Error("sbac: sbac unmarshaling error", fld.Err(err))
@@ -173,11 +170,9 @@ func (s *Service) handleSBAC(
 			Tx:        req.Tx,
 			Evidences: req.Evidences,
 		}
-		_ = s.getOrCreateStateMachine(&detail, StateWaitingForCommit)
+		_ = s.txstates.GetOrCreate(&detail, StateWaitingForCommit)
 	}
 
-	// e := &Event{msg: req, peerID: peerID}
-	req.PeerID = peerID
 	e := NewSBACEvent(req)
 	s.pe.OnEvent(e)
 	res := SBACMessageAck{LastID: msgID}
@@ -187,85 +182,6 @@ func (s *Service) handleSBAC(
 		return nil, err
 	}
 	return &service.Message{ID: msgID, Opcode: int32(Opcode_SBAC), Payload: payloadres}, nil
-}
-
-func (s *Service) verifySignatures(txID []byte, evidences map[uint64][]byte) bool {
-	ok := true
-	keys := s.top.SeedPublicKeys()
-	if len(evidences) <= 0 {
-		log.Errorf("missing signatures")
-		return false
-	}
-	for nodeID, sig := range evidences {
-		key := keys[nodeID]
-		if nodeID == s.nodeID {
-			if !key.Verify(txID, sig) {
-				log.Errorf("invalid signature")
-				if log.AtDebug() {
-					log.Debug("invalid signature", fld.PeerID(nodeID))
-				}
-				ok = false
-			}
-		}
-	}
-	return ok
-}
-
-func (s *Service) addStateMachine(detail *DetailTx, initialState State) *StateMachine {
-	s.txstatesmu.Lock()
-	cfg := &StateMachineConfig{
-		ConsensusAction: s.onConsensusEvent,
-		Table:           s.table,
-		Detail:          detail,
-		InitialState:    initialState,
-	}
-	sm := NewStateMachine(cfg)
-	s.txstates[string(detail.ID)] = sm
-	s.txstatesmu.Unlock()
-	return sm
-}
-
-func (s *Service) getSateMachine(txID []byte) (*StateMachine, bool) {
-	s.txstatesmu.Lock()
-	sm, ok := s.txstates[string(txID)]
-	s.txstatesmu.Unlock()
-	return sm, ok
-}
-
-func (s *Service) getOrCreateStateMachine(
-	detail *DetailTx, initialState State) *StateMachine {
-	s.txstatesmu.Lock()
-	defer s.txstatesmu.Unlock()
-	sm, ok := s.txstates[string(detail.ID)]
-	if ok {
-		return sm
-	}
-	cfg := &StateMachineConfig{
-		ConsensusAction: s.onConsensusEvent,
-		Table:           s.table,
-		Detail:          detail,
-		InitialState:    initialState,
-	}
-	sm = NewStateMachine(cfg)
-	s.txstates[string(detail.ID)] = sm
-	return sm
-}
-
-func (s *Service) gcStateMachines() {
-	for {
-		time.Sleep(1 * time.Second)
-		s.txstatesmu.Lock()
-		for k, v := range s.txstates {
-			if v.State() == StateAborted || v.State() == StateSucceeded {
-				if log.AtDebug() {
-					log.Debug("removing statemachine", log.String("finale_state", v.State().String()), fld.TxID(ID([]byte(k))))
-				}
-				// v.Close()
-				delete(s.txstates, k)
-			}
-		}
-		s.txstatesmu.Unlock()
-	}
 }
 
 func (s *Service) AddTransaction(
@@ -278,7 +194,7 @@ func (s *Service) AddTransaction(
 	}
 
 	txbytes, _ := proto.Marshal(tx)
-	if !s.verifySignatures(txbytes, evidences) {
+	if !s.verifyEvidenceSignature(txbytes, evidences) {
 		log.Error("invalid evidences from nodes")
 		return nil, errors.New("sbac: invalid evidences from nodes")
 	}
@@ -290,7 +206,7 @@ func (s *Service) AddTransaction(
 	}
 
 	detail := DetailTx{ID: ids.TxID, RawTx: txbytes, Tx: tx, Evidences: evidences}
-	s.addStateMachine(&detail, StateWaitingForConsensus1)
+	s.txstates.Add(&detail, StateWaitingForConsensus1)
 
 	// broadcast transaction
 	consensusTx := &ConsensusTransaction{
@@ -324,7 +240,7 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte, id uint64)
 	}
 
 	txbytes, _ := proto.Marshal(req.Tx)
-	if !s.verifySignatures(txbytes, req.Evidences) {
+	if !s.verifyEvidenceSignature(txbytes, req.Evidences) {
 		log.Error("invalid evidences from nodes")
 		return nil, errors.New("sbac: invalid evidences from nodes")
 	}
@@ -338,7 +254,7 @@ func (s *Service) addTransaction(ctx context.Context, payload []byte, id uint64)
 	// txdetails := NewTxDetails(ids.TxID, txbytes, req.Tx, req.Evidences)
 
 	detail := DetailTx{ID: ids.TxID, RawTx: txbytes, Tx: req.Tx}
-	s.addStateMachine(&detail, StateWaitingForConsensus1)
+	s.txstates.Add(&detail, StateWaitingForConsensus1)
 
 	// broadcast transaction
 	consensusTx := &ConsensusTransaction{
@@ -441,13 +357,7 @@ func (s *Service) queryObject(ctx context.Context, payload []byte, id uint64) (*
 }
 
 func (s *Service) handleStates(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
-	sr := []*StateReport{}
-	s.txstatesmu.Lock()
-	for _, v := range s.txstates {
-		_ = v
-		// sr = append(sr, v.StateReport())
-	}
-	s.txstatesmu.Unlock()
+	sr := s.txstates.StatesReport()
 	res := &StatesReportResponse{
 		States:        sr,
 		EventsInQueue: int32(s.pe.Len()),
@@ -500,7 +410,7 @@ func (s *Service) deleteObject(ctx context.Context, payload []byte, id uint64) (
 	return deletePayload(id, res)
 }
 
-func createPayload(id uint64, res *NewObjectResponse) (*service.Message, error) {
+func createPayload(id uint64, res *CreateObjectResponse) (*service.Message, error) {
 	b, _ := proto.Marshal(res)
 	return &service.Message{
 		ID:      id,
@@ -510,9 +420,9 @@ func createPayload(id uint64, res *NewObjectResponse) (*service.Message, error) 
 }
 
 func (s *Service) createObject(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
-	req := &NewObjectRequest{}
+	req := &CreateObjectRequest{}
 	err := proto.Unmarshal(payload, req)
-	res := &NewObjectResponse{}
+	res := &CreateObjectResponse{}
 	if err != nil {
 		res.Error = fmt.Errorf("sbac: new_object unmarshaling error: %v", err).Error()
 		return createPayload(id, res)
@@ -621,7 +531,6 @@ func New(cfg *Config) (*Service, error) {
 		privkey:     privkey,
 		ps:          cfg.Pubsub,
 		top:         cfg.Top,
-		txstates:    map[string]*StateMachine{},
 		store:       store,
 		shardID:     cfg.Top.ShardForNode(cfg.NodeID),
 		shardCount:  cfg.ShardCount,
@@ -630,14 +539,9 @@ func New(cfg *Config) (*Service, error) {
 	s.pe = NewPendingEvents(s.consumeEvents)
 	s.table = s.makeStateTable()
 	s.broadcaster.Register(s.handleDeliver)
-	go s.pe.Run()
-	// go s.gcStateMachines()
-	return s, nil
-}
+	s.txstates = NewStateMachineScheduler(s.onConsensusEvent, s.onSBACEvent, s.table)
 
-func (s *Service) isNodeInitiatingBroadcast(txID uint32) bool {
-	nodesInShard := s.top.NodesInShard(s.shardID)
-	n := nodesInShard[txID%(uint32(len(nodesInShard)))]
-	log.Debug("consensus will be started", log.Uint64("peer", n))
-	return n == s.nodeID
+	go s.pe.Run()
+	// go s.txstates.RunGC()
+	return s, nil
 }

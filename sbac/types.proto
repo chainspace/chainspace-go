@@ -99,11 +99,11 @@ message DeleteObjectResponse {
   string error = 2;
 }
 
-message NewObjectRequest {
+message CreateObjectRequest {
   bytes object = 1;
 }
 
-message NewObjectResponse {
+message CreateObjectResponse {
   bytes id = 1 [(gogoproto.customname) = "ID"];
   string error = 2;
 }
@@ -117,15 +117,12 @@ message CreateObjectsResponse {
   string error = 2;
 }
 
-// SBAC
+// sbac layer
 
-enum SBACOpcode {
-  CONSENSUS1 = 0; // consensus 1 - new transaction
-  CONSENSUS2 = 1; // consensus 2
-  PHASE1 = 2; // 2-phase commit phase 1 - accept transaction
-  PHASE2 = 3; // 2-phase commit phase 2 - commit transaction
-  COMMIT = 4; // create objects in other shards
-  CONSENSUS_COMMIT = 5;
+enum SBACOp {
+  Phase1 = 0;
+  Phase2 = 1;
+  Commit = 2;
 }
 
 enum SBACDecision {
@@ -134,23 +131,20 @@ enum SBACDecision {
 }
 
 message SBACMessage {
-  SBACOpcode op = 1;
+  SBACOp op = 1;
   SBACDecision decision = 2;
-  SBACTransaction tx = 3;
-  uint64 peerId = 4 [(gogoproto.customname) = "PeerID"];
+  bytes txId = 3 [(gogoproto.customname) = "TxID"];
+  Transaction tx = 4;
+  map<uint64, bytes> evidences = 5;
+  bytes signature = 6;
+  uint64 peerId = 7 [(gogoproto.customname) = "PeerID"];
 }
 
 message SBACMessageAck {
   uint64 lastId = 1 [(gogoproto.customname) = "LastID"];
 }
 
-message SBACTransaction {
-  bytes id = 1 [(gogoproto.customname) = "ID"];
-  Transaction tx = 2;
-  map<uint64, bytes> evidences = 3;
-  SBACOpcode op = 4;
-  bytes signature = 5;
-}
+// consensus layer
 
 enum ConsensusOp {
   Consensus1 = 0;
@@ -164,20 +158,4 @@ message ConsensusTransaction {
   map<uint64, bytes> evidences = 3;
   ConsensusOp op = 4;
   uint64 initiator = 5;
-}
-
-enum SBACOp {
-  Phase1 = 0;
-  Phase2 = 1;
-  Commit = 2;
-}
-
-message SBACMessage2 {
-  SBACOp op = 1;
-  SBACDecision decision = 2;
-  bytes txId = 3 [(gogoproto.customname) = "TxID"];
-  Transaction tx = 4;
-  map<uint64, bytes> evidences = 5;
-  bytes signature = 6;
-  uint64 peerId = 7 [(gogoproto.customname) = "PeerID"];
 }

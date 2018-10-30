@@ -1,0 +1,202 @@
+package sbac
+
+import (
+	fmt "fmt"
+	"hash/fnv"
+	"time"
+
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
+	"chainspace.io/prototype/service"
+	proto "github.com/gogo/protobuf/proto"
+)
+
+func (s *Service) verifyEvidenceSignature(txID []byte, evidences map[uint64][]byte) bool {
+	sig, ok := evidences[s.nodeID]
+	if !ok {
+		log.Error("missing self signature")
+		return false
+	}
+
+	key, ok := s.top.SeedPublicKeys()[s.nodeID]
+	if !ok {
+		log.Error("missing key for self signature")
+	}
+
+	valid := key.Verify(txID, sig)
+	if !valid {
+		log.Errorf("invalid signature")
+	}
+
+	return valid
+}
+
+func (s *Service) verifyTransactionSignature(
+	tx *Transaction, signature []byte, nodeID uint64) (bool, error) {
+	b, err := proto.Marshal(tx)
+	if err != nil {
+		return false, err
+	}
+	keys := s.top.SeedPublicKeys()
+	key := keys[nodeID]
+	return key.Verify(b, signature), nil
+}
+
+func (s *Service) verifyTransactionRawSignature(
+	tx []byte, signature []byte, nodeID uint64) (bool, error) {
+	keys := s.top.SeedPublicKeys()
+	key := keys[nodeID]
+	return key.Verify(tx, signature), nil
+}
+
+func (s *Service) signTransaction(tx *Transaction) ([]byte, error) {
+	b, err := proto.Marshal(tx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to marshal transaction, %v", err)
+	}
+	return s.privkey.Sign(b), nil
+}
+
+func (s *Service) signTransactionRaw(tx []byte) ([]byte, error) {
+	return s.privkey.Sign(tx), nil
+}
+
+func (s *Service) sendToShards(shards []uint64, st *States, msg *service.Message) error {
+	conns := s.conns.Borrow()
+	for _, shard := range shards {
+		nodes := s.top.NodesInShard(shard)
+		for _, node := range nodes {
+			// TODO: proper timeout ?
+			_, err := conns.WriteRequest(node, msg, 5*time.Second, true, nil)
+			if err != nil {
+				log.Error("unable to connect to node",
+					fld.TxID(st.detail.HashID), fld.PeerID(node))
+				return fmt.Errorf("unable to connect to node(%v): %v", node, err)
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Service) sendToAllShardInvolved(st *States, msg *service.Message) error {
+	shards := s.shardsInvolvedWithoutSelf(st.detail.Tx)
+	conns := s.conns.Borrow()
+	for _, shard := range shards {
+		nodes := s.top.NodesInShard(shard)
+		for _, node := range nodes {
+			// TODO: proper timeout ?
+			_, err := conns.WriteRequest(node, msg, time.Hour, true, nil)
+			if err != nil {
+				log.Error("unable to connect to node", fld.TxID(st.detail.HashID), fld.PeerID(node))
+				return fmt.Errorf("unable to connect to node(%v): %v", node, err)
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Service) objectsExists(vids, refvids [][]byte) ([]*Object, bool) {
+	ownvids := [][]byte{}
+	for _, v := range append(vids, refvids...) {
+		if s.top.ShardForVersionID(v) == s.shardID {
+			ownvids = append(ownvids, v)
+		}
+	}
+
+	objects, err := GetObjects(s.store, ownvids)
+	if err != nil {
+		return nil, false
+	}
+	return objects, true
+}
+
+func (s *Service) inputObjectsForShard(
+	shardID uint64, tx *Transaction) (objects [][]byte, allInShard bool) {
+	// get all objects part of this current shard state
+	allInShard = true
+	for _, t := range tx.Traces {
+		for _, o := range t.InputObjectVersionIDs {
+			o := o
+			if shardID := s.top.ShardForVersionID(o); shardID == s.shardID {
+				objects = append(objects, o)
+				continue
+			}
+			allInShard = false
+		}
+		for _, ref := range t.InputReferenceVersionIDs {
+			ref := ref
+			if shardID := s.top.ShardForVersionID(ref); shardID == s.shardID {
+				continue
+			}
+			allInShard = false
+		}
+	}
+	return
+}
+
+// shardsInvolved return a list of IDs of all shards involved in the transaction either by
+// holding state for an input object or input reference.
+func (s *Service) shardsInvolved(tx *Transaction) []uint64 {
+	uniqids := map[uint64]struct{}{}
+	for _, trace := range tx.Traces {
+		for _, obj := range trace.InputObjectVersionIDs {
+			uniqids[s.top.ShardForVersionID(obj)] = struct{}{}
+		}
+		for _, ref := range trace.InputReferenceVersionIDs {
+			uniqids[s.top.ShardForVersionID(ref)] = struct{}{}
+		}
+	}
+	ids := make([]uint64, 0, len(uniqids))
+	for k, _ := range uniqids {
+		ids = append(ids, k)
+	}
+	return ids
+}
+
+func (s *Service) shardsInvolvedWithoutSelf(tx *Transaction) []uint64 {
+	shards := s.shardsInvolved(tx)
+	for i, _ := range shards {
+		if shards[i] == s.shardID {
+			shards = append(shards[:i], shards[i+1:]...)
+			break
+		}
+	}
+	return shards
+}
+
+// FIXME(): need to find a more reliable way to do this
+func (s *Service) isNodeInitiatingBroadcast(txID uint32) bool {
+	nodesInShard := s.top.NodesInShard(s.shardID)
+	n := nodesInShard[txID%(uint32(len(nodesInShard)))]
+	log.Debug("consensus will be started", log.Uint64("peer", n))
+	return n == s.nodeID
+}
+
+func quorum2t1(shardSize uint64) uint64 {
+	return (2*(shardSize/3) + 1)
+}
+
+func quorumt1(shardSize uint64) uint64 {
+	return shardSize/3 + 1
+}
+
+func ID(data []byte) uint32 {
+	h := fnv.New32()
+	h.Write(data)
+	return h.Sum32()
+}
+
+func touniqids(ls []uint64) map[uint64]struct{} {
+	out := map[uint64]struct{}{}
+	for _, v := range ls {
+		out[v] = struct{}{}
+	}
+	return out
+}
+func fromuniqids(m map[uint64]struct{}) []uint64 {
+	out := []uint64{}
+	for k, _ := range m {
+		out = append(out, k)
+	}
+	return out
+}

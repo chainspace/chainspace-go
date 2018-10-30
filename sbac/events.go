@@ -16,7 +16,7 @@ func (e EventKind) String() string {
 	return "error"
 }
 
-type EventExt interface {
+type Event interface {
 	Kind() EventKind
 	TxID() []byte
 	PeerID() uint64
@@ -26,7 +26,7 @@ type EventExt interface {
 
 type SBACEvent struct {
 	kind EventKind
-	msg  *SBACMessage2
+	msg  *SBACMessage
 }
 
 func (e *SBACEvent) Kind() EventKind {
@@ -41,7 +41,7 @@ func (e *SBACEvent) PeerID() uint64 {
 	return e.msg.PeerID
 }
 
-func NewSBACEvent(data *SBACMessage2) EventExt {
+func NewSBACEvent(data *SBACMessage) Event {
 	return &SBACEvent{EventKindSBACMessage, data}
 }
 

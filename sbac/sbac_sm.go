@@ -32,7 +32,7 @@ type SBACEventAction func(st *States, e *SBACEvent) (StateSBAC, error)
 
 type SBACStateMachine struct {
 	action SBACEventAction
-	msgs   map[uint64]*SBACMessage2
+	msgs   map[uint64]*SBACMessage
 	phase  SBACOp
 	state  StateSBAC
 }
@@ -71,6 +71,7 @@ func NewSBACStateMachine(phase SBACOp, action SBACEventAction) *SBACStateMachine
 		action: action,
 		phase:  phase,
 		state:  StateSBACWaiting,
+		msgs:   map[uint64]*SBACMessage{},
 	}
 }
 
@@ -99,12 +100,12 @@ func (s *States) setDecisions(op SBACOp, d map[uint64]SignedDecision) {
 	}
 }
 
-func (s *Service) onSBACMessage(st *States, e *SBACEvent) (StateSBAC, error) {
+func (s *Service) onSBACEvent(st *States, e *SBACEvent) (StateSBAC, error) {
 	shards := s.shardsInvolvedWithoutSelf(st.detail.Tx)
 	var somePending bool
 	// for each shards, get the nodes id, and checks if they answered
-	vtwotplusone := twotplusone(s.shardSize)
-	vtplusone := tplusone(s.shardSize)
+	vtwotplusone := quorum2t1(s.shardSize)
+	vtplusone := quorumt1(s.shardSize)
 	decisions := st.getDecisions(e.msg.Op)
 	for _, v := range shards {
 		nodes := s.top.NodesInShard(v)
@@ -165,7 +166,7 @@ func (s *Service) onSBACMessage(st *States, e *SBACEvent) (StateSBAC, error) {
 	// verify signatures now
 	for k, v := range decisions {
 		// TODO(): what to do with nodes with invalid signature
-		ok, err := s.verifySignature(st.detail.Tx, v.Signature, k)
+		ok, err := s.verifyTransactionSignature(st.detail.Tx, v.Signature, k)
 		if err != nil {
 			log.Error("unable to verify signature",
 				log.String("sbac.phase", e.msg.Op.String()),

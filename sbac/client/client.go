@@ -189,7 +189,7 @@ func (c *client) Create(obj []byte) ([][]byte, error) {
 	key := ch.Digest()
 	nodes := c.top.NodesInShard(c.top.ShardForVersionID(key))
 
-	req := &sbac.NewObjectRequest{
+	req := &sbac.CreateObjectRequest{
 		Object: obj,
 	}
 	bytes, err := proto.Marshal(req)
@@ -208,7 +208,7 @@ func (c *client) Create(obj []byte) ([][]byte, error) {
 	f := func(n uint64, msg *service.Message) {
 		defer wg.Done()
 		log.Error("TIME ELAPSED TO CREATE OBJECT FROM NODE", log.Uint64("NODEID", n), log.String("duration", time.Since(now).String()))
-		res := sbac.NewObjectResponse{}
+		res := sbac.CreateObjectResponse{}
 		err = proto.Unmarshal(msg.Payload, &res)
 		if err != nil {
 			return
