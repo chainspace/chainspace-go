@@ -40,7 +40,8 @@ func (s *subscriber) cb(nodeID uint64, objectID string, success bool, labels []s
 			cnt.cb(objectID)
 		}
 	} else {
-		fmt.Printf("unexpected object id, id=%v success=%v\n", objectID, success)
+		fmt.Printf("unexpected object id, id=%v success=%v nodeid=%v\n",
+			objectID, success, nodeID)
 	}
 }
 

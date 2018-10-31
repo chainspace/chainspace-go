@@ -2,6 +2,7 @@ package client // import "chainspace.io/prototype/sbac/client"
 
 import (
 	"encoding/base64"
+	"errors"
 	"sync"
 	"time"
 
@@ -187,6 +188,9 @@ func (c *client) Create(obj []byte) ([][]byte, error) {
 	}
 	wg.Wait()
 	log.Error("TIME ELAPSED TO CREATE OBJECT", log.String("duration", time.Since(now).String()))
+	if len(objs) != len(nodes) {
+		return nil, errors.New("object not created in all nodes")
+	}
 
 	return objs, nil
 }

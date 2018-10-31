@@ -105,6 +105,7 @@ func (c *Cache) WriteRequest(
 	if err != nil {
 		c.release(nodeID)
 		c.cmu[nodeID-1].Unlock()
+		time.Sleep(5 * time.Millisecond)
 		return c.WriteRequest(nodeID, msg, timeout, ack, cb)
 	}
 	id, err := mc.conn.WriteRequest(msg, c.maxPayload, timeout)

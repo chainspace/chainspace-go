@@ -104,7 +104,8 @@ func (s *Service) onSBACEvent(st *States, e *SBACEvent) (StateSBAC, error) {
 	shards := s.shardsInvolvedWithoutSelf(st.detail.Tx)
 	var somePending bool
 	// for each shards, get the nodes id, and checks if they answered
-	vtwotplusone := quorum2t1(s.shardSize)
+	// vtwotplusone := quorum2t1(s.shardSize)
+	vtwotplusone := s.shardSize
 	vtplusone := quorumt1(s.shardSize)
 	decisions := st.getDecisions(e.msg.Op)
 	decisions[e.PeerID()] = SignedDecision{e.msg.Decision, e.msg.Signature}

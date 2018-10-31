@@ -279,18 +279,42 @@ func (s *Service) queryObject(rw http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	objs, err := s.client.Query(key)
+	/*
+		objs, err := s.client.Query(key)
+		if err != nil {
+			errorr(rw, http.StatusInternalServerError, err.Error())
+			return
+		}
+		obj, err := BuildObjectResponse(objs)
+		if err != nil {
+			errorr(rw, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		success(rw, http.StatusOK, obj)
+	*/
+	objectraw, err := s.sbac.QueryObjectByVersionID(key)
 	if err != nil {
-		errorr(rw, http.StatusInternalServerError, err.Error())
+		fail(rw, http.StatusInternalServerError, err.Error())
 		return
-	}
-	obj, err := BuildObjectResponse(objs)
-	if err != nil {
-		errorr(rw, http.StatusInternalServerError, err.Error())
-		return
+
 	}
 
-	success(rw, http.StatusOK, obj)
+	var object interface{}
+	err = json.Unmarshal(objectraw, &object)
+	if err != nil {
+		fail(rw, http.StatusInternalServerError, err.Error())
+		return
+
+	}
+
+	res := struct {
+		Object interface{} `json:"object"`
+	}{
+		Object: object,
+	}
+
+	success(rw, http.StatusOK, res)
 }
 
 func (s *Service) states(rw http.ResponseWriter, r *http.Request) {
@@ -482,12 +506,14 @@ func (s *Service) makeServ(addr string, port int) *http.Server {
 	staticServer := http.FileServer(assetFS())
 	mux := http.NewServeMux()
 	mux.HandleFunc("/swagger.json", s.swaggerJson)
+
 	mux.HandleFunc("/object", s.object)
 	mux.HandleFunc("/objects", s.createObjects)
 	mux.HandleFunc("/object/get", s.objectGet)
 	mux.HandleFunc("/object/ready", s.objectsReady)
 	mux.HandleFunc("/states", s.states)
 	mux.HandleFunc("/transaction", s.transaction)
+
 	mux.HandleFunc("/kv/get", s.kvGet)
 	mux.HandleFunc("/kv/get-objectid", s.kvGetObjectID)
 	mux.Handle("/docs/",

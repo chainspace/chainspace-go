@@ -261,6 +261,7 @@ func GetObjects(store *badger.DB, vids [][]byte) ([]*Object, error) {
 			objkey := objectKey(vid)
 			item, err := txn.Get(objkey)
 			if err != nil {
+				log.Error("error getting objects", log.String("id", base64.StdEncoding.EncodeToString(vid)), fld.Err(err))
 				return err
 			}
 			val, err := item.Value()
