@@ -94,7 +94,7 @@ func (sm *StateMachine) applyTransition(transitionTo State) error {
 			return nil
 		}
 
-		log.Info("applying transition",
+		log.Error("applying transition",
 			log.Uint32("id", sm.states.detail.HashID),
 			log.String("old_state", curState.String()),
 			log.String("new_state", transitionTo.String()),
@@ -124,7 +124,7 @@ func (sm *StateMachine) moveState() error {
 				log.String("state", curState.String()), fld.TxID(sm.states.detail.HashID))
 			return nil
 		}
-		log.Info("applying action",
+		log.Error("applying action",
 			log.Uint32("id", sm.states.detail.HashID),
 			log.String("state", curState.String()),
 		)
@@ -221,8 +221,8 @@ func NewStateMachine(cfg *StateMachineConfig) *StateMachine {
 		NewConsensuStateMachine(ConsensusOp_Consensus1, cfg.ConsensusAction)
 	sm.states.consensus[ConsensusOp_Consensus2] =
 		NewConsensuStateMachine(ConsensusOp_Consensus2, cfg.ConsensusAction)
-	sm.states.consensus[ConsensusOp_Consensus3] =
-		NewConsensuStateMachine(ConsensusOp_Consensus3, cfg.ConsensusAction)
+	sm.states.consensus[ConsensusOp_ConsensusCommit] =
+		NewConsensuStateMachine(ConsensusOp_ConsensusCommit, cfg.ConsensusAction)
 
 	sm.states.sbac[SBACOp_Phase1] =
 		NewSBACStateMachine(SBACOp_Phase1, cfg.SBACAction)

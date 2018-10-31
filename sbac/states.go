@@ -362,12 +362,14 @@ func (s *Service) toCommitObjectsBroadcasted(st *States) (State, error) {
 
 		}
 	}
-	shardsInvolved := fromuniqids(shardsInvolvedUniq)
 
-	err = s.sendToShards(shardsInvolved, st, msg)
-	if err != nil {
-		log.Error("commit unable to sent accept transaction to all shards", fld.TxID(st.detail.HashID), fld.Err(err))
-		return StateAborted, err
+	shardsInvolved := fromuniqids(shardsInvolvedUniq)
+	if len(shardsInvolved) > 0 {
+		err = s.sendToShards(shardsInvolved, st, msg)
+		if err != nil {
+			log.Error("commit unable to sent accept transaction to all shards", fld.TxID(st.detail.HashID), fld.Err(err))
+			return StateAborted, err
+		}
 	}
 
 	if log.AtDebug() {
@@ -509,7 +511,7 @@ func (s *Service) toConsensusCommitTriggered(st *States) (State, error) {
 			Tx:        st.detail.Tx,
 			TxID:      st.detail.ID,
 			Evidences: st.detail.Evidences,
-			Op:        ConsensusOp_Consensus3,
+			Op:        ConsensusOp_ConsensusCommit,
 			Initiator: s.nodeID,
 		}
 		b, err := proto.Marshal(consensusTx)

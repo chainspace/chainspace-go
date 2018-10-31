@@ -1,8 +1,11 @@
 package sbac // import "chainspace.io/prototype/sbac"
 
 import (
+	"encoding/base64"
 	"errors"
 
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
 	"github.com/dgraph-io/badger"
 )
 
@@ -164,6 +167,7 @@ func UnlockObjects(store *badger.DB, objkeys [][]byte) error {
 			key := objectStatusKey(objkey)
 			item, err := txn.Get(key)
 			if err != nil {
+				log.Error("GET ERROR:", fld.Err(err), log.String("id", base64.StdEncoding.EncodeToString(objkey)))
 				return err
 			}
 			val, err := item.Value()
@@ -175,6 +179,7 @@ func UnlockObjects(store *badger.DB, objkeys [][]byte) error {
 			}
 			err = txn.Set(key, []byte{byte(ObjectStatus_ACTIVE)})
 			if err != nil {
+				log.Error("SET ERROR:", fld.Err(err), log.String("id", base64.StdEncoding.EncodeToString(objkey)))
 				return err
 			}
 		}

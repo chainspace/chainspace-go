@@ -69,7 +69,11 @@ func (tr *testrunner) Run(ctx context.Context, cancel func()) {
 		select {
 		case <-ctx.Done():
 			fmt.Printf("waiting for workers")
-			time.Sleep(5 * time.Second)
+			if nodeCount == 1 {
+				time.Sleep(5 * time.Second)
+			} else {
+				time.Sleep(10 * time.Second)
+			}
 			cancel()
 			cancel2()
 			return

@@ -139,7 +139,7 @@ message SBACMessageAck {
 enum ConsensusOp {
   Consensus1 = 0;
   Consensus2 = 1;
-  Consensus3 = 2;
+  ConsensusCommit = 2;
 }
 
 message ConsensusTransaction {
