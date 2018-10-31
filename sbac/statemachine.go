@@ -72,6 +72,29 @@ type StateMachine struct {
 	state  State
 }
 
+func (sm *StateMachine) StateReport() *StateReport {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	s := StateReport{
+		HashID:          sm.states.detail.HashID,
+		State:           sm.state.String(),
+		CommitDecisions: map[uint64]bool{},
+		Phase1Decisions: map[uint64]bool{},
+		Phase2Decisions: map[uint64]bool{},
+		PendingEvents:   int32(sm.events.Len()),
+	}
+	for k, v := range sm.states.decisions.Commit {
+		s.CommitDecisions[k] = v.Decision == SBACDecision_ACCEPT
+	}
+	for k, v := range sm.states.decisions.Phase1 {
+		s.Phase1Decisions[k] = v.Decision == SBACDecision_ACCEPT
+	}
+	for k, v := range sm.states.decisions.Phase2 {
+		s.Phase2Decisions[k] = v.Decision == SBACDecision_ACCEPT
+	}
+	return &s
+}
+
 func (sm *StateMachine) State() State {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()

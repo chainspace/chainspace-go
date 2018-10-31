@@ -248,6 +248,13 @@ func (s *Service) handleQueryObject(
 	return queryPayload(id, res)
 }
 
+func (s *Service) StatesReport(ctx context.Context) *StatesReportResponse {
+	return &StatesReportResponse{
+		States:        s.txstates.StatesReport(),
+		EventsInQueue: int32(s.pe.Len()),
+	}
+}
+
 func (s *Service) handleStates(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
 	sr := s.txstates.StatesReport()
 	res := &StatesReportResponse{

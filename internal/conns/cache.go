@@ -90,7 +90,6 @@ func (c *Cache) release(nodeID uint64) {
 	cc, ok := c.conns[nodeID]
 	c.mu.Unlock()
 	if ok {
-
 		cc.die <- true
 		cc.conn.Close()
 		c.mu.Lock()
@@ -162,7 +161,7 @@ func (c *Cache) readAckMessage(nodeID uint64, conn *network.Conn, die chan bool)
 			if err == nil {
 				go c.processAckMessage(nodeID, msg)
 			}
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 		}
 	}
 }

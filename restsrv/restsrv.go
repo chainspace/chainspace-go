@@ -314,12 +314,14 @@ func (s *Service) states(rw http.ResponseWriter, r *http.Request) {
 		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to unmarshal: %v", err))
 		return
 	}
-	states, err := s.client.States(req.Id)
-	if err != nil {
-		errorr(rw, http.StatusInternalServerError, err.Error())
-		return
-	}
-
+	/*
+		states, err := s.client.States(req.Id)
+		if err != nil {
+			errorr(rw, http.StatusInternalServerError, err.Error())
+			return
+		}
+	*/
+	states := s.sbac.StatesReport(r.Context())
 	sort.Slice(states.States, func(i, j int) bool { return states.States[i].HashID < states.States[j].HashID })
 	success(rw, http.StatusOK, states)
 }

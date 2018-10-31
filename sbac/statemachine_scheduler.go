@@ -68,15 +68,15 @@ func (s *StateMachineScheduler) GetOrCreate(
 	return sm
 }
 
-// FIXME(): reimplement this properly
 func (s *StateMachineScheduler) StatesReport() []*StateReport {
 	s.mu.Lock()
+	sr := []*StateReport{}
 	for _, v := range s.states {
-		_ = v
-		// sr = append(sr, v.StateReport())
+		v := v
+		sr = append(sr, v.StateReport())
 	}
 	s.mu.Unlock()
-	return nil
+	return sr
 }
 
 func (s *StateMachineScheduler) RunGC() {
