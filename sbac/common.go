@@ -122,7 +122,7 @@ func (s *Service) objectsExists(vids, refvids [][]byte) ([]*Object, bool) {
 		}
 	}
 
-	objects, err := GetObjects(s.store, ownvids)
+	objects, err := s.store.GetObjects(ownvids)
 	if err != nil {
 		return nil, false
 	}

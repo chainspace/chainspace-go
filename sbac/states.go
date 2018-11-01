@@ -227,7 +227,7 @@ func (s *Service) onWaitingForConsensusCommit(st *States) (State, error) {
 func (s *Service) toObjectLocked(st *States) (State, error) {
 	objects, allInShard := s.inputObjectsForShard(s.shardID, st.detail.Tx)
 	// lock them
-	if err := LockObjects(s.store, objects); err != nil {
+	if err := s.store.LockObjects(objects); err != nil {
 		log.Error("unable to lock all objects", fld.TxID(st.detail.HashID), fld.Err(err))
 		// return nil from here as we can abort as a valid transition
 		return StateAborted, nil
@@ -390,7 +390,7 @@ func (s *Service) toWaitingForPhase2(st *States) (State, error) {
 func (s *Service) toObjectDeactivated(st *States) (State, error) {
 	objects, _ := s.inputObjectsForShard(s.shardID, st.detail.Tx)
 	// lock them
-	if err := DeactivateObjects(s.store, objects); err != nil {
+	if err := s.store.DeactivateObjects(objects); err != nil {
 		log.Error("unable to deactivate all objects", fld.TxID(st.detail.HashID), fld.Err(err))
 		// return nil from here as we can abort as a valid transition
 		return StateAborted, nil
@@ -424,7 +424,7 @@ func (s *Service) toObjectsCreated(st *States) (State, error) {
 			allObjectsInCurrentShard = false
 		}
 	}
-	err = CreateObjects(s.store, objects)
+	err = s.store.CreateObjects(objects)
 	if err != nil {
 		log.Error("unable to create objects", fld.TxID(st.detail.HashID), fld.Err(err))
 		return StateAborted, err
@@ -441,7 +441,7 @@ func (s *Service) toObjectsCreated(st *States) (State, error) {
 func (s *Service) toSucceeded(st *States) (State, error) {
 	// st.detail.Result <- true
 	log.Error("finishing transaction", fld.TxID(st.detail.HashID))
-	err := FinishTransaction(s.store, st.detail.ID)
+	err := s.store.FinishTransaction(st.detail.ID)
 	if err != nil {
 		log.Error("unable to finish transaction", fld.TxID(st.detail.HashID), fld.Err(err))
 	}
@@ -461,13 +461,13 @@ func (s *Service) toSucceeded(st *States) (State, error) {
 func (s *Service) toAborted(st *States) (State, error) {
 	// unlock any objects maybe related to this transaction.
 	objects, _ := s.inputObjectsForShard(s.shardID, st.detail.Tx)
-	err := UnlockObjects(s.store, objects)
+	err := s.store.UnlockObjects(objects)
 	if err != nil {
 		log.Error("unable to unlock objects", fld.TxID(st.detail.HashID), fld.Err(err))
 	}
 	log.Error("finishing transaction", fld.TxID(st.detail.HashID))
 
-	err = FinishTransaction(s.store, st.detail.ID)
+	err = s.store.FinishTransaction(st.detail.ID)
 	if err != nil {
 		log.Error("unable to finish transaction", fld.TxID(st.detail.HashID), fld.Err(err))
 	}

@@ -5,7 +5,6 @@ import (
 	"encoding/base32"
 	"errors"
 	"fmt"
-	"path"
 
 	"chainspace.io/prototype/broadcast"
 	"chainspace.io/prototype/config"
@@ -18,12 +17,7 @@ import (
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/pubsub"
 	"chainspace.io/prototype/service"
-	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
-)
-
-const (
-	badgerStorePath = "/sbac/"
 )
 
 var b32 = base32.StdEncoding.WithPadding(base32.NoPadding)
@@ -49,8 +43,8 @@ type Service struct {
 	nodeID      uint64
 	pe          *pendingEvents
 	privkey     signature.PrivateKey
+	store       *Store
 	ps          *pubsub.Server
-	store       *badger.DB
 	shardCount  uint64
 	shardID     uint64
 	shardSize   uint64
@@ -158,7 +152,7 @@ func (s *Service) handleSBAC(
 
 func (s *Service) consumeEvents(e Event) bool {
 	// check if statemachine is finished
-	ok, err := TxnFinished(s.store, e.TxID())
+	ok, err := s.store.TxnFinished(e.TxID())
 	if err != nil {
 		log.Error("error calling TxnFinished", fld.Err(err))
 		// do nothing
@@ -240,7 +234,7 @@ func (s *Service) handleQueryObject(
 		res.Error = fmt.Errorf("sbac: nil versionid").Error()
 		return queryPayload(id, res)
 	}
-	objects, err := GetObjects(s.store, [][]byte{req.VersionID})
+	objects, err := s.store.GetObjects([][]byte{req.VersionID})
 	if err != nil {
 		res.Error = err.Error()
 	} else if len(objects) != 1 {
@@ -303,7 +297,7 @@ func (s *Service) handleCreateObject(ctx context.Context, payload []byte, id uin
 	if log.AtDebug() {
 		log.Debug("sbac: creating new object", log.String("objet", string(req.Object)), log.Uint32("object.id", ID(versionid)))
 	}
-	o, err := CreateObject(s.store, versionid, req.Object)
+	o, err := s.store.CreateObject(versionid, req.Object)
 	if err != nil {
 		if log.AtDebug() {
 			log.Debug("sbac: unable to create object", log.String("objet", string(req.Object)), log.Uint32("object.id", ID(versionid)), fld.Err(err))
@@ -344,7 +338,7 @@ func (s *Service) handleCreateObjects(ctx context.Context, payload []byte, id ui
 		ch.Reset()
 		ch.Write(object)
 		versionid := ch.Digest()
-		o, err := CreateObject(s.store, versionid, object)
+		o, err := s.store.CreateObject(versionid, object)
 		if err != nil {
 			res.Error = err.Error()
 			break
@@ -407,7 +401,7 @@ func (s *Service) AddTransaction(
 }
 
 func (s *Service) QueryObjectByVersionID(versionid []byte) ([]byte, error) {
-	objects, err := GetObjects(s.store, [][]byte{versionid})
+	objects, err := s.store.GetObjects([][]byte{versionid})
 	if err != nil {
 		return nil, err
 	} else if len(objects) != 1 {
@@ -438,11 +432,7 @@ func New(cfg *Config) (*Service, error) {
 		return nil, err
 	}
 
-	opts := badger.DefaultOptions
-	badgerPath := path.Join(cfg.Directory, badgerStorePath)
-	opts.Dir = badgerPath
-	opts.ValueDir = badgerPath
-	store, err := badger.Open(opts)
+	bstore, err := NewBadgerStore(cfg.Directory)
 	if err != nil {
 		return nil, err
 	}
@@ -455,7 +445,7 @@ func New(cfg *Config) (*Service, error) {
 		privkey:     privkey,
 		ps:          cfg.Pubsub,
 		top:         cfg.Top,
-		store:       store,
+		store:       bstore,
 		shardID:     cfg.Top.ShardForNode(cfg.NodeID),
 		shardCount:  cfg.ShardCount,
 		shardSize:   cfg.ShardSize,
