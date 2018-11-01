@@ -47,9 +47,6 @@ type Cache struct {
 func (c *Cache) Close() {}
 
 func (c *Cache) sendHello(nodeID uint64, conn *network.Conn) error {
-	if c.key == nil {
-		log.Error("nil key")
-	}
 	hellomsg, err := service.SignHello(
 		c.selfID, nodeID, c.key, c.connection)
 	if err != nil {
@@ -157,7 +154,7 @@ func (c *Cache) readAckMessage(nodeID uint64, conn *network.Conn, die chan bool)
 			log.Error("KILLING READ ACK", fld.PeerID(nodeID))
 			return
 		default:
-			msg, err := conn.ReadMessage(int(c.maxPayload), 5*time.Second)
+			msg, err := conn.ReadMessage(int(c.maxPayload), 1*time.Second)
 			// if we can read some message, try to process it.
 			if err == nil {
 				go c.processAckMessage(nodeID, msg)
@@ -170,10 +167,10 @@ func (c *Cache) readAckMessage(nodeID uint64, conn *network.Conn, die chan bool)
 func (c *Cache) retryRequests() {
 	for {
 		redolist := []PendingAck{}
-		time.Sleep(5 * time.Second)
+		time.Sleep(3 * time.Second)
 		c.pendingAcksMu.Lock()
 		for k, v := range c.pendingAcks {
-			if time.Since(v.sentAt) >= 5*time.Second {
+			if time.Since(v.sentAt) >= 3*time.Second {
 				redolist = append(redolist, v)
 				delete(c.pendingAcks, k)
 			}

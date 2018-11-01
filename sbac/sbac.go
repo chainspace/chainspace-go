@@ -94,7 +94,7 @@ func (s *Service) checkEvent(e *ConsensusEvent) {
 			Evidences: e.data.Evidences,
 			HashID:    ID(e.data.TxID),
 		}
-		s.txstates.Add(&detail, StateWaitingForConsensus1)
+		s.txstates.GetOrCreate(&detail, StateWaitingForConsensus1)
 	}
 }
 
@@ -129,6 +129,8 @@ func (s *Service) handleSBAC(
 		return nil, fmt.Errorf("sbac: sbac unmarshaling error: %v", err)
 	}
 
+	// str := fmt.Sprintf("NEW SBAC %v %v %v %v", ID(req.GetTxID()), req.GetPeerID(), req.GetOp(), req.GetDecision())
+	//log.Error(str)
 	// if we received a COMMIT opcode, the statemachine may not exists
 	// lets check and create it here.
 	if req.Op == SBACOp_Commit {
@@ -162,12 +164,13 @@ func (s *Service) consumeEvents(e Event) bool {
 		// do nothing
 		return true
 	}
-	if ok {
+
+	/*if ok {
 		log.Error("event for a finished transaction, skipping it",
 			fld.TxID(ID(e.TxID())), log.Uint64("peer.id", e.PeerID()))
 		// txn already finished. move on
 		return true
-	}
+	}*/
 
 	sm, ok := s.txstates.Get(e.TxID())
 	if ok {
@@ -295,7 +298,7 @@ func (s *Service) handleCreateObject(ctx context.Context, payload []byte, id uin
 		return createPayload(id, res)
 	}
 	ch := combihash.New()
-	ch.Write([]byte(req.Object))
+	ch.Write(req.Object)
 	versionid := ch.Digest()
 	if log.AtDebug() {
 		log.Debug("sbac: creating new object", log.String("objet", string(req.Object)), log.Uint32("object.id", ID(versionid)))

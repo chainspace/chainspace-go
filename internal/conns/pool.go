@@ -29,6 +29,17 @@ func NewPool(size int, nodeID uint64, top *network.Topology, maxPayload int, key
 	}
 }
 
+func (c *Pool) MessageAckPending() int {
+	c.mu.Lock()
+	cnt := 0
+	for _, v := range c.conns {
+		v := v
+		cnt += len(v.pendingAcks)
+	}
+	c.mu.Unlock()
+	return cnt
+}
+
 func (c *Pool) Close() {
 	for _, conn := range c.conns {
 		conn := conn

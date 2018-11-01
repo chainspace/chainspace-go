@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"chainspace.io/prototype/service"
@@ -133,12 +134,15 @@ func (c *Conn) WritePayload(pb proto.Message, limit int, timeout time.Duration) 
 	return nil
 }
 
+var atomicid uint64
+
 // WriteRequest adds a connection-specific ID to the given message before
 // writing it out on the underlying connection.
 func (c *Conn) WriteRequest(msg *service.Message, limit int, timeout time.Duration) (id uint64, err error) {
 	c.mu.Lock()
 	c.lastID++
-	id = c.lastID
+	// id = c.lastID
+	id = atomic.AddUint64(&atomicid, 1)
 	c.mu.Unlock()
 	msg.ID = id
 	return id, c.WritePayload(msg, limit, timeout)

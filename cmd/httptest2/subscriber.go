@@ -34,11 +34,12 @@ func (s *subscriber) cb(nodeID uint64, objectID string, success bool, labels []s
 	defer s.mu.Unlock()
 	if cnt, ok := s.results[objectID]; ok && success == true {
 		cnt.i += 1
-		// fmt.Printf("NEW OBJECT RECEIVED %v\n", cnt.i)
 		s.results[objectID] = cnt
 		if cnt.i >= s.nodeCount {
 			cnt.cb(objectID)
 		}
+		//fmt.Printf("new object id, id=%v success=%v nodeid=%v\n",
+		//objectID, success, nodeID)
 	} else {
 		fmt.Printf("unexpected object id, id=%v success=%v nodeid=%v\n",
 			objectID, success, nodeID)

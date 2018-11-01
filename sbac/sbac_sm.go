@@ -75,31 +75,6 @@ func NewSBACStateMachine(phase SBACOp, action SBACEventAction) *SBACStateMachine
 	}
 }
 
-func (s *States) getDecisions(op SBACOp) map[uint64]SignedDecision {
-	switch op {
-	case SBACOp_Phase1:
-		return s.decisions.Phase1
-	case SBACOp_Phase2:
-		return s.decisions.Phase2
-	case SBACOp_Commit:
-		return s.decisions.Commit
-	default:
-		return nil
-	}
-}
-
-func (s *States) setDecisions(op SBACOp, d map[uint64]SignedDecision) {
-	switch op {
-	case SBACOp_Phase1:
-		s.decisions.Phase1 = d
-	case SBACOp_Phase2:
-		s.decisions.Phase2 = d
-	case SBACOp_Commit:
-		s.decisions.Commit = d
-	default:
-	}
-}
-
 func (s *Service) onSBACEvent(st *States, e *SBACEvent) (StateSBAC, error) {
 	shards := s.shardsInvolvedWithoutSelf(st.detail.Tx)
 	var somePending bool
@@ -107,8 +82,8 @@ func (s *Service) onSBACEvent(st *States, e *SBACEvent) (StateSBAC, error) {
 	// vtwotplusone := quorum2t1(s.shardSize)
 	vtwotplusone := s.shardSize
 	vtplusone := quorumt1(s.shardSize)
-	decisions := st.getDecisions(e.msg.Op)
-	decisions[e.PeerID()] = SignedDecision{e.msg.Decision, e.msg.Signature}
+	st.decisions.Set(e.msg.Op, e.PeerID(), SignedDecision{e.msg.Decision, e.msg.Signature})
+	decisions := st.decisions.Get(e.msg.Op)
 	for _, v := range shards {
 		nodes := s.top.NodesInShard(v)
 		var accepted uint64

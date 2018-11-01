@@ -68,7 +68,7 @@ func (tr *testrunner) Run(ctx context.Context, cancel func()) {
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Printf("waiting for workers")
+			fmt.Printf("waiting for workers\n")
 			if nodeCount == 1 {
 				time.Sleep(5 * time.Second)
 			} else {
@@ -81,7 +81,7 @@ func (tr *testrunner) Run(ctx context.Context, cancel func()) {
 			now := time.Now()
 			workrs := tr.getReadyWorkers()
 			tr.runWorkers(wrkrctx, workrs)
-			waitfor := time.Second - time.Since(now)
+			waitfor := (time.Duration(delay) * time.Second) - time.Since(now)
 			fmt.Printf("waiting for %v\n", waitfor)
 			time.Sleep(waitfor)
 		}

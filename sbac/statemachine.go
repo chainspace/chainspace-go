@@ -52,9 +52,8 @@ type DetailTx struct {
 }
 
 type Decisions struct {
-	Phase1 map[uint64]SignedDecision
-	Phase2 map[uint64]SignedDecision
-	Commit map[uint64]SignedDecision
+	decisions map[SBACOp]map[uint64]SignedDecision
+	mu        sync.Mutex
 }
 
 type States struct {
@@ -72,6 +71,22 @@ type StateMachine struct {
 	state  State
 }
 
+func (s *Decisions) Get(op SBACOp) map[uint64]SignedDecision {
+	s.mu.Lock()
+	out := map[uint64]SignedDecision{}
+	for k, v := range s.decisions[op] {
+		out[k] = v
+	}
+	s.mu.Unlock()
+	return out
+}
+
+func (s *Decisions) Set(op SBACOp, n uint64, d SignedDecision) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.decisions[op][n] = d
+}
+
 func (sm *StateMachine) StateReport() *StateReport {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -83,13 +98,13 @@ func (sm *StateMachine) StateReport() *StateReport {
 		Phase2Decisions: map[uint64]bool{},
 		PendingEvents:   int32(sm.events.Len()),
 	}
-	for k, v := range sm.states.decisions.Commit {
+	for k, v := range sm.states.decisions.Get(SBACOp_Commit) {
 		s.CommitDecisions[k] = v.Decision == SBACDecision_ACCEPT
 	}
-	for k, v := range sm.states.decisions.Phase1 {
+	for k, v := range sm.states.decisions.Get(SBACOp_Phase1) {
 		s.Phase1Decisions[k] = v.Decision == SBACDecision_ACCEPT
 	}
-	for k, v := range sm.states.decisions.Phase2 {
+	for k, v := range sm.states.decisions.Get(SBACOp_Phase2) {
 		s.Phase2Decisions[k] = v.Decision == SBACDecision_ACCEPT
 	}
 	return &s
@@ -117,7 +132,7 @@ func (sm *StateMachine) applyTransition(transitionTo State) error {
 			return nil
 		}
 
-		log.Error("applying transition",
+		log.Info("applying transition",
 			log.Uint32("id", sm.states.detail.HashID),
 			log.String("old_state", curState.String()),
 			log.String("new_state", transitionTo.String()),
@@ -147,7 +162,7 @@ func (sm *StateMachine) moveState() error {
 				log.String("state", curState.String()), fld.TxID(sm.states.detail.HashID))
 			return nil
 		}
-		log.Error("applying action",
+		log.Info("applying action",
 			log.Uint32("id", sm.states.detail.HashID),
 			log.String("state", curState.String()),
 		)
@@ -176,7 +191,7 @@ func (sm *StateMachine) moveState() error {
 	}
 }
 
-func (sm *StateMachine) onEvent(rawe Event) error {
+func (sm *StateMachine) processEvent(rawe Event) error {
 	if !bytes.Equal(rawe.TxID(), sm.states.detail.ID) {
 		return fmt.Errorf("event linked to another transaction")
 	}
@@ -204,7 +219,7 @@ func (sm *StateMachine) consumeEvent(e Event) bool {
 		)
 	}
 	// process the current event
-	sm.onEvent(e)
+	sm.processEvent(e)
 
 	// then try to move the state from this point
 	if curState == StateSucceeded || curState == StateAborted {
@@ -233,9 +248,11 @@ func NewStateMachine(cfg *StateMachineConfig) *StateMachine {
 			consensus: map[ConsensusOp]*ConsensusStateMachine{},
 			sbac:      map[SBACOp]*SBACStateMachine{},
 			decisions: Decisions{
-				map[uint64]SignedDecision{},
-				map[uint64]SignedDecision{},
-				map[uint64]SignedDecision{},
+				decisions: map[SBACOp]map[uint64]SignedDecision{
+					SBACOp_Phase1: map[uint64]SignedDecision{},
+					SBACOp_Phase2: map[uint64]SignedDecision{},
+					SBACOp_Commit: map[uint64]SignedDecision{},
+				},
 			},
 		},
 		state: cfg.InitialState,

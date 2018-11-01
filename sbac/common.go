@@ -90,15 +90,20 @@ func (s *Service) signTransactionRaw(tx []byte) ([]byte, error) {
 func (s *Service) sendToShards(shards []uint64, st *States, msg *service.Message) error {
 	conns := s.conns.Borrow()
 	for _, shard := range shards {
-		nodes := s.top.NodesInShard(shard)
+		shardid := shard
+		nodes := s.top.NodesInShard(shardid)
 		for _, node := range nodes {
-			// TODO: proper timeout ?
-			_, err := conns.WriteRequest(node, msg, 5*time.Second, true, nil)
-			if err != nil {
-				log.Error("unable to connect to node",
-					fld.TxID(st.detail.HashID), fld.PeerID(node))
-				return fmt.Errorf("unable to connect to node(%v): %v", node, err)
-			}
+			msgcpy := *msg
+			nodeid := node
+
+			go func() {
+				_, err := conns.WriteRequest(nodeid, &msgcpy, 3*time.Second, true, nil)
+				if err != nil {
+					log.Error("unable to connect to node",
+						fld.TxID(st.detail.HashID), fld.PeerID(nodeid))
+					//return fmt.Errorf("unable to connect to node(%v): %v", node, err)
+				}
+			}()
 		}
 	}
 	return nil
@@ -106,19 +111,7 @@ func (s *Service) sendToShards(shards []uint64, st *States, msg *service.Message
 
 func (s *Service) sendToAllShardInvolved(st *States, msg *service.Message) error {
 	shards := s.shardsInvolvedWithoutSelf(st.detail.Tx)
-	conns := s.conns.Borrow()
-	for _, shard := range shards {
-		nodes := s.top.NodesInShard(shard)
-		for _, node := range nodes {
-			// TODO: proper timeout ?
-			_, err := conns.WriteRequest(node, msg, time.Hour, true, nil)
-			if err != nil {
-				log.Error("unable to connect to node", fld.TxID(st.detail.HashID), fld.PeerID(node))
-				return fmt.Errorf("unable to connect to node(%v): %v", node, err)
-			}
-		}
-	}
-	return nil
+	return s.sendToShards(shards, st, msg)
 }
 
 func (s *Service) objectsExists(vids, refvids [][]byte) ([]*Object, bool) {

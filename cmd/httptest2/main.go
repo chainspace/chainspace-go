@@ -27,6 +27,7 @@ var (
 	workers     int
 	objects     int
 	duration    int
+	delay       int
 	subPort     int
 	networkName string
 	nodeCount   int
@@ -55,6 +56,7 @@ func init() {
 	flag.StringVar(&address, "addr", "", "address of the node http server to use")
 	flag.IntVar(&port, "port", 0, "port to connect in order to send transactions (use with gcp)")
 	flag.IntVar(&workers, "txs", 1, "number of transactions to send per seconds default=1")
+	flag.IntVar(&delay, "delay", 1, "delay to wait before transaction, default=1")
 	flag.IntVar(&objects, "objects", 1, "number of objects to be used as inputs in the transaction default=1")
 	flag.IntVar(&duration, "duration", 5, "duration of the test")
 	flag.IntVar(&subPort, "pubsub-port", 0, "pubsub port, this is the same port for all nodes")
