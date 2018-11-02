@@ -32,14 +32,14 @@ type Config struct {
 	Top        *network.Topology
 	MaxPayload config.ByteSize
 	SelfID     uint64
-	Store      *kv.Service
+	Store      kv.Service
 	SBAC       *sbac.Service
 }
 
 type Service struct {
 	port       int
 	srv        *http.Server
-	store      *kv.Service
+	store      kv.Service
 	top        *network.Topology
 	maxPayload config.ByteSize
 	client     sbacclient.Client

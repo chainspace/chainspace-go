@@ -33,11 +33,28 @@ const (
 	keyFinishedTxn
 )
 
-type Store struct {
+type Store interface {
+	Close() error
+	CommitTransaction(
+		txnkey []byte, inobjkeys [][]byte, objs []*Object) error
+	LockObjects(objkeys [][]byte) error
+	UnlockObjects(objkeys [][]byte) error
+	AddTransaction(txkey []byte, value []byte) error
+	GetTransaction(txkey []byte) ([]byte, bool, error)
+	GetObjects(vids [][]byte) ([]*Object, error)
+	DeactivateObjects(keys [][]byte) error
+	CreateObjects(objs []*Object) error
+	CreateObject(vid, value []byte) (*Object, error)
+	DeleteObjects(objkeys [][]byte) error
+	FinishTransaction(txnkey []byte) error
+	TxnFinished(txnkey []byte) (bool, error)
+}
+
+type BadgerStore struct {
 	db *badger.DB
 }
 
-func NewBadgerStore(rootDir string) (*Store, error) {
+func NewBadgerStore(rootDir string) (*BadgerStore, error) {
 	opts := badger.DefaultOptions
 	badgerPath := path.Join(rootDir, badgerStorePath)
 	opts.Dir = badgerPath
@@ -47,7 +64,7 @@ func NewBadgerStore(rootDir string) (*Store, error) {
 		return nil, err
 	}
 
-	return &Store{db: db}, nil
+	return &BadgerStore{db: db}, nil
 }
 
 func makeKey(ty keyType, key []byte) []byte {
@@ -140,14 +157,14 @@ func commitTransaction(txn *badger.Txn, txnkey []byte) error {
 	return nil
 }
 
-func (s *Store) Close() error {
+func (s *BadgerStore) Close() error {
 	return s.db.Close()
 }
 
 // CommitTransaction will in the same transaction move all object from their current state to
 // inactive, creates output objects, then update the transaction commit status.
 // if any operation is not possible, everything is rollback and an error is returned.
-func (s *Store) CommitTransaction(
+func (s *BadgerStore) CommitTransaction(
 	txnkey []byte, inobjkeys [][]byte, objs []*Object) error {
 	return s.db.Update(func(tx *badger.Txn) error {
 		if err := setObjectsInactive(tx, inobjkeys); err != nil {
@@ -162,7 +179,7 @@ func (s *Store) CommitTransaction(
 
 // LockObjects perform a lock on all the objects from the keys slice. If one+ object is already
 // locked or inactive this action is rolled back and an error is returned
-func (s *Store) LockObjects(objkeys [][]byte) error {
+func (s *BadgerStore) LockObjects(objkeys [][]byte) error {
 	return s.db.Update(func(txn *badger.Txn) error {
 		for _, objkey := range objkeys {
 			key := objectStatusKey(objkey)
@@ -188,7 +205,7 @@ func (s *Store) LockObjects(objkeys [][]byte) error {
 
 // UnlockObject unlock all object coresponding to the objects keys. If one+ object is inactive
 // all operations are rolled back and an error is returned
-func (s *Store) UnlockObjects(objkeys [][]byte) error {
+func (s *BadgerStore) UnlockObjects(objkeys [][]byte) error {
 	return s.db.Update(func(txn *badger.Txn) error {
 		for _, objkey := range objkeys {
 			key := objectStatusKey(objkey)
@@ -216,7 +233,7 @@ func (s *Store) UnlockObjects(objkeys [][]byte) error {
 
 // AddTransaction create a new entry for the transaction seen by this node. This also create
 // a new entry for the committed transaction set to false
-func (s *Store) AddTransaction(txkey []byte, value []byte) error {
+func (s *BadgerStore) AddTransaction(txkey []byte, value []byte) error {
 	return s.db.Update(func(txn *badger.Txn) error {
 		seenkey := seenTxnKey(txkey)
 		_, err := txn.Get(seenkey)
@@ -243,7 +260,7 @@ func (s *Store) AddTransaction(txkey []byte, value []byte) error {
 // GetTransaction return a transaction stored in database matching the given key.
 // if the transaction key do not exists an error is returned
 // returns the value of the transction, and if the transaction is committed or not as a boolean
-func (s *Store) GetTransaction(txkey []byte) ([]byte, bool, error) {
+func (s *BadgerStore) GetTransaction(txkey []byte) ([]byte, bool, error) {
 	var txvalue []byte
 	var txcommitted bool
 	err := s.db.View(func(txn *badger.Txn) error {
@@ -278,7 +295,7 @@ func (s *Store) GetTransaction(txkey []byte) ([]byte, bool, error) {
 
 // GetObjectsFromStore return the list of objects corresponding to the list of versionIDs
 // order the same. if any of the keys do not match in database an error is returned
-func (s *Store) GetObjects(vids [][]byte) ([]*Object, error) {
+func (s *BadgerStore) GetObjects(vids [][]byte) ([]*Object, error) {
 	objects := make([]*Object, 0, len(vids))
 	err := s.db.View(func(txn *badger.Txn) error {
 		for _, vid := range vids {
@@ -316,14 +333,14 @@ func (s *Store) GetObjects(vids [][]byte) ([]*Object, error) {
 
 // DeactivateObjects set to inactive all objects in the list
 // this will return an error if one+ objects are already inactive
-func (s *Store) DeactivateObjects(keys [][]byte) error {
+func (s *BadgerStore) DeactivateObjects(keys [][]byte) error {
 	return s.db.Update(func(tx *badger.Txn) error {
 		return setObjectsInactive(tx, keys)
 	})
 }
 
 // CreateObjects
-func (s *Store) CreateObjects(objs []*Object) error {
+func (s *BadgerStore) CreateObjects(objs []*Object) error {
 	return s.db.Update(func(tx *badger.Txn) error {
 		return createObjects(tx, objs)
 	})
@@ -331,7 +348,7 @@ func (s *Store) CreateObjects(objs []*Object) error {
 
 // testing purpose only, allow us to create an new object in the node without consensus
 // in a completely arbitrary way
-func (s *Store) CreateObject(vid, value []byte) (*Object, error) {
+func (s *BadgerStore) CreateObject(vid, value []byte) (*Object, error) {
 	var o *Object
 	return o, s.db.Update(func(txn *badger.Txn) error {
 		objkey := objectKey(vid)
@@ -363,13 +380,13 @@ func (s *Store) CreateObject(vid, value []byte) (*Object, error) {
 
 // testing purpose only, allow us to delete an object in the node without consensus
 // in a completely arbitrary way
-func (s *Store) DeleteObjects(objkeys [][]byte) error {
+func (s *BadgerStore) DeleteObjects(objkeys [][]byte) error {
 	return s.db.Update(func(tx *badger.Txn) error {
 		return setObjectsInactive(tx, objkeys)
 	})
 }
 
-func (s *Store) FinishTransaction(txnkey []byte) error {
+func (s *BadgerStore) FinishTransaction(txnkey []byte) error {
 	return s.db.Update(func(txn *badger.Txn) error {
 		finishedTxn := finishedTxnKey(txnkey)
 		if err := txn.Set(finishedTxn, []byte{}); err != nil {
@@ -379,7 +396,7 @@ func (s *Store) FinishTransaction(txnkey []byte) error {
 	})
 
 }
-func (s *Store) TxnFinished(txnkey []byte) (bool, error) {
+func (s *BadgerStore) TxnFinished(txnkey []byte) (bool, error) {
 	var ok bool
 	var err error = s.db.View(func(txn *badger.Txn) error {
 		key := finishedTxnKey(txnkey)

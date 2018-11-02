@@ -29,7 +29,7 @@ type Config struct {
 type Client struct {
 	maxPaylod config.ByteSize
 	top       *network.Topology
-	conns     *conns.Pool
+	conns     conns.Pool
 }
 
 func (c *Client) nodesForTx(t *sbac.Transaction) []uint64 {

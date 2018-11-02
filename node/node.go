@@ -414,10 +414,10 @@ func Run(cfg *Config) (*Server, error) {
 	}
 
 	var (
-		kvstore *kv.Service
+		kvstore kv.Service
 		rstsrv  *restsrv.Service
 		ssbac   *sbac.Service
-		pbsb    *pubsub.Server
+		pbsb    pubsub.Server
 		checkr  *checker.Service
 	)
 

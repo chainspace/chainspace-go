@@ -23,13 +23,13 @@ import (
 var b32 = base32.StdEncoding.WithPadding(base32.NoPadding)
 
 type Config struct {
-	Broadcaster *broadcast.Service
+	Broadcaster broadcast.Broadcaster
 	Directory   string
-	KVStore     *kv.Service
+	KVStore     kv.Service
 	NodeID      uint64
 	Top         *network.Topology
 	SigningKey  *config.Key
-	Pubsub      *pubsub.Server
+	Pubsub      pubsub.Server
 	ShardSize   uint64
 	ShardCount  uint64
 	MaxPayload  int
@@ -37,14 +37,14 @@ type Config struct {
 }
 
 type Service struct {
-	broadcaster *broadcast.Service
-	conns       *conns.Pool
-	kvstore     *kv.Service
+	broadcaster broadcast.Broadcaster
+	conns       conns.Pool
+	kvstore     kv.Service
 	nodeID      uint64
 	pe          *pendingEvents
 	privkey     signature.PrivateKey
-	store       *Store
-	ps          *pubsub.Server
+	store       Store
+	ps          pubsub.Server
 	shardCount  uint64
 	shardID     uint64
 	shardSize   uint64

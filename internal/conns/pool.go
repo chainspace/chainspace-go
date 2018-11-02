@@ -8,28 +8,34 @@ import (
 	"chainspace.io/prototype/service"
 )
 
-type Pool struct {
+type Pool interface {
+	MessageAckPending() int
+	Close()
+	Borrow() Cache
+}
+
+type pool struct {
 	mu    sync.Mutex
 	i     int
 	size  int
-	conns []*Cache
+	conns []*cache
 }
 
-func NewPool(size int, nodeID uint64, top *network.Topology, maxPayload int, key signature.KeyPair, connection service.CONNECTION) *Pool {
-	conns := make([]*Cache, 0, size)
+func NewPool(size int, nodeID uint64, top *network.Topology, maxPayload int, key signature.KeyPair, connection service.CONNECTION) *pool {
+	conns := make([]*cache, 0, size)
 	for i := 0; i < size; i += 1 {
 		cc := NewCache(
 			nodeID, top, maxPayload, key, connection)
 		conns = append(conns, cc)
 	}
-	return &Pool{
+	return &pool{
 		i:     0,
 		size:  size,
 		conns: conns,
 	}
 }
 
-func (c *Pool) MessageAckPending() int {
+func (c *pool) MessageAckPending() int {
 	c.mu.Lock()
 	cnt := 0
 	for _, v := range c.conns {
@@ -40,14 +46,14 @@ func (c *Pool) MessageAckPending() int {
 	return cnt
 }
 
-func (c *Pool) Close() {
+func (c *pool) Close() {
 	for _, conn := range c.conns {
 		conn := conn
 		conn.Close()
 	}
 }
 
-func (c *Pool) Borrow() *Cache {
+func (c *pool) Borrow() Cache {
 	c.mu.Lock()
 	cc := c.conns[c.i]
 	c.i += 1

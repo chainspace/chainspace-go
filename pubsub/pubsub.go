@@ -22,7 +22,12 @@ type Config struct {
 	NodeID    uint64
 }
 
-type Server struct {
+type Server interface {
+	Close()
+	Publish(objectID []byte, labels []string, success bool)
+}
+
+type server struct {
 	port      int
 	networkID string
 	nodeID    uint64
@@ -30,18 +35,18 @@ type Server struct {
 	mu        sync.Mutex
 }
 
-func (s *Server) Close() {
+func (s *server) Close() {
 	for _, v := range s.conns {
 		v.Close()
 	}
 }
 
-func (s *Server) handleConnection(conn net.Conn) {
+func (s *server) handleConnection(conn net.Conn) {
 	// may need to init with block number or sumbthing in the future
 	s.conns[conn.RemoteAddr().String()] = internal.NewConn(conn)
 }
 
-func (s *Server) listen(ln net.Listener) {
+func (s *server) listen(ln net.Listener) {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -51,7 +56,7 @@ func (s *Server) listen(ln net.Listener) {
 	}
 }
 
-func (s *Server) Publish(objectID []byte, labels []string, success bool) {
+func (s *server) Publish(objectID []byte, labels []string, success bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	log.Error("sending object id", log.String("id", base64.StdEncoding.EncodeToString(objectID)))
@@ -84,7 +89,7 @@ func announceMDNS(networkID string, nodeID uint64, port int) error {
 	return err
 }
 
-func New(cfg *Config) (*Server, error) {
+func New(cfg *Config) (*server, error) {
 	var (
 		port int
 		mdns bool
@@ -111,7 +116,7 @@ func New(cfg *Config) (*Server, error) {
 		}
 
 	}
-	srv := &Server{
+	srv := &server{
 		port:      port,
 		networkID: cfg.NetworkID,
 		nodeID:    cfg.NodeID,

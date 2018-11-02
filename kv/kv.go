@@ -19,11 +19,16 @@ type Config struct {
 	RuntimeDir string
 }
 
-type Service struct {
+type Service interface {
+	Get(key []byte) ([]byte, error)
+	Set(key, value []byte) error
+}
+
+type kvservice struct {
 	store *badger.DB
 }
 
-func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, error) {
+func (s *kvservice) Handle(peerID uint64, m *service.Message) (*service.Message, error) {
 	switch Opcode(m.Opcode) {
 	case Opcode_GET:
 		return s.handleGet(m)
@@ -34,7 +39,7 @@ func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, e
 	}
 }
 
-func (s *Service) handleGet(m *service.Message) (*service.Message, error) {
+func (s *kvservice) handleGet(m *service.Message) (*service.Message, error) {
 	req := &GetRequest{}
 	err := proto.Unmarshal(m.Payload, req)
 	if err != nil {
@@ -65,7 +70,7 @@ func (s *Service) handleGet(m *service.Message) (*service.Message, error) {
 	}, nil
 }
 
-func (s *Service) Get(key []byte) ([]byte, error) {
+func (s *kvservice) Get(key []byte) ([]byte, error) {
 	var valueout []byte
 	err := s.store.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(key)
@@ -91,14 +96,14 @@ func (s *Service) Get(key []byte) ([]byte, error) {
 	return valueout, nil
 }
 
-func (s *Service) Set(key, value []byte) error {
+func (s *kvservice) Set(key, value []byte) error {
 	return s.store.Update(func(txn *badger.Txn) error {
 		log.Error("adding new value for key", log.String("key", string(key)))
 		return txn.Set(key, value)
 	})
 }
 
-func New(cfg *Config) (*Service, error) {
+func New(cfg *Config) (*kvservice, error) {
 	p := path.Join(cfg.RuntimeDir, badgerStorePath)
 	opts := badger.DefaultOptions
 	opts.Dir, opts.ValueDir = p, p
@@ -107,7 +112,7 @@ func New(cfg *Config) (*Service, error) {
 		return nil, err
 	}
 
-	return &Service{
+	return &kvservice{
 		store: store,
 	}, nil
 }

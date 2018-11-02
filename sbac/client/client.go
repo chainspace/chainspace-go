@@ -40,7 +40,7 @@ type Client interface {
 type client struct {
 	maxPaylod config.ByteSize
 	top       *network.Topology
-	conns     *conns.Pool
+	conns     conns.Pool
 }
 
 func New(cfg *Config) Client {
