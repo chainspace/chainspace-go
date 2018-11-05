@@ -482,7 +482,6 @@ func Run(cfg *Config) (*Server, error) {
 			cancel()
 			return nil, fmt.Errorf("node unable to instantiate checker service: %v", err)
 		}
-
 	}
 
 	if cfg.Node.HTTP.Enabled {
