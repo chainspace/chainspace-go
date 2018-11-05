@@ -25,7 +25,14 @@ func cmdRun(args []string, usage string) {
 	fileLog := opts.Flags("--file-log").Label("LEVEL").String("Set the minimum file log level")
 	memProfile := opts.Flags("--mem-profile").Label("PATH").String("Write the memory profile to the given file before exiting")
 	runtimeRoot := opts.Flags("--runtime-root").Label("PATH").String("Path to the runtime root directory [~/.chainspace]", defaultRootDir())
+	sbacOnly := opts.Flags("--sbac-only").Label("BOOL").Bool("Start the node as a node only")
+	checkerOnly := opts.Flags("--checker-only").Label("BOOL").Bool("Start the node as a checker node only")
+
 	networkName, nodeID := getNetworkNameAndNodeID(opts, args)
+
+	if *sbacOnly == true && *checkerOnly == true {
+		log.Fatal("Cannot set the node as node-only and checker-only at the same time")
+	}
 
 	_, err := os.Stat(*configRoot)
 	if err != nil {
@@ -71,6 +78,8 @@ func cmdRun(args []string, usage string) {
 		NodeID:      nodeID,
 		Node:        nodeCfg,
 		Contracts:   cts,
+		SBACOnly:    *sbacOnly,
+		CheckerOnly: *checkerOnly,
 	}
 
 	if *cpuProfile != "" {

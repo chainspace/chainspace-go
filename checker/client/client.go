@@ -108,14 +108,6 @@ func (c *Client) Check(tx *sbac.Transaction) (map[uint64][]byte, error) {
 		return nil, fmt.Errorf("not enough evidences returned by nodes")
 	}
 
-	/*
-		twotplusone := (2*(len(nodes)/3) + 1)
-		if len(evidences) < twotplusone {
-			log.Error("not enough evidence returned by nodes", log.Int("expected", twotplusone), log.Int("got", len(evidences)))
-			return nil, fmt.Errorf("not enough evidences returned by nodes expected(%v) got(%v)", twotplusone, len(evidences))
-		}
-	*/
-
 	return evidences, nil
 }
 

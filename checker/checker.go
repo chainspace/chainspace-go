@@ -55,6 +55,22 @@ func (s *Service) Check(ctx context.Context, tx *sbac.Transaction) (bool, error)
 	return ok, nil
 }
 
+func (s *Service) CheckAndSign(
+	ctx context.Context, tx *sbac.Transaction) (bool, []byte, error) {
+	ok, err := s.Check(ctx, tx)
+	if err != nil {
+		return false, nil, err
+	}
+
+	// sign tx and make response
+	txbytes, err := proto.Marshal(tx)
+	if err != nil {
+		log.Error("checker: marshal error", fld.Err(err))
+		return false, nil, fmt.Errorf("marshal error [err=%v]", err)
+	}
+	return ok, s.privkey.Sign(txbytes), nil
+}
+
 func (s *Service) check(
 	ctx context.Context, payload []byte, msgID uint64) (*service.Message, error) {
 	req := &CheckRequest{}

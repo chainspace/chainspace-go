@@ -165,7 +165,6 @@ func (s *Service) onWaitingForCommit(st *States) (State, error) {
 	default:
 		return StateConsensusCommitTriggered, nil
 	}
-
 }
 
 func (s *Service) onWaitingForConsensus1(st *States) (State, error) {
