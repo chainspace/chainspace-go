@@ -1,10 +1,9 @@
 package sbac // import "chainspace.io/prototype/sbac"
 
 import (
+	"crypto/sha512"
 	"encoding/binary"
 	"fmt"
-
-	"chainspace.io/prototype/internal/combihash"
 )
 
 type IDs struct {
@@ -48,7 +47,7 @@ func MakeTraceIDs(traces []*Trace) ([]TraceIdentifierPair, error) {
 // the ID is composed of: the contract ID, the procedure, input objects keys, input
 // reference keys, trace ID of the dependencies
 func MakeTraceID(trace *Trace) ([]byte, error) {
-	ch := combihash.New()
+	hasher := sha512.New512_256()
 	data := []byte{}
 	data = append(data, []byte(trace.ContractID)...)
 	data = append(data, []byte(trace.Procedure)...)
@@ -66,28 +65,28 @@ func MakeTraceID(trace *Trace) ([]byte, error) {
 		}
 		data = append(data, id...)
 	}
-	_, err := ch.Write(data)
+	_, err := hasher.Write(data)
 	if err != nil {
 		return nil, fmt.Errorf("sbac: unable to create hash: %v", err)
 	}
 
-	return ch.Digest(), nil
+	return hasher.Sum(nil), nil
 }
 
 // MakeTraceObjectIDs create a list of Objects based on the Trace / Trace ID input
 // Objects are ordered the same as the output objects of the trace
 func MakeObjectIDs(pair *TraceIdentifierPair) ([]*Object, error) {
-	ch := combihash.New()
+	hasher := sha512.New512_256()
 	out := []*Object{}
 	for i, outobj := range pair.Trace.OutputObjects {
-		ch.Reset()
+		hasher.Reset()
 		id := make([]byte, len(pair.ID))
 		copy(id, pair.ID)
 		id = append(id, outobj...)
 		index := make([]byte, 4)
 		binary.LittleEndian.PutUint32(index, uint32(i))
 		id = append(id, index...)
-		_, err := ch.Write(id)
+		_, err := hasher.Write(id)
 		if err != nil {
 			return nil, fmt.Errorf("sbac: unable to create hash: %v", err)
 		}
@@ -97,7 +96,7 @@ func MakeObjectIDs(pair *TraceIdentifierPair) ([]*Object, error) {
 		}
 		o := &Object{
 			Value:     outobj,
-			VersionID: ch.Digest(),
+			VersionID: hasher.Sum(nil),
 			Labels:    labels,
 			Status:    ObjectStatus_ACTIVE,
 		}
@@ -125,7 +124,7 @@ func MakeTraceObjectPairs(traces []TraceIdentifierPair) ([]TraceObjectPair, erro
 }
 
 func MakeTransactionID(top []TraceObjectPair) ([]byte, error) {
-	ch := combihash.New()
+	hasher := sha512.New512_256()
 	bytes := []byte{}
 	for _, v := range top {
 		bytes = append(bytes, v.Trace.ID...)
@@ -133,11 +132,11 @@ func MakeTransactionID(top []TraceObjectPair) ([]byte, error) {
 			bytes = append(bytes, o.VersionID...)
 		}
 	}
-	_, err := ch.Write(bytes)
+	_, err := hasher.Write(bytes)
 	if err != nil {
 		return nil, fmt.Errorf("sbac: unable to create hash: %v", err)
 	}
-	return ch.Digest(), nil
+	return hasher.Sum(nil), nil
 }
 
 func MakeIDs(tx *Transaction) (*IDs, error) {

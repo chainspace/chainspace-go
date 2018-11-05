@@ -2,13 +2,13 @@ package sbac // import "chainspace.io/prototype/sbac"
 
 import (
 	"context"
+	"crypto/sha512"
 	"encoding/base32"
 	"errors"
 	"fmt"
 
 	"chainspace.io/prototype/broadcast"
 	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/internal/combihash"
 	"chainspace.io/prototype/internal/conns"
 	"chainspace.io/prototype/internal/crypto/signature"
 	"chainspace.io/prototype/internal/log"
@@ -289,9 +289,9 @@ func (s *Service) handleCreateObject(ctx context.Context, payload []byte, id uin
 		res.Error = fmt.Errorf("sbac: nil object").Error()
 		return createPayload(id, res)
 	}
-	ch := combihash.New()
-	ch.Write(req.Object)
-	versionid := ch.Digest()
+	hasher := sha512.New512_256()
+	hasher.Write(req.Object)
+	versionid := hasher.Sum(nil)
 	if log.AtDebug() {
 		log.Debug("sbac: creating new object", log.String("objet", string(req.Object)), log.Uint32("object.id", ID(versionid)))
 	}
@@ -330,12 +330,12 @@ func (s *Service) handleCreateObjects(ctx context.Context, payload []byte, id ui
 		return createObjectsPayload(id, res)
 	}
 
-	ch := combihash.New()
+	hasher := sha512.New512_256()
 	out := make([][]byte, 0, len(req.Objects))
 	for _, object := range req.Objects {
-		ch.Reset()
-		ch.Write(object)
-		versionid := ch.Digest()
+		hasher.Reset()
+		hasher.Write(object)
+		versionid := hasher.Sum(nil)
 		o, err := s.store.CreateObject(versionid, object)
 		if err != nil {
 			res.Error = err.Error()

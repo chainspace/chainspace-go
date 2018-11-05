@@ -1,13 +1,13 @@
 package client // import "chainspace.io/prototype/sbac/client"
 
 import (
+	"crypto/sha512"
 	"encoding/base64"
 	"errors"
 	"sync"
 	"time"
 
 	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/internal/combihash"
 	"chainspace.io/prototype/internal/conns"
 	"chainspace.io/prototype/internal/crypto/signature"
 	"chainspace.io/prototype/internal/log"
@@ -145,9 +145,9 @@ func (c *client) Query(vid []byte) ([]*sbac.Object, error) {
 }
 
 func (c *client) Create(obj []byte) ([][]byte, error) {
-	ch := combihash.New()
-	ch.Write(obj)
-	key := ch.Digest()
+	hasher := sha512.New512_256()
+	hasher.Write(obj)
+	key := hasher.Sum(nil)
 	nodes := c.top.NodesInShard(c.top.ShardForVersionID(key))
 
 	req := &sbac.CreateObjectRequest{
