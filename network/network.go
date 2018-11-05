@@ -66,6 +66,17 @@ type nodeConfig struct {
 	tls *tls.Config
 }
 
+type NetTopology interface {
+	Dial(nodeID uint64, timeout time.Duration) (*Conn, error)
+	NodesInShard(shardID uint64) []uint64
+	RandNodeInShard(shardID uint64) uint64
+	ShardForNode(nodeID uint64) uint64
+	ShardForVersionID(key []byte) uint64
+	ShardSize() uint64
+	TotalNodes() uint64
+	SeedPublicKeys() map[uint64]signature.PublicKey
+}
+
 // Topology represents a Chainspace network.
 type Topology struct {
 	contacts   *contacts

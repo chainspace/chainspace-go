@@ -235,7 +235,7 @@ func (s *Service) toObjectLocked(st *States) (State, error) {
 	if allInShard {
 		return StateObjectsDeactivated, nil
 	}
-	log.Error("OBJECTS IN MULTIPLE SHARDS")
+	//log.Error("OBJECTS IN MULTIPLE SHARDS")
 	return StateAcceptPhase1Broadcasted, nil
 }
 

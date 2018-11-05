@@ -44,7 +44,7 @@ type cache struct {
 	key        signature.KeyPair
 	maxPayload int
 	selfID     uint64
-	top        *network.Topology
+	top        network.NetTopology
 	connection service.CONNECTION
 
 	pendingAcks   map[AckID]PendingAck
@@ -189,7 +189,7 @@ func (c *cache) retryRequests() {
 	}
 }
 
-func NewCache(nodeID uint64, top *network.Topology, maxPayload int, key signature.KeyPair, connection service.CONNECTION) *cache {
+func NewCache(nodeID uint64, top network.NetTopology, maxPayload int, key signature.KeyPair, connection service.CONNECTION) *cache {
 	c := &cache{
 		conns:       map[uint64]*MuConn{},
 		cmu:         make([]sync.Mutex, top.TotalNodes()),

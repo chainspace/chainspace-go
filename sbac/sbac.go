@@ -27,7 +27,7 @@ type Config struct {
 	Directory   string
 	KVStore     kv.Service
 	NodeID      uint64
-	Top         *network.Topology
+	Top         network.NetTopology
 	SigningKey  *config.Key
 	Pubsub      pubsub.Server
 	ShardSize   uint64
@@ -49,7 +49,7 @@ type Service struct {
 	shardID     uint64
 	shardSize   uint64
 	table       *StateTable
-	top         *network.Topology
+	top         network.NetTopology
 	txstates    *StateMachineScheduler
 }
 
@@ -123,8 +123,6 @@ func (s *Service) handleSBAC(
 		return nil, fmt.Errorf("sbac: sbac unmarshaling error: %v", err)
 	}
 
-	// str := fmt.Sprintf("NEW SBAC %v %v %v %v", ID(req.GetTxID()), req.GetPeerID(), req.GetOp(), req.GetDecision())
-	//log.Error(str)
 	// if we received a COMMIT opcode, the statemachine may not exists
 	// lets check and create it here.
 	if req.Op == SBACOp_Commit {

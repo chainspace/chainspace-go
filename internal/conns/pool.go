@@ -21,7 +21,7 @@ type pool struct {
 	conns []*cache
 }
 
-func NewPool(size int, nodeID uint64, top *network.Topology, maxPayload int, key signature.KeyPair, connection service.CONNECTION) *pool {
+func NewPool(size int, nodeID uint64, top network.NetTopology, maxPayload int, key signature.KeyPair, connection service.CONNECTION) *pool {
 	conns := make([]*cache, 0, size)
 	for i := 0; i < size; i += 1 {
 		cc := NewCache(
