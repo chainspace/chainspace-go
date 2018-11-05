@@ -2,6 +2,7 @@ package sbac
 
 import (
 	"fmt"
+	"sync"
 
 	"chainspace.io/prototype/internal/log"
 	"chainspace.io/prototype/internal/log/fld"
@@ -28,13 +29,15 @@ func (e StateSBAC) String() string {
 	}
 }
 
-type SBACEventAction func(st *States, e *SBACEvent) (StateSBAC, error)
+type SBACEventAction func(st *States, decisions map[uint64]SignedDecision, e *SBACEvent) (StateSBAC, error)
 
 type SBACStateMachine struct {
-	action SBACEventAction
-	msgs   map[uint64]*SBACMessage
-	phase  SBACOp
-	state  StateSBAC
+	action    SBACEventAction
+	mu        sync.Mutex
+	msgs      map[uint64]*SBACMessage
+	decisions map[uint64]SignedDecision
+	phase     SBACOp
+	state     StateSBAC
 }
 
 func (c *SBACStateMachine) State() StateSBAC {
@@ -54,7 +57,8 @@ func (c *SBACStateMachine) processEvent(st *States, e *SBACEvent) error {
 
 	var err error
 	c.msgs[e.msg.PeerID] = e.msg
-	c.state, err = c.action(st, e)
+	c.SetDecision(e.PeerID(), SignedDecision{e.msg.Decision, e.msg.Signature})
+	c.state, err = c.action(st, c.GetDecisions(), e)
 	return err
 }
 
@@ -66,24 +70,40 @@ func (c *SBACStateMachine) Data() interface{} {
 	return c.msgs
 }
 
+func (c *SBACStateMachine) GetDecisions() map[uint64]SignedDecision {
+	c.mu.Lock()
+	out := map[uint64]SignedDecision{}
+	for k, v := range c.decisions {
+		out[k] = v
+	}
+	c.mu.Unlock()
+	return out
+}
+
+func (c *SBACStateMachine) SetDecision(n uint64, d SignedDecision) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.decisions[n] = d
+}
+
 func NewSBACStateMachine(phase SBACOp, action SBACEventAction) *SBACStateMachine {
 	return &SBACStateMachine{
-		action: action,
-		phase:  phase,
-		state:  StateSBACWaiting,
-		msgs:   map[uint64]*SBACMessage{},
+		action:    action,
+		phase:     phase,
+		state:     StateSBACWaiting,
+		msgs:      map[uint64]*SBACMessage{},
+		decisions: map[uint64]SignedDecision{},
 	}
 }
 
-func (s *Service) onSBACEvent(st *States, e *SBACEvent) (StateSBAC, error) {
+func (s *Service) onSBACEvent(
+	st *States, decisions map[uint64]SignedDecision, e *SBACEvent) (StateSBAC, error) {
 	shards := s.shardsInvolvedWithoutSelf(st.detail.Tx)
 	var somePending bool
 	// for each shards, get the nodes id, and checks if they answered
 	// vtwotplusone := quorum2t1(s.shardSize)
 	vtwotplusone := s.shardSize
 	vtplusone := quorumt1(s.shardSize)
-	st.decisions.Set(e.msg.Op, e.PeerID(), SignedDecision{e.msg.Decision, e.msg.Signature})
-	decisions := st.decisions.Get(e.msg.Op)
 	for _, v := range shards {
 		nodes := s.top.NodesInShard(v)
 		var accepted uint64

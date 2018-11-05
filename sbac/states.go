@@ -212,7 +212,7 @@ func (s *Service) onWaitingForConsensus2(st *States) (State, error) {
 
 // TODO(): verify signatures here, but need to be passed to first.
 func (s *Service) onWaitingForConsensusCommit(st *States) (State, error) {
-	state := st.consensus[ConsensusOp_Consensus2].State()
+	state := st.consensus[ConsensusOp_ConsensusCommit].State()
 	if state == StateConsensusWaiting {
 		return StateWaitingForConsensusCommit, nil
 	} else if state == StateConsensusRejected {

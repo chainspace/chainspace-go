@@ -51,15 +51,9 @@ type DetailTx struct {
 	HashID    uint32
 }
 
-type Decisions struct {
-	decisions map[SBACOp]map[uint64]SignedDecision
-	mu        sync.Mutex
-}
-
 type States struct {
 	consensus map[ConsensusOp]*ConsensusStateMachine
 	sbac      map[SBACOp]*SBACStateMachine
-	decisions Decisions
 	detail    *DetailTx
 }
 
@@ -69,22 +63,6 @@ type StateMachine struct {
 	events *pendingEvents
 	states *States
 	state  State
-}
-
-func (s *Decisions) Get(op SBACOp) map[uint64]SignedDecision {
-	s.mu.Lock()
-	out := map[uint64]SignedDecision{}
-	for k, v := range s.decisions[op] {
-		out[k] = v
-	}
-	s.mu.Unlock()
-	return out
-}
-
-func (s *Decisions) Set(op SBACOp, n uint64, d SignedDecision) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.decisions[op][n] = d
 }
 
 func (sm *StateMachine) StateReport() *StateReport {
@@ -98,13 +76,13 @@ func (sm *StateMachine) StateReport() *StateReport {
 		Phase2Decisions: map[uint64]bool{},
 		PendingEvents:   int32(sm.events.Len()),
 	}
-	for k, v := range sm.states.decisions.Get(SBACOp_Commit) {
+	for k, v := range sm.states.sbac[SBACOp_Commit].GetDecisions() {
 		s.CommitDecisions[k] = v.Decision == SBACDecision_ACCEPT
 	}
-	for k, v := range sm.states.decisions.Get(SBACOp_Phase1) {
+	for k, v := range sm.states.sbac[SBACOp_Phase1].GetDecisions() {
 		s.Phase1Decisions[k] = v.Decision == SBACDecision_ACCEPT
 	}
-	for k, v := range sm.states.decisions.Get(SBACOp_Phase2) {
+	for k, v := range sm.states.sbac[SBACOp_Phase2].GetDecisions() {
 		s.Phase2Decisions[k] = v.Decision == SBACDecision_ACCEPT
 	}
 	return &s
@@ -247,13 +225,6 @@ func NewStateMachine(cfg *StateMachineConfig) *StateMachine {
 			detail:    cfg.Detail,
 			consensus: map[ConsensusOp]*ConsensusStateMachine{},
 			sbac:      map[SBACOp]*SBACStateMachine{},
-			decisions: Decisions{
-				decisions: map[SBACOp]map[uint64]SignedDecision{
-					SBACOp_Phase1: map[uint64]SignedDecision{},
-					SBACOp_Phase2: map[uint64]SignedDecision{},
-					SBACOp_Commit: map[uint64]SignedDecision{},
-				},
-			},
 		},
 		state: cfg.InitialState,
 	}

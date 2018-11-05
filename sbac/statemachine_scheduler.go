@@ -9,9 +9,9 @@ import (
 )
 
 type StateMachineScheduler struct {
+	consensusEventAction ConsensusEventAction
 	mu                   sync.Mutex
 	states               map[string]*StateMachine
-	consensusEventAction ConsensusEventAction
 	sbacEventAction      SBACEventAction
 	table                *StateTable
 }
