@@ -23,13 +23,15 @@ import (
 
 var (
 	address     string
-	port        string
+	port        int
 	workers     int
 	objects     int
 	duration    int
+	delay       int
 	subPort     int
 	networkName string
 	nodeCount   int
+	shardCount  int
 
 	metrics = map[int][]time.Duration{}
 	mu      sync.Mutex
@@ -52,13 +54,15 @@ type outputty struct {
 
 func init() {
 	flag.StringVar(&address, "addr", "", "address of the node http server to use")
-	flag.StringVar(&port, "port", "", "port to connect in order to send transactions (use with gcp)")
+	flag.IntVar(&port, "port", 0, "port to connect in order to send transactions (use with gcp)")
 	flag.IntVar(&workers, "txs", 1, "number of transactions to send per seconds default=1")
+	flag.IntVar(&delay, "delay", 1, "delay to wait before transaction, default=1")
 	flag.IntVar(&objects, "objects", 1, "number of objects to be used as inputs in the transaction default=1")
 	flag.IntVar(&duration, "duration", 5, "duration of the test")
 	flag.IntVar(&subPort, "pubsub-port", 0, "pubsub port, this is the same port for all nodes")
 	flag.StringVar(&networkName, "network-name", "testnet", "network name")
 	flag.IntVar(&nodeCount, "node-count", 4, "node count per shard")
+	flag.IntVar(&shardCount, "shard-count", 1, "node count per shard")
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
 }
@@ -108,19 +112,16 @@ func seedObjects(id int) ([]string, error) {
 }
 
 func main() {
-	if len(address) <= 0 && len(port) <= 0 {
+	if len(address) <= 0 && port <= 0 {
 		fmt.Println("missing address or port parameter")
 		os.Exit(1)
 	}
-	if len(address) > 0 && len(port) > 0 {
-		fmt.Println("cannot specify address and port parameter together")
-		os.Exit(1)
-	}
-	if len(port) > 0 {
+	if port > 0 && len(address) > 0 {
+		getAddresses()
+	} else if port > 0 {
 		getAddressesFromGCP()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	subscribr = NewSubscriber(ctx, subPort == 0, nodeCount)
 
 	wg := &sync.WaitGroup{}
 	tr := NewTestRunner(wg)
@@ -203,7 +204,7 @@ func getAddressesFromGCP() {
 	req := computeService.Instances.List(project, "europe-west2-b")
 	if err := req.Pages(ctx, func(page *compute.InstanceList) error {
 		for n, v := range page.Items {
-			addresses = append(addresses, v.NetworkInterfaces[0].AccessConfigs[0].NatIP+":"+port)
+			addresses = append(addresses, v.NetworkInterfaces[0].AccessConfigs[0].NatIP+":"+fmt.Sprintf("%v", port))
 			pubsubAddresses[uint64(n)] = v.NetworkInterfaces[0].AccessConfigs[0].NatIP + ":" + fmt.Sprintf("%v", subPort)
 		}
 		return nil
@@ -212,10 +213,13 @@ func getAddressesFromGCP() {
 	}
 }
 
-func getAddress(workerID int) string {
-	if len(address) > 0 {
-		return address
+func getAddresses() {
+	for i := 1; i <= (nodeCount * shardCount); i += 1 {
+		addresses = append(addresses, fmt.Sprintf("%v:%v", address, port+i))
 	}
+}
+
+func getAddress(workerID int) string {
 	return addresses[workerID%len(addresses)]
 }
 

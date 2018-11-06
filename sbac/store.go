@@ -1,9 +1,26 @@
 package sbac // import "chainspace.io/prototype/sbac"
 
 import (
+	"encoding/base64"
 	"errors"
+	"path"
 
+	"chainspace.io/prototype/internal/log"
+	"chainspace.io/prototype/internal/log/fld"
 	"github.com/dgraph-io/badger"
+)
+
+const (
+	badgerStorePath = "/sbac/"
+)
+
+var (
+	ErrTransactionAlreadyExists    = errors.New("Transaction already exists")
+	ErrTransactionAlreadyCommitted = errors.New("Transaction already committed")
+	ErrObjectAlreadyExists         = errors.New("Output object already exists")
+	ErrObjectAlreadyInactive       = errors.New("Object already in INACTIVE state")
+	ErrObjectCannotBeLocked        = errors.New("Object cannot be locked (already INACTIVE or LOCKED)")
+	ErrObjectCannotBeUnlocked      = errors.New("Object cannot be unlocked")
 )
 
 type keyType byte
@@ -16,14 +33,39 @@ const (
 	keyFinishedTxn
 )
 
-var (
-	ErrTransactionAlreadyExists    = errors.New("Transaction already exists")
-	ErrTransactionAlreadyCommitted = errors.New("Transaction already committed")
-	ErrObjectAlreadyExists         = errors.New("Output object already exists")
-	ErrObjectAlreadyInactive       = errors.New("Object already in INACTIVE state")
-	ErrObjectCannotBeLocked        = errors.New("Object cannot be locked (already INACTIVE or LOCKED)")
-	ErrObjectCannotBeUnlocked      = errors.New("Object cannot be unlocked")
-)
+type Store interface {
+	Close() error
+	CommitTransaction(
+		txnkey []byte, inobjkeys [][]byte, objs []*Object) error
+	LockObjects(objkeys [][]byte) error
+	UnlockObjects(objkeys [][]byte) error
+	AddTransaction(txkey []byte, value []byte) error
+	GetTransaction(txkey []byte) ([]byte, bool, error)
+	GetObjects(vids [][]byte) ([]*Object, error)
+	DeactivateObjects(keys [][]byte) error
+	CreateObjects(objs []*Object) error
+	CreateObject(vid, value []byte) (*Object, error)
+	DeleteObjects(objkeys [][]byte) error
+	FinishTransaction(txnkey []byte) error
+	TxnFinished(txnkey []byte) (bool, error)
+}
+
+type BadgerStore struct {
+	db *badger.DB
+}
+
+func NewBadgerStore(rootDir string) (*BadgerStore, error) {
+	opts := badger.DefaultOptions
+	badgerPath := path.Join(rootDir, badgerStorePath)
+	opts.Dir = badgerPath
+	opts.ValueDir = badgerPath
+	db, err := badger.Open(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return &BadgerStore{db: db}, nil
+}
 
 func makeKey(ty keyType, key []byte) []byte {
 	out := make([]byte, len(key)+1)
@@ -115,11 +157,16 @@ func commitTransaction(txn *badger.Txn, txnkey []byte) error {
 	return nil
 }
 
+func (s *BadgerStore) Close() error {
+	return s.db.Close()
+}
+
 // CommitTransaction will in the same transaction move all object from their current state to
 // inactive, creates output objects, then update the transaction commit status.
 // if any operation is not possible, everything is rollback and an error is returned.
-func CommitTransaction(store *badger.DB, txnkey []byte, inobjkeys [][]byte, objs []*Object) error {
-	return store.Update(func(tx *badger.Txn) error {
+func (s *BadgerStore) CommitTransaction(
+	txnkey []byte, inobjkeys [][]byte, objs []*Object) error {
+	return s.db.Update(func(tx *badger.Txn) error {
 		if err := setObjectsInactive(tx, inobjkeys); err != nil {
 			return err
 		}
@@ -132,8 +179,8 @@ func CommitTransaction(store *badger.DB, txnkey []byte, inobjkeys [][]byte, objs
 
 // LockObjects perform a lock on all the objects from the keys slice. If one+ object is already
 // locked or inactive this action is rolled back and an error is returned
-func LockObjects(store *badger.DB, objkeys [][]byte) error {
-	return store.Update(func(txn *badger.Txn) error {
+func (s *BadgerStore) LockObjects(objkeys [][]byte) error {
+	return s.db.Update(func(txn *badger.Txn) error {
 		for _, objkey := range objkeys {
 			key := objectStatusKey(objkey)
 			item, err := txn.Get(key)
@@ -158,12 +205,13 @@ func LockObjects(store *badger.DB, objkeys [][]byte) error {
 
 // UnlockObject unlock all object coresponding to the objects keys. If one+ object is inactive
 // all operations are rolled back and an error is returned
-func UnlockObjects(store *badger.DB, objkeys [][]byte) error {
-	return store.Update(func(txn *badger.Txn) error {
+func (s *BadgerStore) UnlockObjects(objkeys [][]byte) error {
+	return s.db.Update(func(txn *badger.Txn) error {
 		for _, objkey := range objkeys {
 			key := objectStatusKey(objkey)
 			item, err := txn.Get(key)
 			if err != nil {
+				log.Error("GET ERROR:", fld.Err(err), log.String("id", base64.StdEncoding.EncodeToString(objkey)))
 				return err
 			}
 			val, err := item.Value()
@@ -175,6 +223,7 @@ func UnlockObjects(store *badger.DB, objkeys [][]byte) error {
 			}
 			err = txn.Set(key, []byte{byte(ObjectStatus_ACTIVE)})
 			if err != nil {
+				log.Error("SET ERROR:", fld.Err(err), log.String("id", base64.StdEncoding.EncodeToString(objkey)))
 				return err
 			}
 		}
@@ -184,8 +233,8 @@ func UnlockObjects(store *badger.DB, objkeys [][]byte) error {
 
 // AddTransaction create a new entry for the transaction seen by this node. This also create
 // a new entry for the committed transaction set to false
-func AddTransaction(store *badger.DB, txkey []byte, value []byte) error {
-	return store.Update(func(txn *badger.Txn) error {
+func (s *BadgerStore) AddTransaction(txkey []byte, value []byte) error {
+	return s.db.Update(func(txn *badger.Txn) error {
 		seenkey := seenTxnKey(txkey)
 		_, err := txn.Get(seenkey)
 		if err == nil {
@@ -211,10 +260,10 @@ func AddTransaction(store *badger.DB, txkey []byte, value []byte) error {
 // GetTransaction return a transaction stored in database matching the given key.
 // if the transaction key do not exists an error is returned
 // returns the value of the transction, and if the transaction is committed or not as a boolean
-func GetTransaction(store *badger.DB, txkey []byte) ([]byte, bool, error) {
+func (s *BadgerStore) GetTransaction(txkey []byte) ([]byte, bool, error) {
 	var txvalue []byte
 	var txcommitted bool
-	err := store.View(func(txn *badger.Txn) error {
+	err := s.db.View(func(txn *badger.Txn) error {
 		seenkey := seenTxnKey(txkey)
 		item, err := txn.Get(seenkey)
 		if err != nil {
@@ -246,9 +295,9 @@ func GetTransaction(store *badger.DB, txkey []byte) ([]byte, bool, error) {
 
 // GetObjectsFromStore return the list of objects corresponding to the list of versionIDs
 // order the same. if any of the keys do not match in database an error is returned
-func GetObjects(store *badger.DB, vids [][]byte) ([]*Object, error) {
+func (s *BadgerStore) GetObjects(vids [][]byte) ([]*Object, error) {
 	objects := make([]*Object, 0, len(vids))
-	err := store.View(func(txn *badger.Txn) error {
+	err := s.db.View(func(txn *badger.Txn) error {
 		for _, vid := range vids {
 			o := &Object{
 				VersionID: vid,
@@ -256,6 +305,7 @@ func GetObjects(store *badger.DB, vids [][]byte) ([]*Object, error) {
 			objkey := objectKey(vid)
 			item, err := txn.Get(objkey)
 			if err != nil {
+				log.Error("error getting objects", log.String("id", base64.StdEncoding.EncodeToString(vid)), fld.Err(err))
 				return err
 			}
 			val, err := item.Value()
@@ -283,24 +333,24 @@ func GetObjects(store *badger.DB, vids [][]byte) ([]*Object, error) {
 
 // DeactivateObjects set to inactive all objects in the list
 // this will return an error if one+ objects are already inactive
-func DeactivateObjects(store *badger.DB, keys [][]byte) error {
-	return store.Update(func(tx *badger.Txn) error {
+func (s *BadgerStore) DeactivateObjects(keys [][]byte) error {
+	return s.db.Update(func(tx *badger.Txn) error {
 		return setObjectsInactive(tx, keys)
 	})
 }
 
 // CreateObjects
-func CreateObjects(store *badger.DB, objs []*Object) error {
-	return store.Update(func(tx *badger.Txn) error {
+func (s *BadgerStore) CreateObjects(objs []*Object) error {
+	return s.db.Update(func(tx *badger.Txn) error {
 		return createObjects(tx, objs)
 	})
 }
 
 // testing purpose only, allow us to create an new object in the node without consensus
 // in a completely arbitrary way
-func CreateObject(store *badger.DB, vid, value []byte) (*Object, error) {
+func (s *BadgerStore) CreateObject(vid, value []byte) (*Object, error) {
 	var o *Object
-	return o, store.Update(func(txn *badger.Txn) error {
+	return o, s.db.Update(func(txn *badger.Txn) error {
 		objkey := objectKey(vid)
 		_, err := txn.Get(objkey)
 		if err == nil {
@@ -330,14 +380,14 @@ func CreateObject(store *badger.DB, vid, value []byte) (*Object, error) {
 
 // testing purpose only, allow us to delete an object in the node without consensus
 // in a completely arbitrary way
-func DeleteObjects(store *badger.DB, objkeys [][]byte) error {
-	return store.Update(func(tx *badger.Txn) error {
+func (s *BadgerStore) DeleteObjects(objkeys [][]byte) error {
+	return s.db.Update(func(tx *badger.Txn) error {
 		return setObjectsInactive(tx, objkeys)
 	})
 }
 
-func FinishTransaction(store *badger.DB, txnkey []byte) error {
-	return store.Update(func(txn *badger.Txn) error {
+func (s *BadgerStore) FinishTransaction(txnkey []byte) error {
+	return s.db.Update(func(txn *badger.Txn) error {
 		finishedTxn := finishedTxnKey(txnkey)
 		if err := txn.Set(finishedTxn, []byte{}); err != nil {
 			return err
@@ -346,9 +396,9 @@ func FinishTransaction(store *badger.DB, txnkey []byte) error {
 	})
 
 }
-func TxnFinished(store *badger.DB, txnkey []byte) (bool, error) {
+func (s *BadgerStore) TxnFinished(txnkey []byte) (bool, error) {
 	var ok bool
-	var err error = store.View(func(txn *badger.Txn) error {
+	var err error = s.db.View(func(txn *badger.Txn) error {
 		key := finishedTxnKey(txnkey)
 		_, err := txn.Get(key)
 		if err != nil && err == badger.ErrKeyNotFound {

@@ -10,9 +10,9 @@ type pendingEvents struct {
 	cancel func()
 	cond   *sync.Cond
 	ctx    context.Context
-	events []*Event
+	events []Event
 	mu     sync.Mutex
-	cb     func(*Event) bool
+	cb     func(Event) bool
 }
 
 func (pe *pendingEvents) Len() int {
@@ -27,7 +27,7 @@ func (pe *pendingEvents) Close() {
 	pe.OnEvent(nil)
 }
 
-func (pe *pendingEvents) OnEvent(e *Event) {
+func (pe *pendingEvents) OnEvent(e Event) {
 	pe.mu.Lock()
 	pe.events = append(pe.events, e)
 	pe.mu.Unlock()
@@ -53,13 +53,13 @@ func (pe *pendingEvents) Run() {
 	}
 }
 
-func NewPendingEvents(cb func(*Event) bool) *pendingEvents {
+func NewPendingEvents(cb func(Event) bool) *pendingEvents {
 	ctx, cancel := context.WithCancel(context.Background())
 	pe := &pendingEvents{
 		cancel: cancel,
 		cb:     cb,
 		ctx:    ctx,
-		events: []*Event{},
+		events: []Event{},
 	}
 	pe.cond = sync.NewCond(&pe.mu)
 	return pe

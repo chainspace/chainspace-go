@@ -15,8 +15,9 @@ type Object struct {
 }
 
 type Transaction struct {
-	Traces   []Trace                `json:"traces"`
-	Mappings map[string]interface{} `json:"mappings"`
+	Traces     []Trace                `json:"traces"`
+	Mappings   map[string]interface{} `json:"mappings"`
+	Signatures map[uint64]string      `json:"signatures"` //base64 encoded
 }
 
 func (ct *Transaction) ToSBAC() (*sbac.Transaction, error) {

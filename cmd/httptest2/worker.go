@@ -30,7 +30,7 @@ func NewWorker(seed []string, labels [][]string, id int) *worker {
 	url := (&url.URL{
 		Scheme: "http",
 		Host:   getAddress(id),
-		Path:   "transaction",
+		Path:   "transaction/unchecked",
 	}).String()
 
 	objsdata := []interface{}{}

@@ -46,6 +46,11 @@ type Config struct {
 	Peers         []uint64
 }
 
+type Broadcaster interface {
+	AddTransaction(txdata []byte, fee uint64) error
+	Register(cb Callback)
+}
+
 // Service implements the broadcast and consensus system.
 //
 // TODO(tav): pad/re-order to minimise false sharing.

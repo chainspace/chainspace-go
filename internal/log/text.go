@@ -50,11 +50,13 @@ func textLog(e entry) {
 		os.Stderr.Write(b.buf)
 		consoleMu.Unlock()
 	}
+
 	fileMu.Lock()
 	if logFile != nil && fileLevel <= e.level {
 		logFile.Write(b.buf)
 	}
 	fileMu.Unlock()
+
 }
 
 // Adapted from the MIT-licensed zap.

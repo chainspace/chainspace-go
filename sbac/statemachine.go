@@ -1,6 +1,8 @@
-package sbac // import "chainspace.io/prototype/sbac"
+package sbac
 
 import (
+	"bytes"
+	fmt "fmt"
 	"sync"
 
 	"chainspace.io/prototype/internal/log"
@@ -10,7 +12,6 @@ import (
 type StateTable struct {
 	actions     map[State]Action
 	transitions map[StateTransition]Transition
-	onEvent     func(tx *TxDetails, event *Event) error
 }
 
 type StateTransition struct {
@@ -23,73 +24,65 @@ type SignedDecision struct {
 	Signature []byte
 }
 
-type TxDetails struct {
-	Consensus1Tx      *SBACTransaction
-	Consensus2Tx      *SBACTransaction
-	ConsensusCommitTx *SBACTransaction
-
-	Mu              sync.Mutex
-	CommitDecisions map[uint64]SignedDecision
-	Phase1Decisions map[uint64]SignedDecision
-	Phase2Decisions map[uint64]SignedDecision
-
-	CheckersEvidences map[uint64][]byte
-	ID                []byte
-	Raw               []byte
-	Result            chan bool
-	Tx                *Transaction
-	HashID            uint32
-}
-
 // Action specify an action to execute when a new event is triggered.
 // it returns a State, which will be either the new actual state, the next state
 // which may required a transition from the current state to the new one (see the transition
 // table
-type Action func(tx *TxDetails) (State, error)
+type Action func(s *States) (State, error)
 
 // Transition are called when the state is change from a current state to a new one.
 // return a State which may involved a new transition as well.
-type Transition func(tx *TxDetails) (State, error)
+type Transition func(s *States) (State, error)
 
-type Event struct {
-	msg    *SBACMessage
-	peerID uint64
+type StateMachineConfig struct {
+	ConsensusAction ConsensusEventAction
+	SBACAction      SBACEventAction
+
+	Table        *StateTable
+	Detail       *DetailTx
+	InitialState State
+}
+
+type DetailTx struct {
+	ID        []byte
+	RawTx     []byte
+	Tx        *Transaction
+	Evidences map[uint64][]byte
+	HashID    uint32
+}
+
+type States struct {
+	consensus map[ConsensusOp]*ConsensusStateMachine
+	sbac      map[SBACOp]*SBACStateMachine
+	detail    *DetailTx
 }
 
 type StateMachine struct {
-	txDetails *TxDetails
-	events    *pendingEvents
-	state     State
-	table     *StateTable
-	mu        sync.Mutex
-}
-
-func (sm *StateMachine) Close() {
-	sm.events.Close()
-}
-
-func (sm *StateMachine) Reset() {
-	sm.state = StateWaitingForConsensus1
+	table  *StateTable
+	mu     sync.Mutex
+	events *pendingEvents
+	states *States
+	state  State
 }
 
 func (sm *StateMachine) StateReport() *StateReport {
-	sm.txDetails.Mu.Lock()
-	defer sm.txDetails.Mu.Unlock()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
 	s := StateReport{
-		HashID:          sm.txDetails.HashID,
-		State:           sm.State().String(),
+		HashID:          sm.states.detail.HashID,
+		State:           sm.state.String(),
 		CommitDecisions: map[uint64]bool{},
 		Phase1Decisions: map[uint64]bool{},
 		Phase2Decisions: map[uint64]bool{},
 		PendingEvents:   int32(sm.events.Len()),
 	}
-	for k, v := range sm.txDetails.CommitDecisions {
+	for k, v := range sm.states.sbac[SBACOp_Commit].GetDecisions() {
 		s.CommitDecisions[k] = v.Decision == SBACDecision_ACCEPT
 	}
-	for k, v := range sm.txDetails.Phase1Decisions {
+	for k, v := range sm.states.sbac[SBACOp_Phase1].GetDecisions() {
 		s.Phase1Decisions[k] = v.Decision == SBACDecision_ACCEPT
 	}
-	for k, v := range sm.txDetails.Phase2Decisions {
+	for k, v := range sm.states.sbac[SBACOp_Phase2].GetDecisions() {
 		s.Phase2Decisions[k] = v.Decision == SBACDecision_ACCEPT
 	}
 	return &s
@@ -118,14 +111,14 @@ func (sm *StateMachine) applyTransition(transitionTo State) error {
 		}
 
 		log.Info("applying transition",
-			log.Uint32("id", sm.txDetails.HashID),
+			log.Uint32("id", sm.states.detail.HashID),
 			log.String("old_state", curState.String()),
 			log.String("new_state", transitionTo.String()),
 		)
-		nextstate, err := f(sm.txDetails)
+		nextstate, err := f(sm.states)
 		if err != nil {
 			log.Error("unable to apply transition",
-				log.Uint32("id", sm.txDetails.HashID),
+				log.Uint32("id", sm.states.detail.HashID),
 				log.String("old_state", curState.String()),
 				log.String("new_state", transitionTo.String()),
 				fld.Err(err),
@@ -144,14 +137,14 @@ func (sm *StateMachine) moveState() error {
 		action, ok := sm.table.actions[curState]
 		if !ok {
 			log.Error("unable to find an action to map with the current state",
-				log.String("state", curState.String()), fld.TxID(sm.txDetails.HashID))
+				log.String("state", curState.String()), fld.TxID(sm.states.detail.HashID))
 			return nil
 		}
 		log.Info("applying action",
-			log.Uint32("id", sm.txDetails.HashID),
+			log.Uint32("id", sm.states.detail.HashID),
 			log.String("state", curState.String()),
 		)
-		newstate, err := action(sm.txDetails)
+		newstate, err := action(sm.states)
 		if err != nil {
 			log.Error("unable to execute action", fld.Err(err))
 			return err
@@ -176,16 +169,37 @@ func (sm *StateMachine) moveState() error {
 	}
 }
 
-func (sm *StateMachine) consumeEvent(e *Event) bool {
+func (sm *StateMachine) processEvent(rawe Event) error {
+	if !bytes.Equal(rawe.TxID(), sm.states.detail.ID) {
+		return fmt.Errorf("event linked to another transaction")
+	}
+	switch rawe.Kind() {
+	case EventKindConsensus:
+		e := rawe.(*ConsensusEvent)
+		sm.states.consensus[e.data.Op].processEvent(sm.states, e)
+		return nil
+	case EventKindSBACMessage:
+		e := rawe.(*SBACEvent)
+		sm.states.sbac[e.msg.Op].processEvent(sm.states, e)
+		return nil
+	default:
+		return fmt.Errorf("unknown event")
+	}
+}
+
+func (sm *StateMachine) consumeEvent(e Event) bool {
 	curState := sm.State()
 	if log.AtDebug() {
 		log.Info("processing new event",
-			log.Uint32("id", sm.txDetails.HashID),
+			log.Uint32("id", sm.states.detail.HashID),
 			log.String("state", curState.String()),
-			fld.PeerID(e.peerID),
+			fld.PeerID(e.PeerID()),
 		)
 	}
-	sm.table.onEvent(sm.txDetails, e)
+	// process the current event
+	sm.processEvent(e)
+
+	// then try to move the state from this point
 	if curState == StateSucceeded || curState == StateAborted {
 		if log.AtDebug() {
 			log.Debug("statemachine reach end", log.String("final_state", sm.state.String()))
@@ -200,35 +214,34 @@ func (sm *StateMachine) consumeEvent(e *Event) bool {
 	return true
 }
 
-func (sm *StateMachine) OnEvent(e *Event) {
+func (sm *StateMachine) OnEvent(e Event) {
 	sm.events.OnEvent(e)
 }
 
-func NewStateMachine(table *StateTable, txDetails *TxDetails, initialState State) *StateMachine {
-	if log.AtDebug() {
-		log.Debug("starting new statemachine", fld.TxID(txDetails.HashID))
-	}
-	log.Info("starting new statemachine", fld.TxID(txDetails.HashID))
+func NewStateMachine(cfg *StateMachineConfig) *StateMachine {
 	sm := &StateMachine{
-		state:     initialState,
-		table:     table,
-		txDetails: txDetails,
+		table: cfg.Table,
+		states: &States{
+			detail:    cfg.Detail,
+			consensus: map[ConsensusOp]*ConsensusStateMachine{},
+			sbac:      map[SBACOp]*SBACStateMachine{},
+		},
+		state: cfg.InitialState,
 	}
+	sm.states.consensus[ConsensusOp_Consensus1] =
+		NewConsensuStateMachine(ConsensusOp_Consensus1, cfg.ConsensusAction)
+	sm.states.consensus[ConsensusOp_Consensus2] =
+		NewConsensuStateMachine(ConsensusOp_Consensus2, cfg.ConsensusAction)
+	sm.states.consensus[ConsensusOp_ConsensusCommit] =
+		NewConsensuStateMachine(ConsensusOp_ConsensusCommit, cfg.ConsensusAction)
+
+	sm.states.sbac[SBACOp_Phase1] =
+		NewSBACStateMachine(SBACOp_Phase1, cfg.SBACAction)
+	sm.states.sbac[SBACOp_Phase2] =
+		NewSBACStateMachine(SBACOp_Phase2, cfg.SBACAction)
+	sm.states.sbac[SBACOp_Commit] =
+		NewSBACStateMachine(SBACOp_Commit, cfg.SBACAction)
 	sm.events = NewPendingEvents(sm.consumeEvent)
 	go sm.events.Run()
 	return sm
-}
-
-func NewTxDetails(txID, raw []byte, tx *Transaction, evidences map[uint64][]byte) *TxDetails {
-	return &TxDetails{
-		CheckersEvidences: evidences,
-		CommitDecisions:   map[uint64]SignedDecision{},
-		ID:                txID,
-		Phase1Decisions:   map[uint64]SignedDecision{},
-		Phase2Decisions:   map[uint64]SignedDecision{},
-		Raw:               raw,
-		Result:            make(chan bool),
-		Tx:                tx,
-		HashID:            ID(txID),
-	}
 }

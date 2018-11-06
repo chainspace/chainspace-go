@@ -56,22 +56,34 @@ func (tr *testrunner) initWorker() *worker {
 }
 
 func (tr *testrunner) runWorkers(ctx context.Context, workrs []*worker) {
-	waitfor := time.Second / time.Duration(workers)
 	for _, workr := range workrs {
 		workr := workr
 		go workr.run(ctx, tr.wg)
-		time.Sleep(waitfor)
 	}
 }
 
 func (tr *testrunner) Run(ctx context.Context, cancel func()) {
+	wrkrctx, cancel2 := context.WithCancel(context.Background())
+	subscribr = NewSubscriber(wrkrctx, subPort == 0, nodeCount)
 	for {
 		select {
 		case <-ctx.Done():
+			fmt.Printf("waiting for workers\n")
+			if nodeCount == 1 {
+				time.Sleep(5 * time.Second)
+			} else {
+				time.Sleep(10 * time.Second)
+			}
+			cancel()
+			cancel2()
 			return
 		default:
+			now := time.Now()
 			workrs := tr.getReadyWorkers()
-			tr.runWorkers(ctx, workrs)
+			tr.runWorkers(wrkrctx, workrs)
+			waitfor := (time.Duration(delay) * time.Second) - time.Since(now)
+			fmt.Printf("waiting for %v\n", waitfor)
+			time.Sleep(waitfor)
 		}
 
 	}

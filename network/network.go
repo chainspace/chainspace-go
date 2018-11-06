@@ -3,6 +3,7 @@ package network // import "chainspace.io/prototype/network"
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base32"
@@ -10,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"net"
 	"net/http"
 	"strconv"
@@ -62,6 +64,17 @@ func (c *contacts) set(nodeID uint64, address string) {
 type nodeConfig struct {
 	key signature.PublicKey
 	tls *tls.Config
+}
+
+type NetTopology interface {
+	Dial(nodeID uint64, timeout time.Duration) (*Conn, error)
+	NodesInShard(shardID uint64) []uint64
+	RandNodeInShard(shardID uint64) uint64
+	ShardForNode(nodeID uint64) uint64
+	ShardForVersionID(key []byte) uint64
+	ShardSize() uint64
+	TotalNodes() uint64
+	SeedPublicKeys() map[uint64]signature.PublicKey
 }
 
 // Topology represents a Chainspace network.
@@ -252,6 +265,19 @@ func (t *Topology) NodesInShard(shardID uint64) []uint64 {
 		nodes = append(nodes, i)
 	}
 	return nodes
+}
+
+// RandNodeFromShard return a random node id from a given shard
+func (t *Topology) RandNodeInShard(shardID uint64) uint64 {
+	if shardID == 0 || shardID > t.shardCount {
+		log.Fatal("Invalid shard ID", fld.ShardID(shardID), fld.ShardCount(t.shardCount))
+	}
+	nodes := t.NodesInShard(shardID)
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(len(nodes))))
+	if err != nil {
+		log.Fatal("Unable to get a random node", fld.Err(err))
+	}
+	return nodes[int(n.Int64())]
 }
 
 // SeedPublicKeys returns a map of the signing keys for each of the seed nodes.

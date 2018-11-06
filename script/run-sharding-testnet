@@ -29,7 +29,7 @@ tmux new-session -d -s ${session}
 tot="$((${1} * 4))";
 for i in $(seq 1 $tot)
 do
-    tmux send-keys "chainspace run --console-log error --file-log error --cpu-profile ~/.chainspace/${session}/node-${i}/cpu.pprof --mem-profile ~/.chainspace/${session}/node-${i}/mem.pprof ${session} ${i}" "C-l" "C-m"
+    tmux send-keys "chainspace run --console-log error --cpu-profile ~/.chainspace/${session}/node-${i}/cpu.pprof --mem-profile ~/.chainspace/${session}/node-${i}/mem.pprof ${session} ${i}" "C-l" "C-m"
     if (( ${i} != $tot )); then
 	tmux split-window
 	tmux select-layout tiled

@@ -29,7 +29,7 @@ type Config struct {
 type Client struct {
 	maxPaylod config.ByteSize
 	top       *network.Topology
-	conns     *conns.Pool
+	conns     conns.Pool
 }
 
 func (c *Client) nodesForTx(t *sbac.Transaction) []uint64 {
@@ -65,6 +65,7 @@ func (c *Client) check(nodes []uint64, t *sbac.Transaction) (map[uint64][]byte, 
 		Opcode:  int32(checker.Opcode_CHECK),
 		Payload: txbytes,
 	}
+	now := time.Now()
 	mu := &sync.Mutex{}
 	evidences := map[uint64][]byte{}
 	wg := &sync.WaitGroup{}
@@ -92,6 +93,7 @@ func (c *Client) check(nodes []uint64, t *sbac.Transaction) (map[uint64][]byte, 
 		go conns.WriteRequest(nid, &msg, 5*time.Second, true, f)
 	}
 	wg.Wait()
+	log.Error("TIME CHECKER", log.String("time-taken", time.Since(now).String()))
 	return evidences, nil
 }
 
@@ -102,10 +104,8 @@ func (c *Client) Check(tx *sbac.Transaction) (map[uint64][]byte, error) {
 		return nil, err
 	}
 
-	twotplusone := (2*(len(nodes)/3) + 1)
-	if len(evidences) < twotplusone {
-		log.Error("not enough evidence returned by nodes", log.Int("expected", twotplusone), log.Int("got", len(evidences)))
-		return nil, fmt.Errorf("not enough evidences returned by nodes expected(%v) got(%v)", twotplusone, len(evidences))
+	if len(evidences) != len(nodes) {
+		return nil, fmt.Errorf("not enough evidences returned by nodes")
 	}
 
 	return evidences, nil

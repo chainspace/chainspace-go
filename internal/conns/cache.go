@@ -30,26 +30,30 @@ type AckID struct {
 	RequestID uint64
 }
 
-type Cache struct {
+type Cache interface {
+	Close()
+	WriteRequest(
+		nodeID uint64, msg *service.Message, timeout time.Duration, ack bool,
+		cb func(uint64, *service.Message)) (uint64, error)
+}
+
+type cache struct {
 	conns      map[uint64]*MuConn
 	cmu        []sync.Mutex
 	mu         sync.Mutex
 	key        signature.KeyPair
 	maxPayload int
 	selfID     uint64
-	top        *network.Topology
+	top        network.NetTopology
 	connection service.CONNECTION
 
 	pendingAcks   map[AckID]PendingAck
 	pendingAcksMu sync.Mutex
 }
 
-func (c *Cache) Close() {}
+func (c *cache) Close() {}
 
-func (c *Cache) sendHello(nodeID uint64, conn *network.Conn) error {
-	if c.key == nil {
-		log.Error("nil key")
-	}
+func (c *cache) sendHello(nodeID uint64, conn *network.Conn) error {
 	hellomsg, err := service.SignHello(
 		c.selfID, nodeID, c.key, c.connection)
 	if err != nil {
@@ -58,7 +62,7 @@ func (c *Cache) sendHello(nodeID uint64, conn *network.Conn) error {
 	return conn.WritePayload(hellomsg, c.maxPayload, time.Second)
 }
 
-func (c *Cache) dial(nodeID uint64) (*MuConn, error) {
+func (c *cache) dial(nodeID uint64) (*MuConn, error) {
 	// conn exist
 	c.mu.Lock()
 	cc, ok := c.conns[nodeID]
@@ -66,8 +70,9 @@ func (c *Cache) dial(nodeID uint64) (*MuConn, error) {
 		c.mu.Unlock()
 		return cc, nil
 	}
+
 	defer c.mu.Unlock()
-	log.Error("NEED TO DIAL", fld.NodeID(nodeID))
+	// log.Error("NEED TO DIAL", fld.NodeID(nodeID))
 	// need to dial
 	conn, err := c.top.Dial(nodeID, 5*time.Hour)
 	if err != nil {
@@ -84,12 +89,11 @@ func (c *Cache) dial(nodeID uint64) (*MuConn, error) {
 	return cc, nil
 }
 
-func (c *Cache) release(nodeID uint64) {
+func (c *cache) release(nodeID uint64) {
 	c.mu.Lock()
 	cc, ok := c.conns[nodeID]
 	c.mu.Unlock()
 	if ok {
-
 		cc.die <- true
 		cc.conn.Close()
 		c.mu.Lock()
@@ -98,13 +102,14 @@ func (c *Cache) release(nodeID uint64) {
 	}
 }
 
-func (c *Cache) WriteRequest(
+func (c *cache) WriteRequest(
 	nodeID uint64, msg *service.Message, timeout time.Duration, ack bool, cb func(uint64, *service.Message)) (uint64, error) {
 	c.cmu[nodeID-1].Lock()
 	mc, err := c.dial(nodeID)
 	if err != nil {
 		c.release(nodeID)
 		c.cmu[nodeID-1].Unlock()
+		time.Sleep(5 * time.Millisecond)
 		return c.WriteRequest(nodeID, msg, timeout, ack, cb)
 	}
 	id, err := mc.conn.WriteRequest(msg, c.maxPayload, timeout)
@@ -120,7 +125,7 @@ func (c *Cache) WriteRequest(
 	return id, nil
 }
 
-func (c *Cache) addPendingAck(nodeID uint64, msg *service.Message, timeout time.Duration, id uint64, cb func(uint64, *service.Message)) {
+func (c *cache) addPendingAck(nodeID uint64, msg *service.Message, timeout time.Duration, id uint64, cb func(uint64, *service.Message)) {
 	ack := PendingAck{
 		sentAt:  time.Now(),
 		nodeID:  nodeID,
@@ -133,7 +138,7 @@ func (c *Cache) addPendingAck(nodeID uint64, msg *service.Message, timeout time.
 	c.pendingAcksMu.Unlock()
 }
 
-func (c *Cache) processAckMessage(nodeID uint64, msg *service.Message) {
+func (c *cache) processAckMessage(nodeID uint64, msg *service.Message) {
 	c.pendingAcksMu.Lock()
 	defer c.pendingAcksMu.Unlock()
 	if m, ok := c.pendingAcks[AckID{nodeID, msg.ID}]; ok {
@@ -149,30 +154,30 @@ func (c *Cache) processAckMessage(nodeID uint64, msg *service.Message) {
 	}
 }
 
-func (c *Cache) readAckMessage(nodeID uint64, conn *network.Conn, die chan bool) {
+func (c *cache) readAckMessage(nodeID uint64, conn *network.Conn, die chan bool) {
 	for {
 		select {
 		case _ = <-die:
 			log.Error("KILLING READ ACK", fld.PeerID(nodeID))
 			return
 		default:
-			msg, err := conn.ReadMessage(int(c.maxPayload), 5*time.Second)
+			msg, err := conn.ReadMessage(int(c.maxPayload), 1*time.Second)
 			// if we can read some message, try to process it.
 			if err == nil {
 				go c.processAckMessage(nodeID, msg)
 			}
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 		}
 	}
 }
 
-func (c *Cache) retryRequests() {
+func (c *cache) retryRequests() {
 	for {
 		redolist := []PendingAck{}
-		time.Sleep(5 * time.Second)
+		time.Sleep(3 * time.Second)
 		c.pendingAcksMu.Lock()
 		for k, v := range c.pendingAcks {
-			if time.Since(v.sentAt) >= 5*time.Second {
+			if time.Since(v.sentAt) >= 3*time.Second {
 				redolist = append(redolist, v)
 				delete(c.pendingAcks, k)
 			}
@@ -184,8 +189,8 @@ func (c *Cache) retryRequests() {
 	}
 }
 
-func NewCache(nodeID uint64, top *network.Topology, maxPayload int, key signature.KeyPair, connection service.CONNECTION) *Cache {
-	c := &Cache{
+func NewCache(nodeID uint64, top network.NetTopology, maxPayload int, key signature.KeyPair, connection service.CONNECTION) *cache {
+	c := &cache{
 		conns:       map[uint64]*MuConn{},
 		cmu:         make([]sync.Mutex, top.TotalNodes()),
 		maxPayload:  maxPayload,

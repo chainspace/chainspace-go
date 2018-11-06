@@ -57,6 +57,8 @@ type Config struct {
 	NodeID      uint64
 	Node        *config.Node
 	Contracts   *config.Contracts
+	CheckerOnly bool
+	SBACOnly    bool
 }
 
 // Server represents a running Chainspace node.
@@ -283,23 +285,26 @@ func Run(cfg *Config) (*Server, error) {
 		}
 	}
 
+	var cts *contracts.Contracts
 	// start the different contracts
-	cts, err := contracts.New(cfg.Contracts)
-	if err != nil {
-		log.Fatal("unable to instantiate contacts", fld.Err(err))
-	}
-
-	// initialize the contracts
-	if cfg.Node.Contracts.Manage {
-		err = cts.Start()
+	if !cfg.Node.DisableSBAC && !cfg.SBACOnly {
+		cts, err = contracts.New(cfg.Contracts)
 		if err != nil {
-			log.Fatal("unable to start contracts", fld.Err(err))
+			log.Fatal("unable to instantiate contacts", fld.Err(err))
 		}
-	}
 
-	// ensure all the contracts are working
-	if err := cts.EnsureUp(); err != nil {
-		log.Fatal("some contracts are unavailable", fld.Err(err))
+		// initialize the contracts
+		if cfg.Node.Contracts.Manage {
+			err = cts.Start()
+			if err != nil {
+				log.Fatal("unable to start contracts", fld.Err(err))
+			}
+		}
+
+		// ensure all the contracts are working
+		if err := cts.EnsureUp(); err != nil {
+			log.Fatal("some contracts are unavailable", fld.Err(err))
+		}
 	}
 
 	// Initialise the topology.
@@ -411,51 +416,36 @@ func Run(cfg *Config) (*Server, error) {
 	}
 
 	var (
-		kvstore *kv.Service
+		kvstore kv.Service
 		rstsrv  *restsrv.Service
 		ssbac   *sbac.Service
-		pbsb    *pubsub.Server
+		pbsb    pubsub.Server
 		checkr  *checker.Service
 	)
 
-	if cfg.Node.Pubsub.Enabled {
-		cfg := &pubsub.Config{
-			Port:      cfg.Node.Pubsub.Port,
-			NetworkID: cfg.NetworkName,
-			NodeID:    cfg.NodeID,
-		}
-		pbsb, err = pubsub.New(cfg)
-		if err != nil {
-			cancel()
-			return nil, fmt.Errorf("node: unable to instantiate the pubsub server %v", err)
-		}
+	kvcfg := &kv.Config{
+		RuntimeDir: dir,
 	}
-
-	tcheckers := []checker.Checker{}
-	checkers := cts.GetCheckers()
-	for _, v := range checkers {
-		tcheckers = append(tcheckers, v)
+	kvstore, err = kv.New(kvcfg)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("node: unable to instantiate the kv service: %v", err)
 	}
 
 	if !cfg.Node.DisableSBAC {
-		checkercfg := &checker.Config{
-			Checkers:   tcheckers,
-			SigningKey: cfg.Keys.SigningKey,
-		}
-		checkr, err = checker.New(checkercfg)
-		if err != nil {
-			cancel()
-			return nil, fmt.Errorf("node unable to instantiate checker service: %v", err)
+		if cfg.Node.Pubsub.Enabled {
+			cfg := &pubsub.Config{
+				Port:      cfg.Node.Pubsub.Port,
+				NetworkID: cfg.NetworkName,
+				NodeID:    cfg.NodeID,
+			}
+			pbsb, err = pubsub.New(cfg)
+			if err != nil {
+				cancel()
+				return nil, fmt.Errorf("node: unable to instantiate the pubsub server %v", err)
+			}
 		}
 
-		kvcfg := &kv.Config{
-			RuntimeDir: dir,
-		}
-		kvstore, err = kv.New(kvcfg)
-		if err != nil {
-			cancel()
-			return nil, fmt.Errorf("node: unable to instantiate the kv service: %v", err)
-		}
 		tcfg := &sbac.Config{
 			Broadcaster: broadcaster,
 			KVStore:     kvstore,
@@ -474,25 +464,47 @@ func Run(cfg *Config) (*Server, error) {
 			cancel()
 			return nil, fmt.Errorf("node: unable to instantiate the sbac service: %s", err)
 		}
-		if cfg.Node.HTTP.Enabled {
-			var rport int
-			if cfg.Node.HTTP.Port > 0 {
-				rport = cfg.Node.HTTP.Port
-			} else {
-				rport, _ = freeport.TCP("")
-			}
-			restsrvcfg := &restsrv.Config{
-				Addr:       "",
-				Key:        key,
-				Port:       rport,
-				Top:        top,
-				SelfID:     cfg.NodeID,
-				MaxPayload: config.ByteSize(maxPayload),
-				SBAC:       ssbac,
-				Store:      kvstore,
-			}
-			rstsrv = restsrv.New(restsrvcfg)
+	}
+
+	if !cfg.Node.DisableSBAC && !cfg.SBACOnly {
+		tcheckers := []checker.Checker{}
+		checkers := cts.GetCheckers()
+		for _, v := range checkers {
+			tcheckers = append(tcheckers, v)
 		}
+
+		checkercfg := &checker.Config{
+			Checkers:   tcheckers,
+			SigningKey: cfg.Keys.SigningKey,
+		}
+		checkr, err = checker.New(checkercfg)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("node unable to instantiate checker service: %v", err)
+		}
+	}
+
+	if cfg.Node.HTTP.Enabled {
+		var rport int
+		if cfg.Node.HTTP.Port > 0 {
+			rport = cfg.Node.HTTP.Port
+		} else {
+			rport, _ = freeport.TCP("")
+		}
+		restsrvcfg := &restsrv.Config{
+			Addr:        "",
+			Key:         key,
+			Port:        rport,
+			Top:         top,
+			SelfID:      cfg.NodeID,
+			MaxPayload:  config.ByteSize(maxPayload),
+			SBAC:        ssbac,
+			Store:       kvstore,
+			Checker:     checkr,
+			SBACOnly:    cfg.SBACOnly,
+			CheckerOnly: cfg.CheckerOnly,
+		}
+		rstsrv = restsrv.New(restsrvcfg)
 	}
 
 	node := &Server{
