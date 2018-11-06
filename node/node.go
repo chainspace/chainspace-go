@@ -57,8 +57,8 @@ type Config struct {
 	NodeID      uint64
 	Node        *config.Node
 	Contracts   *config.Contracts
-	SBACOnly    bool
 	CheckerOnly bool
+	SBACOnly    bool
 }
 
 // Server represents a running Chainspace node.
@@ -432,7 +432,7 @@ func Run(cfg *Config) (*Server, error) {
 		return nil, fmt.Errorf("node: unable to instantiate the kv service: %v", err)
 	}
 
-	if !cfg.Node.DisableSBAC && !cfg.CheckerOnly {
+	if !cfg.Node.DisableSBAC {
 		if cfg.Node.Pubsub.Enabled {
 			cfg := &pubsub.Config{
 				Port:      cfg.Node.Pubsub.Port,
@@ -492,15 +492,17 @@ func Run(cfg *Config) (*Server, error) {
 			rport, _ = freeport.TCP("")
 		}
 		restsrvcfg := &restsrv.Config{
-			Addr:       "",
-			Key:        key,
-			Port:       rport,
-			Top:        top,
-			SelfID:     cfg.NodeID,
-			MaxPayload: config.ByteSize(maxPayload),
-			SBAC:       ssbac,
-			Store:      kvstore,
-			Checker:    checkr,
+			Addr:        "",
+			Key:         key,
+			Port:        rport,
+			Top:         top,
+			SelfID:      cfg.NodeID,
+			MaxPayload:  config.ByteSize(maxPayload),
+			SBAC:        ssbac,
+			Store:       kvstore,
+			Checker:     checkr,
+			SBACOnly:    cfg.SBACOnly,
+			CheckerOnly: cfg.CheckerOnly,
 		}
 		rstsrv = restsrv.New(restsrvcfg)
 	}

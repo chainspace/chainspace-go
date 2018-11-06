@@ -36,7 +36,7 @@ type Config struct {
 	Store       kv.Service
 	SBAC        *sbac.Service
 	Checker     *checker.Service
-	NodeOnly    bool
+	SBACOnly    bool
 	CheckerOnly bool
 }
 
@@ -51,7 +51,7 @@ type Service struct {
 	checkerclt  *checkerclient.Client
 	shardID     uint64
 	nodeID      uint64
-	nodeOnly    bool
+	sbacOnly    bool
 	checkerOnly bool
 	checker     *checker.Service
 }
@@ -602,7 +602,7 @@ func (s *Service) makeServ(addr string, port int) *http.Server {
 		mux.HandleFunc("/kv/get-objectid", s.kvGetObjectID)
 	}
 	// checkers
-	if !s.nodeOnly {
+	if !s.sbacOnly {
 		mux.HandleFunc("/transaction/check", s.checkTransaction)
 	}
 
@@ -616,20 +616,26 @@ func (s *Service) makeServ(addr string, port int) *http.Server {
 }
 
 func New(cfg *Config) *Service {
-	checkrcfg := checkerclient.Config{
-		NodeID:     cfg.SelfID,
-		Top:        cfg.Top,
-		MaxPayload: cfg.MaxPayload,
-		Key:        cfg.Key,
+	var checkrclt *checkerclient.Client
+	var txclient sbacclient.Client
+	var shardID uint64
+	if !cfg.CheckerOnly {
+		checkrcfg := checkerclient.Config{
+			NodeID:     cfg.SelfID,
+			Top:        cfg.Top,
+			MaxPayload: cfg.MaxPayload,
+			Key:        cfg.Key,
+		}
+		checkrclt = checkerclient.New(&checkrcfg)
+		clcfg := sbacclient.Config{
+			NodeID:     cfg.SelfID,
+			Top:        cfg.Top,
+			MaxPayload: cfg.MaxPayload,
+			Key:        cfg.Key,
+		}
+		txclient = sbacclient.New(&clcfg)
+		shardID = cfg.Top.ShardForNode(cfg.SelfID)
 	}
-	checkrclt := checkerclient.New(&checkrcfg)
-	clcfg := sbacclient.Config{
-		NodeID:     cfg.SelfID,
-		Top:        cfg.Top,
-		MaxPayload: cfg.MaxPayload,
-		Key:        cfg.Key,
-	}
-	txclient := sbacclient.New(&clcfg)
 	s := &Service{
 		port:        cfg.Port,
 		top:         cfg.Top,
@@ -639,8 +645,8 @@ func New(cfg *Config) *Service {
 		sbac:        cfg.SBAC,
 		checkerclt:  checkrclt,
 		nodeID:      cfg.SelfID,
-		shardID:     cfg.Top.ShardForNode(cfg.SelfID),
-		nodeOnly:    cfg.NodeOnly,
+		shardID:     shardID,
+		sbacOnly:    cfg.SBACOnly,
 		checkerOnly: cfg.CheckerOnly,
 		checker:     cfg.Checker,
 	}

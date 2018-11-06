@@ -9,10 +9,15 @@ import (
 	"runtime/pprof"
 	"strconv"
 
+	"chainspace.io/prototype/checker"
 	"chainspace.io/prototype/config"
+	"chainspace.io/prototype/contracts"
+	"chainspace.io/prototype/internal/crypto/signature"
+	"chainspace.io/prototype/internal/freeport"
 	"chainspace.io/prototype/internal/log"
 	"chainspace.io/prototype/internal/log/fld"
 	"chainspace.io/prototype/node"
+	"chainspace.io/prototype/restsrv"
 
 	"github.com/tav/golly/process"
 )
@@ -126,10 +131,17 @@ func cmdRun(args []string, usage string) {
 		http.ListenAndServe("0.0.0.0:6060", nil)
 	}()
 
-	s, err := node.Run(cfg)
-	if err != nil {
-		log.Fatal("Could not start node", fld.NodeID(nodeID), fld.Err(err))
+	var s *node.Server
+	var rstsrv *restsrv.Service
+	if !*checkerOnly {
+		s, err = node.Run(cfg)
+		if err != nil {
+			log.Fatal("Could not start node", fld.NodeID(nodeID), fld.Err(err))
+		}
+	} else {
+		rstsrv = runCheckerOnly(cfg)
 	}
+	_ = rstsrv
 
 	process.SetExitHandler(func() {
 		if *memProfile != "" {
@@ -143,7 +155,9 @@ func cmdRun(args []string, usage string) {
 			}
 			f.Close()
 		}
-		s.Shutdown()
+		if s != nil {
+			s.Shutdown()
+		}
 		if *cpuProfile != "" {
 			pprof.StopCPUProfile()
 		}
@@ -151,4 +165,81 @@ func cmdRun(args []string, usage string) {
 
 	wait := make(chan struct{})
 	<-wait
+}
+
+func runCheckerOnly(cfg *node.Config) *restsrv.Service {
+	maxPayload, err := cfg.Network.MaxPayload.Int()
+	if err != nil {
+		log.Fatal("invalid maxpayload", fld.Err(err))
+	}
+	var key signature.KeyPair
+	switch cfg.Keys.SigningKey.Type {
+	case "ed25519":
+		pubkey, err := b32.DecodeString(cfg.Keys.SigningKey.Public)
+		if err != nil {
+			log.Fatal("node: could not decode the base32-encoded public signing.key from config", fld.Err(err))
+		}
+		privkey, err := b32.DecodeString(cfg.Keys.SigningKey.Private)
+		if err != nil {
+			log.Fatal("node: could not decode the base32-encoded private signing.key from config", fld.Err(err))
+		}
+		key, err = signature.LoadKeyPair(signature.Ed25519, append(pubkey, privkey...))
+		if err != nil {
+			log.Fatal("node: unable to load the signing.key from config", fld.Err(err))
+		}
+	default:
+		log.Fatal("node: unknown type of signing.key found in config", log.String("keytype", cfg.Keys.SigningKey.Type))
+	}
+
+	// start the different contracts
+	cts, err := contracts.New(cfg.Contracts)
+	if err != nil {
+		log.Fatal("unable to instantiate contacts", fld.Err(err))
+	}
+
+	// initialize the contracts
+	if cfg.Node.Contracts.Manage {
+		err = cts.Start()
+		if err != nil {
+			log.Fatal("unable to start contracts", fld.Err(err))
+		}
+	}
+
+	// ensure all the contracts are working
+	if err := cts.EnsureUp(); err != nil {
+		log.Fatal("some contracts are unavailable", fld.Err(err))
+	}
+
+	tcheckers := []checker.Checker{}
+	checkers := cts.GetCheckers()
+	for _, v := range checkers {
+		tcheckers = append(tcheckers, v)
+	}
+
+	checkercfg := &checker.Config{
+		Checkers:   tcheckers,
+		SigningKey: cfg.Keys.SigningKey,
+	}
+	checkr, err := checker.New(checkercfg)
+	if err != nil {
+		log.Fatal("node unable to instantiate checker service: %v", fld.Err(err))
+	}
+	var rport int
+	if cfg.Node.HTTP.Port > 0 {
+		rport = cfg.Node.HTTP.Port
+	} else {
+		rport, _ = freeport.TCP("")
+	}
+	restsrvcfg := &restsrv.Config{
+		Addr:        "",
+		Key:         key,
+		Port:        rport,
+		SelfID:      cfg.NodeID,
+		MaxPayload:  config.ByteSize(maxPayload),
+		Checker:     checkr,
+		SBACOnly:    cfg.SBACOnly,
+		CheckerOnly: cfg.CheckerOnly,
+	}
+	rstsrv := restsrv.New(restsrvcfg)
+	return rstsrv
 }
