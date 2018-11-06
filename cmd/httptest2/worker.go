@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"sync"
 	"time"
 
@@ -27,11 +26,20 @@ type worker struct {
 }
 
 func NewWorker(seed []string, labels [][]string, id int) *worker {
-	url := (&url.URL{
-		Scheme: "http",
-		Host:   getAddress(id),
-		Path:   "transaction/unchecked",
-	}).String()
+	var url string
+	if standaloneCheckers {
+		url := (&url.URL{
+			Scheme: "http",
+			Host:   getAddress(id),
+			Path:   "transaction",
+		}).String()
+	} else {
+		url := (&url.URL{
+			Scheme: "http",
+			Host:   getAddress(id),
+			Path:   "transaction/unchecked",
+		}).String()
+	}
 
 	objsdata := []interface{}{}
 	for _, _ = range seed {

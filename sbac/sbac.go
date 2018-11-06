@@ -17,6 +17,7 @@ import (
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/pubsub"
 	"chainspace.io/prototype/service"
+
 	"github.com/gogo/protobuf/proto"
 )
 
