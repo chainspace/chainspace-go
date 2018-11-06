@@ -27,9 +27,9 @@ type Config struct {
 }
 
 type Client struct {
-	maxPaylod config.ByteSize
-	top       *network.Topology
-	conns     conns.Pool
+	maxPayload config.ByteSize
+	top        *network.Topology
+	conns      conns.Pool
 }
 
 func (c *Client) nodesForTx(t *sbac.Transaction) []uint64 {
@@ -114,9 +114,9 @@ func (c *Client) Check(tx *sbac.Transaction) (map[uint64][]byte, error) {
 func New(cfg *Config) *Client {
 	cp := conns.NewPool(20, cfg.NodeID, cfg.Top, int(cfg.MaxPayload), cfg.Key, service.CONNECTION_CHECKER)
 	c := &Client{
-		maxPaylod: cfg.MaxPayload,
-		top:       cfg.Top,
-		conns:     cp,
+		maxPayload: cfg.MaxPayload,
+		top:        cfg.Top,
+		conns:      cp,
 	}
 
 	return c
