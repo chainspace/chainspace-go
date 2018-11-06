@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -26,15 +27,15 @@ type worker struct {
 }
 
 func NewWorker(seed []string, labels [][]string, id int) *worker {
-	var url string
+	var u string
 	if standaloneCheckers {
-		url := (&url.URL{
+		u = (&url.URL{
 			Scheme: "http",
 			Host:   getAddress(id),
 			Path:   "transaction",
 		}).String()
 	} else {
-		url := (&url.URL{
+		u = (&url.URL{
 			Scheme: "http",
 			Host:   getAddress(id),
 			Path:   "transaction/unchecked",
@@ -50,7 +51,7 @@ func NewWorker(seed []string, labels [][]string, id int) *worker {
 		seed:       seed,
 		labels:     labels,
 		id:         id,
-		url:        url,
+		url:        u,
 		notify:     make(chan struct{}),
 		pendingIDs: map[string]struct{}{},
 		ready:      true,
