@@ -15,12 +15,12 @@ Prerequisites
 Building the Key Value store
 ---------------
 
-Build the docker image for your contracts, you can do this using the makefile at the root of the repository:
+Build the docker image for your contracts. You can do this using the makefile at the root of the repository:
 
 ```
 $ make contract
 ```
-In the future chainspace will pull the docker image directly from a docker registry according to which contract is being run. At present during development we've simply hard-coded in a dummy contract inside a Docker container we've made.  
+In the future chainspace will pull the docker image directly from a docker registry according to which contract is being run. At present (during development) we've simply hard-coded in a dummy contract inside a Docker container we've made.  
 
 Next, run the script `script/run-sharding-testnet`.
 ```
