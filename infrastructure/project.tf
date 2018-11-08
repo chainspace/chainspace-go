@@ -549,3 +549,86 @@ resource "google_compute_instance_from_template" "sharding" {
 
   count = "${var.node_count}"
 }
+
+resource "google_compute_instance_from_template" "checker-sharding" {
+  name = "checker-node-sharding-${format("%d", count.index+1)}"
+  zone = "europe-west2-a"
+  tags = ["node", "checker"]
+  source_instance_template = "${google_compute_instance_template.default.self_link}"
+
+  provisioner "remote-exec" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    inline = [<<EOF
+     sudo mkdir -p /etc/chainspace/conf/
+     sudo touch /etc/chainspace/node_id
+     sudo chmod -R 777 /etc/chainspace
+     sudo chmod -R 777 /etc/chainspace/node_id
+     sudo echo ${count.index+1} > /etc/chainspace/node_id
+     sudo apt-get update
+     sudo apt-get install -y upx htop tmux psmisc apt-transport-https ca-certificates curl gnupg2 software-properties-common
+     curl -fsSL https://download.docker.com/linux/debian/gpg | sudo apt-key add -
+     sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/debian $(lsb_release -cs) stable"
+     sudo apt-get update
+     sudo apt-get install -y docker-ce
+     sudo gpasswd -a $USER docker
+     sudo yes | sudo gcloud auth configure-docker
+     sudo docker pull gcr.io/acoustic-atom-211511/chainspace.io/contract-dummy:latest
+     EOF
+    ]
+  }
+
+  provisioner "file" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    source      = "${var.conf_path}"
+    destination = "/etc/chainspace"
+  }
+
+  provisioner "file" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    source      = "./runcheckersharding.sh"
+    destination = "/etc/chainspace/runcheckersharding.sh"
+  }
+
+  provisioner "file" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    source      = "${var.chainspace_path}"
+    destination = "/etc/chainspace/chainspace.upx"
+  }
+
+  provisioner "remote-exec" {
+    connection {
+      type = "ssh"
+      user = "${var.username}"
+      private_key = "${file("${var.private_key_path}")}"
+    }
+
+    inline = [<<EOF
+     upx -d -o /etc/chainspace/chainspace /etc/chainspace/chainspace.upx
+     sudo chmod -R 777 /etc/chainspace/runcheckersharding.sh
+     sudo chmod -R 777 /etc/chainspace/chainspace
+      EOF
+    ]
+  }
+
+  count = "${var.node_count}"
+}

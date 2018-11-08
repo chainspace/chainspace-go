@@ -27,11 +27,20 @@ type worker struct {
 }
 
 func NewWorker(seed []string, labels [][]string, id int) *worker {
-	url := (&url.URL{
-		Scheme: "http",
-		Host:   getAddress(id),
-		Path:   "transaction/unchecked",
-	}).String()
+	var u string
+	if standaloneCheckers {
+		u = (&url.URL{
+			Scheme: "http",
+			Host:   getAddress(id),
+			Path:   "transaction",
+		}).String()
+	} else {
+		u = (&url.URL{
+			Scheme: "http",
+			Host:   getAddress(id),
+			Path:   "transaction/unchecked",
+		}).String()
+	}
 
 	objsdata := []interface{}{}
 	for _, _ = range seed {
@@ -42,7 +51,7 @@ func NewWorker(seed []string, labels [][]string, id int) *worker {
 		seed:       seed,
 		labels:     labels,
 		id:         id,
-		url:        url,
+		url:        u,
 		notify:     make(chan struct{}),
 		pendingIDs: map[string]struct{}{},
 		ready:      true,

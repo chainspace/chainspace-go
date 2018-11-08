@@ -7,9 +7,13 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"time"
+
+	"chainspace.io/prototype/internal/log"
 )
 
 func (s *Service) checkTransaction(rw http.ResponseWriter, r *http.Request) {
+	now := time.Now()
 	if r.Method != http.MethodPost {
 		fail(rw, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -53,4 +57,5 @@ func (s *Service) checkTransaction(rw http.ResponseWriter, r *http.Request) {
 		Signatures: base64.StdEncoding.EncodeToString(signature),
 	}
 	success(rw, http.StatusOK, resp)
+	log.Error("new transaction checked", log.String("time.taken", time.Since(now).String()))
 }

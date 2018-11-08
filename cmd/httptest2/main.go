@@ -22,22 +22,24 @@ import (
 )
 
 var (
-	address     string
-	port        int
-	workers     int
-	objects     int
-	duration    int
-	delay       int
-	subPort     int
-	networkName string
-	nodeCount   int
-	shardCount  int
+	address            string
+	port               int
+	workers            int
+	objects            int
+	duration           int
+	delay              int
+	subPort            int
+	networkName        string
+	nodeCount          int
+	shardCount         int
+	standaloneCheckers bool
 
 	metrics = map[int][]time.Duration{}
 	mu      sync.Mutex
 
-	addresses       []string
-	pubsubAddresses = map[uint64]string{}
+	addresses        []string
+	checkerAddresses []string
+	pubsubAddresses  = map[uint64]string{}
 
 	subscribr *subscriber
 )
@@ -63,6 +65,7 @@ func init() {
 	flag.StringVar(&networkName, "network-name", "testnet", "network name")
 	flag.IntVar(&nodeCount, "node-count", 4, "node count per shard")
 	flag.IntVar(&shardCount, "shard-count", 1, "node count per shard")
+	flag.BoolVar(&standaloneCheckers, "standalone-checkers", false, "are the checkers deployed with the nodes or as standalone")
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
 }
@@ -118,8 +121,17 @@ func main() {
 	}
 	if port > 0 && len(address) > 0 {
 		getAddresses()
+		getCheckerAddresses()
 	} else if port > 0 {
 		getAddressesFromGCP()
+		if standaloneCheckers {
+			getCheckerAddressesFromGCP()
+		} else {
+			for _, v := range addresses {
+				checkerAddresses = append(checkerAddresses, v)
+			}
+		}
+
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -185,6 +197,33 @@ func makeLabels(workerID int) [][]string {
 	return labels
 }
 
+func getCheckerAddressesFromGCP() {
+	ctx := context.Background()
+
+	c, err := google.DefaultClient(ctx, compute.CloudPlatformScope)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	computeService, err := compute.New(c)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Project ID for this request.
+	project := "acoustic-atom-211511" // TODO: Update placeholder value.
+
+	req := computeService.Instances.List(project, "europe-west2-a")
+	if err := req.Pages(ctx, func(page *compute.InstanceList) error {
+		for _, v := range page.Items {
+			checkerAddresses = append(checkerAddresses, v.NetworkInterfaces[0].AccessConfigs[0].NatIP+":"+fmt.Sprintf("%v", port))
+		}
+		return nil
+	}); err != nil {
+		log.Fatal(err)
+	}
+}
+
 func getAddressesFromGCP() {
 	ctx := context.Background()
 
@@ -213,6 +252,12 @@ func getAddressesFromGCP() {
 	}
 }
 
+func getCheckerAddresses() {
+	for i := 1; i <= (nodeCount * shardCount); i += 1 {
+		checkerAddresses = append(checkerAddresses, fmt.Sprintf("%v:%v", address, port+i))
+	}
+}
+
 func getAddresses() {
 	for i := 1; i <= (nodeCount * shardCount); i += 1 {
 		addresses = append(addresses, fmt.Sprintf("%v:%v", address, port+i))
@@ -221,6 +266,10 @@ func getAddresses() {
 
 func getAddress(workerID int) string {
 	return addresses[workerID%len(addresses)]
+}
+
+func getCheckerAddress(workerID int) string {
+	return checkerAddresses[workerID%len(checkerAddresses)]
 }
 
 var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")

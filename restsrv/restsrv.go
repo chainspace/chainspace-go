@@ -603,6 +603,9 @@ func (s *Service) makeServ(addr string, port int) *http.Server {
 	}
 	// checkers
 	if !s.sbacOnly {
+		if s.checkerOnly {
+			log.Error("restsrv started as checker-only")
+		}
 		mux.HandleFunc("/transaction/check", s.checkTransaction)
 	}
 
