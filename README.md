@@ -55,6 +55,8 @@ Hooks and filters directory? [{PATH_TO_REPO_DIR}/.git/hooks] # Set this to {PATH
 
 NOTE: `{PATH_TO_REPO_DIR}` should be the current location of the repo on your local machine.
 
+For more information on Git Flow, here is a handy [Git Flow Cheatsheat](https://danielkummer.github.io/git-flow-cheatsheet/).
+
 ## Setting Up and Running Nodes
 
 The `chainspace init <networkname>` command, by default, creates a network consisting of 12 nodes grouped into 3 shards of 4 nodes each.
