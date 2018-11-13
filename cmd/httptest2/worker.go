@@ -116,6 +116,10 @@ func (w *worker) checkTransaction(ctx context.Context, tx []byte) map[uint64]str
 					mu.Unlock()
 					return
 				}
+				if err := ctx.Err(); err != nil {
+					fmt.Printf("checker context error: %v\n", err)
+					return
+				}
 			}
 		}(addr)
 	}
