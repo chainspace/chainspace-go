@@ -31,6 +31,7 @@ func cmdInit(args []string, usage string) {
 	enablePubsub := opts.Flags("--enable-pubsub").Label("BOOL").Bool("Enable pubsub")
 	pubsubPort := opts.Flags("--pubsub-port").Label("PORT").Int("Port to use for the pubsub server")
 
+	roundInterval := opts.Flags("--round-interval").Label("N").Int("Round interval in milliseconds")
 	params := opts.Parse(args)
 
 	if err := ensureDir(*configRoot); err != nil {
@@ -46,13 +47,17 @@ func cmdInit(args []string, usage string) {
 	netDir := filepath.Join(*configRoot, networkName)
 	createUnlessExists(netDir)
 
+	ri := 1 * time.Second
+	if roundInterval != nil && *roundInterval != 0 {
+		ri = time.Duration(*roundInterval) * time.Millisecond
+	}
 	announce := &config.Announce{}
 	bootstrap := &config.Bootstrap{}
 	consensus := &config.NetConsensus{
 		BlockReferencesSizeLimit:   10 * config.MB,
 		BlockTransactionsSizeLimit: 100 * config.MB,
 		NonceExpiration:            30 * time.Second,
-		RoundInterval:              1 * time.Second,
+		RoundInterval:              ri,
 		ViewTimeout:                15,
 	}
 

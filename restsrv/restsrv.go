@@ -502,8 +502,7 @@ func (s *Service) transactionChecked(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if self {
-		objects, err = s.sbac.AddTransaction(
-			r.Context(), tx, signatures)
+		objects, err = s.sbac.AddTransaction(r.Context(), tx, signatures)
 		if err != nil {
 			errorr(rw, http.StatusInternalServerError, err.Error())
 			return
@@ -607,6 +606,7 @@ func (s *Service) makeServ(addr string, port int) *http.Server {
 			log.Error("restsrv started as checker-only")
 		}
 		mux.HandleFunc("/transaction/check", s.checkTransaction)
+		mux.HandleFunc("/transaction/check-raw", s.checkTransactionRaw)
 	}
 
 	handler := cors.Default().Handler(mux)

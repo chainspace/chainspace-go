@@ -9,7 +9,7 @@ fi
 initialrate=10000
 decrate=0.9
 incrate=10000
-expectedlat=4
+expectedlat=2
 session=genload-adapt-$1
 
 echo ">> Setting up tmux session ${session}"

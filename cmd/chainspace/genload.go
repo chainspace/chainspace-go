@@ -136,6 +136,7 @@ func cmdGenLoad(args []string, usage string) {
 	runtimeRoot := opts.Flags("--runtime-root").Label("PATH").String("Path to the runtime root directory [~/.chainspace]", defaultRootDir())
 	txSize := opts.Flags("--tx-size").Label("SIZE").Int("Size in bytes of the generated transactions [100]")
 	expectedLatency := opts.Flags("--expected-latency").Label("SIZE").Float("Expected latency to deliver transactions in seconds [4]")
+	// roundInterval := opts.Flags("--round-interval").Label("DURATION").Float("Duration of the rounds in milliseconds [1000]")
 
 	networkName, nodeID := getNetworkNameAndNodeID(opts, args)
 

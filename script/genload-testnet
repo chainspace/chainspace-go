@@ -7,6 +7,7 @@ fixed_tps=10000
 initial_rate=10000
 rate_decr=0.9
 rate_incr=3000
+round_interval=200
 expected_latency=4
 
 command -v tmux >/dev/null 2>&1 || { echo "tmux required, aborting." >&2; exit 1; }
@@ -25,7 +26,7 @@ fuser 8080/tcp
 rm -rf ~/.chainspace/${session}
 
 # initialize the network
-chainspace init ${session} --shard-count 1 --shard-size ${node_count} --disable-sbac
+chainspace init ${session} --shard-count 1 --shard-size ${node_count} --round-interval ${round_interval} --disable-sbac
 
 echo ">> Setting up tmux session ${session}"
 tmux new-session -d -s ${session}

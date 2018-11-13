@@ -46,13 +46,13 @@ func typeCheck(ids idmap, traces []*sbac.Trace) error {
 			return fmt.Errorf("missing procedure")
 		}
 
-		if len(trace.OutputObjects) != len(trace.InputObjectVersionIDs) {
+		if len(trace.OutputObjects) != len(trace.InputObjects) {
 			return fmt.Errorf("%v.%v() expect %v outputs, have %v",
 				trace.ContractID, trace.Procedure,
-				len(trace.InputObjectVersionIDs), len(trace.OutputObjects))
+				len(trace.InputObjects), len(trace.OutputObjects))
 		}
 
-		for _, v := range trace.InputObjectVersionIDs {
+		for _, v := range trace.InputObjects {
 			v := v
 			if sd, ok := ids[string(v)]; ok {
 				if sd.state == inactive {
@@ -68,7 +68,7 @@ func typeCheck(ids idmap, traces []*sbac.Trace) error {
 			}
 		}
 
-		for _, v := range trace.InputReferenceVersionIDs {
+		for _, v := range trace.InputReferences {
 			v := v
 			if sd, ok := ids[string(v)]; ok {
 				if sd.state == inactive {

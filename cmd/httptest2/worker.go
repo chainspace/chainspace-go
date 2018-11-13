@@ -28,16 +28,17 @@ type worker struct {
 
 func NewWorker(seed []string, labels [][]string, id int) *worker {
 	var u string
+	addr := getAddress(id)
 	if standaloneCheckers {
 		u = (&url.URL{
 			Scheme: "http",
-			Host:   getAddress(id),
+			Host:   addr,
 			Path:   "transaction",
 		}).String()
 	} else {
 		u = (&url.URL{
 			Scheme: "http",
-			Host:   getAddress(id),
+			Host:   addr,
 			Path:   "transaction/unchecked",
 		}).String()
 	}
@@ -59,7 +60,71 @@ func NewWorker(seed []string, labels [][]string, id int) *worker {
 	}
 }
 
-func makeTransactionPayload(seed []string, labels [][]string, objsdata []interface{}) []byte {
+func (w *worker) callChecker(
+	ctx context.Context, addr string, txbytes []byte) (uint64, string, error) {
+	u := (&url.URL{
+		Scheme: "http",
+		Host:   addr,
+		Path:   "transaction/check",
+	}).String()
+	client := http.Client{
+		Timeout: 5 * time.Second,
+	}
+	fmt.Printf("worker %v checking new transaction\n", w.id)
+	// make transaction
+	payload := bytes.NewBuffer(txbytes)
+	req, err := http.NewRequest(http.MethodPost, u, payload)
+	req = req.WithContext(ctx)
+	req.Header.Add("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("error calling checker from worker: %v\n", err.Error())
+		return 0, "error", err
+	}
+	b, err := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		fmt.Printf("error reading response from POST /object: %v\n", err.Error())
+		return 0, "error", err
+	}
+
+	res := struct {
+		Data   restsrv.CheckTransactionResponse `json:"data"`
+		Status string                           `json:"status"`
+	}{}
+	err = json.Unmarshal(b, &res)
+	if err != nil {
+		fmt.Printf("error checking transaction (%v)\n", err)
+		return 0, "error", err
+	}
+
+	return res.Data.NodeID, res.Data.Signature, nil
+}
+
+func (w *worker) checkTransaction(ctx context.Context, tx []byte) map[uint64]string {
+	signatures := map[uint64]string{}
+	wg := sync.WaitGroup{}
+	for _, addr := range checkerAddresses {
+		wg.Add(1)
+		go func(addr string) {
+			defer wg.Done()
+			for {
+				if id, sig, err := w.callChecker(ctx, addr, tx); err == nil {
+					mu.Lock()
+					fmt.Printf("worker(%v) new signature from node(%v) %v\n", w.id, id, sig)
+					signatures[id] = sig
+					mu.Unlock()
+					return
+				}
+			}
+		}(addr)
+	}
+	wg.Wait()
+	return signatures
+}
+
+func (w *worker) makeTransactionPayload(
+	ctx context.Context, seed []string, labels [][]string, objsdata []interface{}) []byte {
 	outputs := []interface{}{}
 	for i := 0; i < objects; i += 1 {
 		outputs = append(outputs, outputty{labels[i], randSeq(30)})
@@ -81,6 +146,9 @@ func makeTransactionPayload(seed []string, labels [][]string, objsdata []interfa
 		Mappings: mappings,
 	}
 	txbytes, _ := json.Marshal(tx)
+	sigs := w.checkTransaction(ctx, txbytes)
+	tx.Signatures = sigs
+	txbytes, _ = json.Marshal(tx)
 	return txbytes
 }
 
@@ -129,7 +197,7 @@ func (w *worker) run(ctx context.Context, wg *sync.WaitGroup) {
 	fmt.Printf("worker %v sending new transaction\n", w.id)
 	start := time.Now()
 	// make transaction
-	txbytes := makeTransactionPayload(w.seed, w.labels, w.objsdata)
+	txbytes := w.makeTransactionPayload(ctx, w.seed, w.labels, w.objsdata)
 	payload := bytes.NewBuffer(txbytes)
 	req, err := http.NewRequest(http.MethodPost, w.url, payload)
 	req = req.WithContext(ctx)
@@ -172,7 +240,6 @@ func (w *worker) run(ctx context.Context, wg *sync.WaitGroup) {
 		subscribr.Subscribe(w.seed[i], w.cb)
 		w.objsdata = append(
 			w.objsdata, v.(map[string]interface{})["value"].(interface{}))
-
 	}
 
 	// bock while waiting to get notified
@@ -183,9 +250,7 @@ func (w *worker) run(ctx context.Context, wg *sync.WaitGroup) {
 		tot := len(metrics[w.id])
 		mu.Unlock()
 		fmt.Printf("worker %v all objects created: %v\n", w.id, tot)
-		//		continue
 	case <-ctx.Done():
 		return
 	}
-
 }
