@@ -83,7 +83,7 @@
     "/transaction": {
       "post": {
         "summary": "Send a new transaction to chainspace",
-        "description": "Send a new transaction to chainspace",
+        "description": "Send a new transaction to chainspace, the transaction as already been sent through the checkers by the client.",
         "consumes": [
           "application/json"
         ],
@@ -109,6 +109,83 @@
               "items": {
                 "$ref": "#/definitions/Object"
               }
+            }
+          },
+          "400": {
+            "description": "malformed request"
+          },
+          "405": {
+            "description": "Method not allowed"
+          }
+        }
+      }
+    },
+    "/transaction/unchecked": {
+      "post": {
+        "summary": "Send a new transaction to chainspace",
+        "description": "Send a new transaction to chainspace, the transaction have not been send to the checkers by the client before, chainspace will then send it to each node involved in order to run the checkers, then will add the new transaction.",
+        "consumes": [
+          "application/json"
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "description": "The new transaction to process",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/Transaction"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "successful get",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Object"
+              }
+            }
+          },
+          "400": {
+            "description": "malformed request"
+          },
+          "405": {
+            "description": "Method not allowed"
+          }
+        }
+      }
+    },
+    "/transaction/check": {
+      "post": {
+        "summary": "Run a transaction through the checker",
+        "description": "This will get a full transaction create from a contract and run it through the associated checker. It will also check the transaction in order to ensure it is well formed ",
+        "consumes": [
+          "application/json"
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "description": "The transaction to run through the checkers",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/Transaction"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result of checker",
+            "schema": {
+              "$ref": "#/definitions/CheckTransactionResponse"
             }
           },
           "400": {
@@ -230,6 +307,32 @@
           }
         }
       }
+    },
+    "/states": {
+      "post": {
+        "summary": "Get the states of the transactions",
+        "description": "This will return the current states of all the transaction beeing currently processed by chainspace, this is mainly for testing/debugging purpose and will return the states of the internal state machines for each transactions.",
+        "consumes": [
+          "application/json"
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "The list of states for each transactions",
+            "schema": {
+              "$ref": "#/definitions/StateReportResponse"
+            }
+          },
+          "400": {
+            "description": "malformed request"
+          },
+          "405": {
+            "description": "Method not allowed"
+          }
+        }
+      }
     }
   },
   "definitions": {
@@ -290,11 +393,77 @@
     "Transaction": {
       "type": "object",
       "properties": {
-        "object_id": {
+        "traces": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/Trace"
           }
+        },
+        "mapping": {
+          "description": "This object contains as key, the ids of the input / references objects associated to the actual objects, this will be used when processing the transaction in order to execute the checkers.",
+          "type": "object"
+        },
+        "signature": {
+          "description": "This object contains as keys the ids of the nodes and as value the actual signature from the node.",
+          "type": "object"
+        }
+      }
+    },
+    "StateReportResponse": {
+      "type": "object",
+      "properties": {
+        "state_reports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/StateReport"
+          }
+        },
+        "events_in_queue": {
+          "type": "number"
+        }
+      }
+    },
+    "StateReport": {
+      "type": "object",
+      "description": "this object contains the different decisions taken by the nodes from other shards. the object phase1_decisions, phase2_decisions, commit_decisions are maps of key which are nodes ids to values which are boolean.",
+      "properties": {
+        "hash_id": {
+          "description": "internal hash id of the transaction",
+          "type": "number"
+        },
+        "pending_events": {
+          "description": "number of event waiting to be processed for this transaction",
+          "type": "number"
+        },
+        "state": {
+          "description": "current state of the transaction",
+          "type": "string"
+        },
+        "phase1_decisions": {
+          "type": "object"
+        },
+        "phase2_decisions": {
+          "type": "object"
+        },
+        "commit_decisions": {
+          "type": "object"
+        }
+      }
+    },
+    "CheckTransactionResponse": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "description": "Is the transaction valid or not",
+          "type": "boolean"
+        },
+        "node_id": {
+          "description": "The id of the node which have bee running the check",
+          "type": "number"
+        },
+        "signature": {
+          "description": "The signature produce by the node",
+          "type": "string"
         }
       }
     },

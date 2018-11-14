@@ -1,244 +1,377 @@
-swagger: "2.0"
+swagger: '2.0'
 info:
-  version: "1.0.0"
-  title: "Chainspace API"
-  description: "This is the documentation for the chainspace API. All endpoint responses are wrapped in an ApiResponse see #/definitions/ApiResponse. "
+  version: 1.0.0
+  title: Chainspace API
+  description: >-
+    This is the documentation for the chainspace API. All endpoint responses are
+    wrapped in an ApiResponse see #/definitions/ApiResponse. 
 paths:
   /kv/get-objectid:
     post:
-      summary: "Get the objectid of an object"
-      description: "Retrieve the object ID of an object store in chainspace using a label associated to it"
+      summary: Get the objectid of an object
+      description: >-
+        Retrieve the object ID of an object store in chainspace using a label
+        associated to it
       consumes:
-      - "application/json"
+        - application/json
       produces:
-      - "application/json"
+        - application/json
       parameters:
-      - in: "body"
-        name: "body"
-        description: "The label associated to the object"
-        required: true
-        schema:
-          $ref: "#/definitions/ObjectLabel"
-      responses:
-        200:
-          description: "successful get"
+        - in: body
+          name: body
+          description: The label associated to the object
+          required: true
           schema:
-            $ref: "#/definitions/ObjectID" 
-        400:
-          description: "malformed request"
-        405:
-          description: "Method not allowed"
+            $ref: '#/definitions/ObjectLabel'
+      responses:
+        '200':
+          description: successful get
+          schema:
+            $ref: '#/definitions/ObjectID'
+        '400':
+          description: malformed request
+        '405':
+          description: Method not allowed
   /kv/get:
     post:
-      summary: "Get an object from chainspace"
-      description: "Retrieve an object from chainspace using the label associated to it"
+      summary: Get an object from chainspace
+      description: Retrieve an object from chainspace using the label associated to it
       consumes:
-      - "application/json"
+        - application/json
       produces:
-      - "application/json"
+        - application/json
       parameters:
-      - in: "body"
-        name: "body"
-        description: "The label associated to the object"
-        required: true
-        schema:
-          $ref: "#/definitions/ObjectLabel"
-      responses:
-        200:
-          description: "successful get"
+        - in: body
+          name: body
+          description: The label associated to the object
+          required: true
           schema:
-            $ref: "#/definitions/ObjectValue" 
-        400:
-          description: "malformed request"
-        405:
-          description: "Method not allowed"
+            $ref: '#/definitions/ObjectLabel'
+      responses:
+        '200':
+          description: successful get
+          schema:
+            $ref: '#/definitions/ObjectValue'
+        '400':
+          description: malformed request
+        '405':
+          description: Method not allowed
   /transaction:
     post:
-      summary: "Send a new transaction to chainspace"
-      description: "Send a new transaction to chainspace"
+      summary: Send a new transaction to chainspace
+      description: Send a new transaction to chainspace, the transaction as already been sent through the checkers by the client.
       consumes:
-      - "application/json"
+        - application/json
       produces:
-      - "application/json"
+        - application/json
       parameters:
-      - in: "body"
-        name: "body"
-        description: "The new transaction to process"
-        required: true
-        schema:
-          $ref: "#/definitions/Transaction"
-      responses:
-        200:
-          description: "successful get"
+        - in: body
+          name: body
+          description: The new transaction to process
+          required: true
           schema:
-            type: "array"
+            $ref: '#/definitions/Transaction'
+      responses:
+        '200':
+          description: successful get
+          schema:
+            type: array
             items:
-              $ref: "#/definitions/Object" 
-        400:
-          description: "malformed request"
-        405:
-          description: "Method not allowed"
+              $ref: '#/definitions/Object'
+        '400':
+          description: malformed request
+        '405':
+          description: Method not allowed
+  /transaction/unchecked:
+    post:
+      summary: Send a new transaction to chainspace
+      description: Send a new transaction to chainspace, the transaction have not been send to the checkers by the client before, chainspace will then send it to each node involved in order to run the checkers, then will add the new transaction.
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: The new transaction to process
+          required: true
+          schema:
+            $ref: '#/definitions/Transaction'
+      responses:
+        '200':
+          description: successful get
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/Object'
+        '400':
+          description: malformed request
+        '405':
+          description: Method not allowed
+  /transaction/check:
+    post:
+      summary: Run a transaction through the checker
+      description: >-
+        This will get a full transaction create from a contract and run it through the associated checker. It will also check the transaction in order to ensure it is well formed 
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: The transaction to run through the checkers
+          required: true
+          schema:
+            $ref: '#/definitions/Transaction'
+      responses:
+        '200':
+          description: The result of checker
+          schema:
+            $ref: '#/definitions/CheckTransactionResponse'
+        '400':
+          description: malformed request
+        '405':
+          description: Method not allowed
   /object:
     post:
-      summary: "Create a seed object"
-      description: "Create a new seed object in chainspace"
+      summary: Create a seed object
+      description: Create a new seed object in chainspace
       consumes:
-      - "application/json"
+        - application/json
       produces:
-      - "application/json"
+        - application/json
       parameters:
-      - in: "body"
-        name: "body"
-        description: "The value of the object to create"
-        required: true
-        schema:
-          $ref: "#/definitions/SeedObject"
-      responses:
-        200:
-          description: "successful create"
+        - in: body
+          name: body
+          description: The value of the object to create
+          required: true
           schema:
-            $ref: "#/definitions/Object" 
-        400:
-          description: "malformed request"
-        405:
-          description: "Method not allowed"
+            $ref: '#/definitions/SeedObject'
+      responses:
+        '200':
+          description: successful create
+          schema:
+            $ref: '#/definitions/Object'
+        '400':
+          description: malformed request
+        '405':
+          description: Method not allowed
   /object/get:
     post:
-      summary: "Get an object from chainspace"
-      description: "Retrieve an object from chainspace using it ObjectID"
+      summary: Get an object from chainspace
+      description: Retrieve an object from chainspace using it ObjectID
       consumes:
-      - "application/json"
+        - application/json
       produces:
-      - "application/json"
+        - application/json
       parameters:
-      - in: "body"
-        name: "body"
-        description: "The ObjectID of the value to retrieve"
-        required: true
-        schema:
-          $ref: "#/definitions/ObjectIDRequest"
-      responses:
-        200:
-          description: "successful get"
+        - in: body
+          name: body
+          description: The ObjectID of the value to retrieve
+          required: true
           schema:
-            $ref: "#/definitions/Object"            
-        400:
-          description: "malformed request"
-        405:
-          description: "Method not allowed"
+            $ref: '#/definitions/ObjectIDRequest'
+      responses:
+        '200':
+          description: successful get
+          schema:
+            $ref: '#/definitions/Object'
+        '400':
+          description: malformed request
+        '405':
+          description: Method not allowed
   /object/ready:
     post:
-      summary: "Verify if an object in chainspace is available."
-      description: "When a transaction is processed by chainspace, new objects are created (via a call to /transaction which returns the list of objects which will be created), this allow a user to verify if the creation of the object is completed in all the nodes of the shard it is part of."
+      summary: Verify if an object in chainspace is available.
+      description: >-
+        When a transaction is processed by chainspace, new objects are created
+        (via a call to /transaction which returns the list of objects which will
+        be created), this allow a user to verify if the creation of the object
+        is completed in all the nodes of the shard it is part of.
       consumes:
-      - "application/json"
+        - application/json
       produces:
-      - "application/json"
+        - application/json
       parameters:
-      - in: "body"
-        name: "body"
-        description: "The ObjectID of the object to check"
-        required: true
-        schema:
-          $ref: "#/definitions/ObjectIDRequest"
-      responses:
-        200:
-          description: "the object is ready"
+        - in: body
+          name: body
+          description: The ObjectID of the object to check
+          required: true
           schema:
-            type: "boolean"           
-        400:
-          description: "malformed request"
-        405:
-          description: "Method not allowed"
+            $ref: '#/definitions/ObjectIDRequest'
+      responses:
+        '200':
+          description: the object is ready
+          schema:
+            type: boolean
+        '400':
+          description: malformed request
+        '405':
+          description: Method not allowed
+  /states:
+    post:
+      summary: Get the states of the transactions
+      description: >-
+        This will return the current states of all the transaction beeing currently processed by chainspace, this is mainly for testing/debugging purpose and will return the states of the internal state machines for each transactions.
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      responses:
+        '200':
+          description: The list of states for each transactions
+          schema:
+            $ref: '#/definitions/StateReportResponse'
+        '400':
+          description: malformed request
+        '405':
+          description: Method not allowed
 definitions:
   SeedObject:
-    type: "object"
+    type: object
     properties:
       data:
-        type: "object"
+        type: object
   ObjectIDRequest:
-    type: "object"
+    type: object
     properties:
       data:
-        type: "string"
+        type: string
   Object:
-    type: "object"
+    type: object
     properties:
       key:
-        type: "string"
+        type: string
       value:
-        type: "object"
+        type: object
       status:
-        type: "string"
+        type: string
   ObjectLabel:
-    type: "object"
+    type: object
     properties:
       label:
-        type: "string"
+        type: string
   ObjectValue:
-    type: "object"
+    type: object
     properties:
       object:
-        type: "object"
+        type: object
   ObjectID:
-    type: "object"
+    type: object
     properties:
       object_id:
-        type: "string"
+        type: string
   Transaction:
-    type: "object"
+    type: object
     properties:
-      object_id:
-        type: "array"
+      traces:
+        type: array
         items:
-          $ref: "#/definitions/Trace"
+          $ref: '#/definitions/Trace'
+      mapping:
+        description: >-
+          This object contains as key, the ids of the input / references objects associated to the actual objects, this will be used when processing the transaction in order to execute the checkers.
+        type: object
+      signature:
+        description: >-
+          This object contains as keys the ids of the nodes and as value the actual signature from the node.
+        type: object
+  StateReportResponse:
+    type: object
+    properties:
+      state_reports:
+        type: array
+        items:
+          $ref: '#/definitions/StateReport'
+      events_in_queue:
+        type: number
+  StateReport:
+    type: object
+    description: >-
+      this object contains the different decisions taken by the nodes from other shards. the object phase1_decisions, phase2_decisions, commit_decisions are maps of key which are nodes ids to values which are boolean.
+    properties:
+      hash_id:
+        description: internal hash id of the transaction
+        type: number
+      pending_events:
+        description: number of event waiting to be processed for this transaction
+        type: number
+      state:
+        description: current state of the transaction
+        type: string
+      phase1_decisions:
+        type: object
+      phase2_decisions:
+        type: object
+      commit_decisions:
+        type: object
+  CheckTransactionResponse:
+    type: object
+    properties:
+      ok:
+        description: Is the transaction valid or not
+        type: boolean
+      node_id:
+        description: The id of the node which have bee running the check
+        type: number
+      signature:
+        description: The signature produce by the node 
+        type: string
   Trace:
-    type: "object"
+    type: object
     properties:
       contract_id:
-        type: "string"
+        type: string
       procedure:
-        type: "string"
+        type: string
       input_object_keys:
-        type: "array"
+        type: array
         items:
-          type: "string"
+          type: string
       input_reference_keys:
-        type: "array"
+        type: array
         items:
-          type: "string"
+          type: string
       outputs:
-        type: "array"
+        type: array
         items:
-          type: "object"
+          type: object
       parameters:
-        type: "array"
+        type: array
         items:
-          type: "object"
+          type: object
       returns:
-        type: "array"
+        type: array
         items:
-          type: "object"
+          type: object
       labels:
-        type: "array"
+        type: array
         items:
-          type: "array"
+          type: array
           items:
-            type: "string"
+            type: string
       dependencies:
-        type: "array"
+        type: array
         items:
-          $ref: "#/definitions/Trace"
+          $ref: '#/definitions/Trace'
   ApiResponse:
-    type: "object"
+    type: object
     properties:
       data:
-        description: "The data field will be an object in the case of a `success` response status (containing the custom data based on the endpoint) or a string with details about the error in the case of a `fail` or `error` status "
-        type: "object"
+        description: >-
+          The data field will be an object in the case of a `success` response
+          status (containing the custom data based on the endpoint) or a string
+          with details about the error in the case of a `fail` or `error`
+          status 
+        type: object
       status:
-        type: "string"
-        description: "the status of the response, `success` is a successful response for this request, `fail` represent an input error from the user, `error` represent a server error   "
+        type: string
+        description: >-
+          the status of the response, `success` is a successful response for
+          this request, `fail` represent an input error from the user, `error`
+          represent a server error   
         enum:
-        - "success"
-        - "fail"
-        - "error"
+          - success
+          - fail
+          - error

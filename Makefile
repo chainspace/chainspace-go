@@ -17,6 +17,10 @@ PROJECT_NAME := "chainspace"
 
 install: chainspace httptest httptest2 ## install the chainspace/httptest binaries
 
+generate: ## generte bindata files
+	cd restsrv && go-bindata-assetfs -pkg restsrv -o bindata.go swagger && cd ..
+
+
 chainspace: ## build the chainspace binary
 	$(GO_CMD) install chainspace.io/prototype/cmd/chainspace
 
