@@ -1,4 +1,4 @@
-package byzco
+package blockmania
 
 import (
 	"context"

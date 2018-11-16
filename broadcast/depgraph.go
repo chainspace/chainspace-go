@@ -4,34 +4,34 @@ import (
 	"context"
 	"sync"
 
-	"chainspace.io/prototype/byzco"
+	"chainspace.io/prototype/blockmania"
 	"chainspace.io/prototype/internal/log"
 	"chainspace.io/prototype/internal/log/fld"
 )
 
 type blockData struct {
-	deps []byzco.BlockID
-	id   byzco.BlockID
-	prev byzco.BlockID
+	deps []blockmania.BlockID
+	id   blockmania.BlockID
+	prev blockmania.BlockID
 	ref  *SignedData
 }
 
 type depgraph struct {
-	await   map[byzco.BlockID][]byzco.BlockID
+	await   map[blockmania.BlockID][]blockmania.BlockID
 	bmu     sync.Mutex // protects blocks
 	blocks  []*blockData
 	cond    *sync.Cond // protects in
 	ctx     context.Context
-	icache  map[byzco.BlockID]bool
+	icache  map[blockmania.BlockID]bool
 	in      []*blockData
 	mu      sync.RWMutex // protects icache, tcache
-	pending map[byzco.BlockID]*blockData
+	pending map[blockmania.BlockID]*blockData
 	self    uint64
 	store   *store
-	tcache  map[byzco.BlockID]bool
+	tcache  map[blockmania.BlockID]bool
 }
 
-func (d *depgraph) actuallyIncluded(id byzco.BlockID) {
+func (d *depgraph) actuallyIncluded(id blockmania.BlockID) {
 	d.mu.Lock()
 	delete(d.tcache, id)
 	d.mu.Unlock()
@@ -44,7 +44,7 @@ func (d *depgraph) add(info *blockData) {
 	d.cond.Signal()
 }
 
-func (d *depgraph) addPending(block *blockData, deps []byzco.BlockID) {
+func (d *depgraph) addPending(block *blockData, deps []blockmania.BlockID) {
 	d.pending[block.id] = block
 	for _, dep := range deps {
 		await, exists := d.await[dep]
@@ -60,7 +60,7 @@ func (d *depgraph) addPending(block *blockData, deps []byzco.BlockID) {
 				d.await[dep] = append(await, block.id)
 			}
 		} else {
-			d.await[dep] = []byzco.BlockID{block.id}
+			d.await[dep] = []blockmania.BlockID{block.id}
 		}
 	}
 }
@@ -82,7 +82,7 @@ func (d *depgraph) getBlocks(limit int) []*blockData {
 	return blocks
 }
 
-func (d *depgraph) isIncluded(id byzco.BlockID) bool {
+func (d *depgraph) isIncluded(id blockmania.BlockID) bool {
 	d.mu.RLock()
 	inc, exists := d.tcache[id]
 	if !exists {
@@ -102,7 +102,7 @@ func (d *depgraph) isIncluded(id byzco.BlockID) bool {
 	return inc
 }
 
-func (d *depgraph) markIncluded(id byzco.BlockID) {
+func (d *depgraph) markIncluded(id blockmania.BlockID) {
 	d.mu.Lock()
 	d.icache[id] = true
 	d.tcache[id] = true
@@ -117,7 +117,7 @@ func (d *depgraph) process() {
 		if i%100 == 0 {
 			d.mu.Lock()
 			if len(d.icache) > 1000 {
-				ncache := map[byzco.BlockID]bool{}
+				ncache := map[blockmania.BlockID]bool{}
 				j := 0
 				for k, v := range d.icache {
 					ncache[k] = v
@@ -147,8 +147,8 @@ func (d *depgraph) process() {
 			continue
 		}
 		first := true
-		processed := []byzco.BlockID{info.id}
-		seen := map[byzco.BlockID]bool{
+		processed := []blockmania.BlockID{info.id}
+		seen := map[blockmania.BlockID]bool{
 			info.id: true,
 		}
 		for len(processed) > 0 {
@@ -159,7 +159,7 @@ func (d *depgraph) process() {
 					continue
 				} else if d.processBlock(d.pending[revdep]) {
 					processed = append(processed, revdep)
-					seen = map[byzco.BlockID]bool{}
+					seen = map[blockmania.BlockID]bool{}
 				} else {
 					seen[revdep] = true
 				}
@@ -181,7 +181,7 @@ func (d *depgraph) processBlock(block *blockData) bool {
 		return true
 	}
 	// Check if all the referenced blocks have been included already.
-	var deps []byzco.BlockID
+	var deps []blockmania.BlockID
 	if block.prev.Valid() {
 		if !d.isIncluded(block.prev) {
 			log.Debug("Missing dependency", fld.BlockID(block.id), log.String("dep", block.prev.String()))
