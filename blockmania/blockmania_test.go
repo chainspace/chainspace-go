@@ -7,7 +7,7 @@ import (
 	. "chainspace.io/prototype/blockmania"
 )
 
-var _ = Describe("Byzco", func() {
+var _ = Describe("Blockmania", func() {
 
 	var (
 		block BlockID

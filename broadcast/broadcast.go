@@ -90,7 +90,7 @@ type Service struct {
 	writeTimeout time.Duration
 }
 
-func (s *Service) byzcoCallback(data *blockmania.Interpreted) {
+func (s *Service) blockmaniaCallback(data *blockmania.Interpreted) {
 	if log.AtInfo() {
 		blocks := make([]string, len(data.Blocks))
 		for i, block := range data.Blocks {
@@ -621,7 +621,7 @@ func (s *Service) loadState() {
 		tcache:  map[blockmania.BlockID]bool{},
 	}
 	s.depgraph = depgraph
-	s.graph = blockmania.New(s.ctx, gcfg, s.byzcoCallback)
+	s.graph = blockmania.New(s.ctx, gcfg, s.blockmaniaCallback)
 	s.interpreted = interpreted
 	s.prevhash = prevhash
 	s.prevref = prevref

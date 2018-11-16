@@ -1,4 +1,4 @@
-// Package byzco implements the core ByzCoChain consensus algorithm.
+// Package blockmania implements the Blockmania consensus algorithm.
 package blockmania // import "chainspace.io/prototype/blockmania"
 
 import (

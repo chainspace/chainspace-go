@@ -15,7 +15,7 @@ type blockInfo struct {
 	max  uint64
 }
 
-// Config represents the configuration of a byzco Graph.
+// Config represents the configuration of a blockmania Graph.
 type Config struct {
 	LastInterpreted uint64
 	Nodes           []uint64
@@ -390,7 +390,7 @@ func (g *Graph) processMessage(s *state, sender uint64, receiver uint64, origin 
 		return preprepare{hash: m.hash, node: node, round: round, view: m.view}
 
 	default:
-		panic(fmt.Errorf("byzco: unknown message kind to process: %s", msg.kind()))
+		panic(fmt.Errorf("blockmania: unknown message kind to process: %s", msg.kind()))
 
 	}
 
