@@ -96,8 +96,11 @@ func (s *Service) blockmaniaCallback(data *blockmania.Interpreted) {
 		for i, block := range data.Blocks {
 			blocks[i] = block.String()
 		}
-		log.Info("Got interpreted consensus blocks", fld.Round(data.Round),
-			log.Uint64("consumed", data.Consumed), log.Strings("blocks", blocks), log.Int("block.count", len(data.Blocks)))
+		log.Info("Got interpreted consensus blocks",
+			fld.Round(data.Round),
+			log.Uint64("consumed", data.Consumed),
+			log.Strings("blocks", blocks),
+			log.Int("block.count", len(data.Blocks)))
 	}
 	s.store.setInterpreted(data)
 	s.imu.Lock()

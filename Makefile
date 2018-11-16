@@ -17,7 +17,7 @@ PKG_LIST := $(shell go list ${PKG}/... | grep -v /vendor/)
 PROJECT_NAME=chainspace
 VERSION := $(shell cat VERSION)
 
-install: $(PROJECT_NAME) httptest httptest2 ## install the chainspace/httptest binaries
+install: $(PROJECT_NAME) httptest httptest2 blockmaniatest ## install the chainspace/httptest binaries
 
 generate: ## generte bindata files
 	cd restsrv && go-bindata-assetfs -pkg restsrv -o bindata.go swagger && cd ..
@@ -61,6 +61,9 @@ httptest: ## build the httptest binary
 
 httptest2: ## build the httptest2 binary
 	go install $(NAMESPACE)/prototype/cmd/httptest2
+
+blockmaniatest: ## build the httptest2 binary
+	go install $(NAMESPACE)/prototype/cmd/blockmaniatest
 
 proto: ## recompile all protobuf definitions
 	$(foreach f,$(FILES),\
