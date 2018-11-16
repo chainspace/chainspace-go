@@ -12,7 +12,7 @@ import (
 	"sync"
 
 	"chainspace.io/prototype/broadcast"
-	"chainspace.io/prototype/byzco"
+	"chainspace.io/prototype/blockmania"
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/internal/log"
 	"chainspace.io/prototype/internal/log/fld"
@@ -50,7 +50,7 @@ func cmdInterpret(args []string, usage string) {
 
 	shardID := top.ShardForNode(nodeID)
 	nodes := top.NodesInShard(shardID)
-	cfg := &byzco.Config{
+	cfg := &blockmania.Config{
 		Nodes:  nodes,
 		SelfID: nodeID,
 	}
@@ -87,7 +87,7 @@ func cmdInterpret(args []string, usage string) {
 	closed := false
 	mu := sync.Mutex{}
 
-	cb := func(res *byzco.Interpreted) {
+	cb := func(res *blockmania.Interpreted) {
 		blocks := make([]string, len(res.Blocks))
 		sort.Slice(res.Blocks, func(i, j int) bool {
 			return res.Blocks[i].Node < res.Blocks[j].Node
@@ -135,7 +135,7 @@ func cmdInterpret(args []string, usage string) {
 		mu.Unlock()
 	})
 
-	graph := byzco.New(context.Background(), cfg, cb)
+	graph := blockmania.New(context.Background(), cfg, cb)
 	err = broadcast.Replay(dir, nodeID, graph, 0, 10)
 	if err != nil {
 		log.Fatal("Could not replay graph", fld.Err(err))

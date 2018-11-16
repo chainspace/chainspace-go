@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sync"
 
-	"chainspace.io/prototype/byzco"
+	"chainspace.io/prototype/blockmania"
 	"chainspace.io/prototype/internal/lexinum"
 	"chainspace.io/prototype/internal/log"
 	"chainspace.io/prototype/internal/log/fld"
@@ -40,7 +40,7 @@ type store struct {
 	nodeCount int
 }
 
-func (s *store) getBlock(id byzco.BlockID) (*SignedData, error) {
+func (s *store) getBlock(id blockmania.BlockID) (*SignedData, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.closed {
@@ -62,7 +62,7 @@ func (s *store) getBlock(id byzco.BlockID) (*SignedData, error) {
 	return block, err
 }
 
-func (s *store) getBlockData(id byzco.BlockID) (*blockData, error) {
+func (s *store) getBlockData(id blockmania.BlockID) (*blockData, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.closed {
@@ -78,13 +78,13 @@ func (s *store) getBlockData(id byzco.BlockID) (*blockData, error) {
 	return getBlockData(signed), nil
 }
 
-func (s *store) getBlockGraphs(nodeID uint64, from uint64, limit int) ([]*byzco.BlockGraph, error) {
+func (s *store) getBlockGraphs(nodeID uint64, from uint64, limit int) ([]*blockmania.BlockGraph, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.closed {
 		return nil, errDBClosed
 	}
-	var blocks []*byzco.BlockGraph
+	var blocks []*blockmania.BlockGraph
 	prefix := append([]byte{blockGraphPrefix}, lexinum.Encode(nodeID)...)
 	prefix = append(prefix, 0x00)
 	start := make([]byte, len(prefix))
@@ -101,7 +101,7 @@ func (s *store) getBlockGraphs(nodeID uint64, from uint64, limit int) ([]*byzco.
 			if err != nil {
 				return err
 			}
-			block := &byzco.BlockGraph{
+			block := &blockmania.BlockGraph{
 				Block: id,
 			}
 			val, err := item.Value()
@@ -120,7 +120,7 @@ func (s *store) getBlockGraphs(nodeID uint64, from uint64, limit int) ([]*byzco.
 			}
 			size := int(binary.LittleEndian.Uint32(val[idx:]))
 			idx += 4
-			deps := make([]byzco.Dep, size)
+			deps := make([]blockmania.Dep, size)
 			for i := 0; i < size; i++ {
 				ksize := int(binary.LittleEndian.Uint16(val[idx:]))
 				idx += 2
@@ -131,7 +131,7 @@ func (s *store) getBlockGraphs(nodeID uint64, from uint64, limit int) ([]*byzco.
 				idx += ksize
 				ksize = int(binary.LittleEndian.Uint16(val[idx:]))
 				idx += 2
-				var prev byzco.BlockID
+				var prev blockmania.BlockID
 				if ksize > 0 {
 					prev, err = decodeBlockID(val[idx : idx+ksize])
 					if err != nil {
@@ -141,7 +141,7 @@ func (s *store) getBlockGraphs(nodeID uint64, from uint64, limit int) ([]*byzco.
 				}
 				lsize := int(binary.LittleEndian.Uint32(val[idx:]))
 				idx += 4
-				links := make([]byzco.BlockID, lsize)
+				links := make([]blockmania.BlockID, lsize)
 				for j := 0; j < lsize; j++ {
 					ksize := int(binary.LittleEndian.Uint16(val[idx:]))
 					idx += 2
@@ -152,7 +152,7 @@ func (s *store) getBlockGraphs(nodeID uint64, from uint64, limit int) ([]*byzco.
 					idx += ksize
 					links[j] = link
 				}
-				deps[i] = byzco.Dep{
+				deps[i] = blockmania.Dep{
 					Block: id,
 					Deps:  links,
 					Prev:  prev,
@@ -169,7 +169,7 @@ func (s *store) getBlockGraphs(nodeID uint64, from uint64, limit int) ([]*byzco.
 	return blocks, err
 }
 
-func (s *store) getBlocks(ids []byzco.BlockID) ([]*SignedData, error) {
+func (s *store) getBlocks(ids []blockmania.BlockID) ([]*SignedData, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.closed {
@@ -447,13 +447,13 @@ func (s *store) getOwnBlock(round uint64) (*SignedData, error) {
 }
 
 // getRoundBlocks returns all seen blocks for a given round.
-func (s *store) getRoundBlocks(round uint64) (map[byzco.BlockID]*Block, error) {
+func (s *store) getRoundBlocks(round uint64) (map[blockmania.BlockID]*Block, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.closed {
 		return nil, errDBClosed
 	}
-	data := map[byzco.BlockID]*Block{}
+	data := map[blockmania.BlockID]*Block{}
 	prefix := append([]byte{blockPrefix}, lexinum.Encode(round)...)
 	err := s.db.View(func(txn *badger.Txn) error {
 		_ = prefix
@@ -473,7 +473,7 @@ func (s *store) getRoundBlocks(round uint64) (map[byzco.BlockID]*Block, error) {
 			if err != nil {
 				return err
 			}
-			ref := byzco.BlockID{
+			ref := blockmania.BlockID{
 				Hash:  string(key[41:]),
 				Node:  nodeID,
 				Round: round,
@@ -553,7 +553,7 @@ func (s *store) getSentMap() (map[uint64]uint64, error) {
 	return data, err
 }
 
-func (s *store) isIncluded(id byzco.BlockID) (bool, error) {
+func (s *store) isIncluded(id blockmania.BlockID) (bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.closed {
@@ -582,7 +582,7 @@ func (s *store) isIncluded(id byzco.BlockID) (bool, error) {
 	return inc, err
 }
 
-func (s *store) setBlock(id byzco.BlockID, block *SignedData) error {
+func (s *store) setBlock(id blockmania.BlockID, block *SignedData) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -638,7 +638,7 @@ func (s *store) setDeliverAcknowledged(round uint64) error {
 	})
 }
 
-func (s *store) setInterpreted(data *byzco.Interpreted) error {
+func (s *store) setInterpreted(data *blockmania.Interpreted) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -673,7 +673,7 @@ func (s *store) setInterpreted(data *byzco.Interpreted) error {
 	})
 }
 
-func (s *store) setOwnBlock(block *SignedData, blockRef *SignedData, graph *byzco.BlockGraph) error {
+func (s *store) setOwnBlock(block *SignedData, blockRef *SignedData, graph *blockmania.BlockGraph) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -783,7 +783,7 @@ func (s *store) setSentMap(data map[uint64]uint64) error {
 	})
 }
 
-func blockGraphKey(id byzco.BlockID) []byte {
+func blockGraphKey(id blockmania.BlockID) []byte {
 	key := []byte{blockGraphPrefix}
 	key = append(key, lexinum.Encode(id.Node)...)
 	key = append(key, 0x00)
@@ -792,7 +792,7 @@ func blockGraphKey(id byzco.BlockID) []byte {
 	return append(key, id.Hash...)
 }
 
-func blockKey(id byzco.BlockID) []byte {
+func blockKey(id blockmania.BlockID) []byte {
 	key := []byte{blockPrefix}
 	key = append(key, lexinum.Encode(id.Node)...)
 	key = append(key, 0x00)
@@ -801,7 +801,7 @@ func blockKey(id byzco.BlockID) []byte {
 	return append(key, id.Hash...)
 }
 
-func decodeBlockID(d []byte) (byzco.BlockID, error) {
+func decodeBlockID(d []byte) (blockmania.BlockID, error) {
 	var (
 		err    error
 		hash   string
@@ -817,21 +817,21 @@ outer:
 			case 0:
 				nodeID, err = lexinum.Decode(d[:i])
 				if err != nil {
-					return byzco.BlockID{}, err
+					return blockmania.BlockID{}, err
 				}
 				rstart = i + 1
 				stage++
 			case 1:
 				round, err = lexinum.Decode(d[rstart:i])
 				if err != nil {
-					return byzco.BlockID{}, err
+					return blockmania.BlockID{}, err
 				}
 				hash = string(d[i+1 : len(d)])
 				break outer
 			}
 		}
 	}
-	return byzco.BlockID{
+	return blockmania.BlockID{
 		Hash:  hash,
 		Node:  nodeID,
 		Round: round,
@@ -853,7 +853,7 @@ func decodeBlockRound(d []byte) (uint64, error) {
 	return lexinum.Decode(d[rstart:rend])
 }
 
-func encodeBlockGraph(block *byzco.BlockGraph) []byte {
+func encodeBlockGraph(block *blockmania.BlockGraph) []byte {
 	kbuf := make([]byte, 2)
 	sbuf := make([]byte, 4)
 	var out []byte
@@ -895,7 +895,7 @@ func encodeBlockGraph(block *byzco.BlockGraph) []byte {
 	return out
 }
 
-func encodeBlockID(id byzco.BlockID) []byte {
+func encodeBlockID(id blockmania.BlockID) []byte {
 	var out []byte
 	out = append(out, lexinum.Encode(id.Node)...)
 	out = append(out, 0x00)
@@ -920,7 +920,7 @@ func getBlockData(signed *SignedData) *blockData {
 		Node:  block.Node,
 		Round: block.Round,
 	}
-	id := byzco.BlockID{
+	id := blockmania.BlockID{
 		Hash:  string(hash),
 		Node:  block.Node,
 		Round: block.Round,
@@ -929,25 +929,25 @@ func getBlockData(signed *SignedData) *blockData {
 	if err != nil {
 		log.Fatal("Unable to encode block reference", fld.Err(err))
 	}
-	var prev byzco.BlockID
+	var prev blockmania.BlockID
 	ref = &BlockReference{}
 	if block.Round != 1 {
 		if err = proto.Unmarshal(block.Previous.Data, ref); err != nil {
 			log.Fatal("Unable to decode block's previous reference", fld.Err(err))
 		}
-		prev = byzco.BlockID{
+		prev = blockmania.BlockID{
 			Hash:  string(ref.Hash),
 			Node:  ref.Node,
 			Round: ref.Round,
 		}
 	}
-	var deps []byzco.BlockID
+	var deps []blockmania.BlockID
 	for _, sref := range block.References {
 		ref = &BlockReference{}
 		if err := proto.Unmarshal(sref.Data, ref); err != nil {
 			log.Fatal("Unable to decode block reference", fld.Err(err))
 		}
-		deps = append(deps, byzco.BlockID{
+		deps = append(deps, blockmania.BlockID{
 			Hash:  string(ref.Hash),
 			Node:  ref.Node,
 			Round: ref.Round,
@@ -964,7 +964,7 @@ func getBlockData(signed *SignedData) *blockData {
 	}
 }
 
-func includedKey(id byzco.BlockID) []byte {
+func includedKey(id blockmania.BlockID) []byte {
 	key := []byte{includedPrefix}
 	key = append(key, lexinum.Encode(id.Node)...)
 	key = append(key, 0x00)
@@ -978,7 +978,7 @@ func interpretedKey(round uint64) []byte {
 	return append(key, lexinum.Encode(round)...)
 }
 
-func notIncludedKey(id byzco.BlockID) []byte {
+func notIncludedKey(id blockmania.BlockID) []byte {
 	key := []byte{notIncludedPrefix}
 	key = append(key, lexinum.Encode(id.Node)...)
 	key = append(key, 0x00)
