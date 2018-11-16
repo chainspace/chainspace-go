@@ -12,7 +12,7 @@ type bitset struct {
 func (b *bitset) clone() *bitset {
 	n := &bitset{
 		cms: make([]uint64, len(b.cms)),
-		prs: make([]uint64, len(b.cms)),
+		prs: make([]uint64, len(b.prs)),
 	}
 	copy(n.cms, b.cms)
 	copy(n.prs, b.prs)
