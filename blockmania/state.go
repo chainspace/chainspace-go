@@ -106,7 +106,7 @@ func (m messageKind) String() string {
 	case viewchangeMsg:
 		return "view-change"
 	default:
-		panic(fmt.Errorf("byzco: unknown message kind: %d", m))
+		panic(fmt.Errorf("blockmania: unknown message kind: %d", m))
 	}
 }
 
@@ -352,7 +352,7 @@ func (s stateDataKind) String() string {
 	case viewchangedState:
 		return "viewchanged"
 	default:
-		panic(fmt.Errorf("byzco: unknown status data kind: %d", s))
+		panic(fmt.Errorf("blockmania: unknown status data kind: %d", s))
 	}
 }
 
