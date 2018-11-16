@@ -44,11 +44,11 @@ type Graph struct {
 	totalNodes uint64
 }
 
-func (g *Graph) deliver(node uint64, round uint64, hash string) {
-	if round < g.round {
+func (graph *Graph) deliver(node uint64, round uint64, hash string) {
+	if round < graph.round {
 		return
 	}
-	hashes, exists := g.resolved[round]
+	hashes, exists := graph.resolved[round]
 	if exists {
 		curhash, exists := hashes[node]
 		if exists {
@@ -69,17 +69,17 @@ func (g *Graph) deliver(node uint64, round uint64, hash string) {
 		hashes = map[uint64]string{
 			node: hash,
 		}
-		g.resolved[round] = hashes
+		graph.resolved[round] = hashes
 	}
-	if round != g.round {
+	if round != graph.round {
 		return
 	}
-	if len(hashes) == g.nodeCount {
-		g.deliverRound(round, hashes)
+	if len(hashes) == graph.nodeCount {
+		graph.deliverRound(round, hashes)
 	}
 }
 
-func (g *Graph) deliverRound(round uint64, hashes map[uint64]string) {
+func (graph *Graph) deliverRound(round uint64, hashes map[uint64]string) {
 	var blocks []BlockID
 	for node, hash := range hashes {
 		if hash == "" {
@@ -90,59 +90,64 @@ func (g *Graph) deliverRound(round uint64, hashes map[uint64]string) {
 	sort.Slice(blocks, func(i, j int) bool {
 		return blocks[i].Hash < blocks[j].Hash
 	})
-	delete(g.resolved, round)
-	g.mu.Lock()
-	consumed := g.blocks[0].data.Block.Round - 1
+	delete(graph.resolved, round)
+	graph.mu.Lock()
+	consumed := graph.blocks[0].data.Block.Round - 1
 	idx := 0
-	for i, info := range g.blocks {
+	for i, info := range graph.blocks {
 		if info.max > round {
 			break
 		}
-		delete(g.max, info.data.Block)
-		delete(g.states, info.data.Block)
+		delete(graph.max, info.data.Block)
+		delete(graph.states, info.data.Block)
 		for _, dep := range info.data.Deps {
-			delete(g.max, dep.Block)
-			delete(g.states, dep.Block)
+			delete(graph.max, dep.Block)
+			delete(graph.states, dep.Block)
 		}
 		consumed++
 		idx = i + 1
 	}
 	if idx > 0 {
-		g.blocks = g.blocks[idx:]
+		graph.blocks = graph.blocks[idx:]
 	}
-	g.round++
+	graph.round++
 	if log.AtDebug() {
-		log.Debug("Mem usage:", log.Int("g.max", len(g.max)), log.Int("g.states", len(g.states)),
-			log.Int("g.blocks", len(g.blocks)))
+		log.Debug("Mem usage:", log.Int("g.max", len(graph.max)), log.Int("g.states", len(graph.states)),
+			log.Int("g.blocks", len(graph.blocks)))
 	}
-	g.mu.Unlock()
-	g.cb(&Interpreted{
+	graph.mu.Unlock()
+	graph.cb(&Interpreted{
 		Blocks:   blocks,
 		Consumed: consumed,
 		Round:    round,
 	})
-	hashes, exists := g.resolved[round+1]
-	if exists && len(hashes) == g.nodeCount {
-		g.deliverRound(round+1, hashes)
+	hashes, exists := graph.resolved[round+1]
+	if exists && len(hashes) == graph.nodeCount {
+		graph.deliverRound(round+1, hashes)
 	}
 }
 
-func (g *Graph) process(e *entry) {
-
-	var s *state
+func (graph *Graph) findOrCreateState(e *entry) *state {
+	var stat *state
 	if e.prev.Valid() {
-		s = g.states[e.prev].clone(g.round)
+		stat = graph.states[e.prev].clone(graph.round)
 	} else {
-		s = &state{
+		stat = &state{
 			timeouts: map[uint64][]timeout{},
 		}
 	}
+	return stat
+}
+
+func (graph *Graph) process(ntry *entry) {
+
+	var state = graph.findOrCreateState(ntry)
 
 	if log.AtDebug() {
-		log.Debug("Interpreting block", fld.BlockID(e.block))
+		log.Debug("Interpreting block", fld.BlockID(ntry.block))
 	}
 
-	node, round, hash := e.block.Node, e.block.Round, e.block.Hash
+	node, round, hash := ntry.block.Node, ntry.block.Round, ntry.block.Hash
 	out := []message{preprepare{
 		hash:  hash,
 		node:  node,
@@ -150,56 +155,56 @@ func (g *Graph) process(e *entry) {
 		view:  0,
 	}}
 
-	if len(e.deps) > 0 {
-		if s.delay == nil {
-			s.delay = map[uint64]uint64{}
+	if len(ntry.deps) > 0 {
+		if state.delay == nil {
+			state.delay = map[uint64]uint64{}
 		}
-		for _, dep := range e.deps {
-			s.delay[dep.Node] = diff(round, dep.Round) * 10
+		for _, dep := range ntry.deps {
+			state.delay[dep.Node] = diff(round, dep.Round) * 10
 		}
 	}
 
 	tval := uint64(10)
-	if len(s.delay) > g.quorum2f1 {
-		vals := make([]uint64, len(s.delay))
+	if len(state.delay) > graph.quorum2f1 {
+		vals := make([]uint64, len(state.delay))
 		i := 0
-		for _, val := range s.delay {
+		for _, val := range state.delay {
 			vals[i] = val
 			i++
 		}
 		sort.Slice(vals, func(i, j int) bool {
 			return vals[i] < vals[j]
 		})
-		xval := vals[g.quorum2f]
+		xval := vals[graph.quorum2f]
 		if xval > tval {
 			tval = xval
 		}
 	} else {
-		for _, val := range s.delay {
+		for _, val := range state.delay {
 			if val > tval {
 				tval = val
 			}
 		}
 	}
-	s.timeout = tval
+	state.timeout = tval
 
 	tround := round + tval
-	for _, xnode := range g.nodes {
-		s.timeouts[tround] = append(s.timeouts[tround], timeout{
+	for _, xnode := range graph.nodes {
+		state.timeouts[tround] = append(state.timeouts[tround], timeout{
 			node:  xnode,
 			round: round,
 			view:  0,
 		})
 	}
 
-	for _, tmout := range s.timeouts[round] {
-		if _, exists := s.data[final{node: tmout.node, round: tmout.round}]; exists {
+	for _, tmout := range state.timeouts[round] {
+		if _, exists := state.data[final{node: tmout.node, round: tmout.round}]; exists {
 			// We've already reached finality
 			continue
 		}
 		var v uint32
 		skey := view{node: tmout.node, round: tmout.round}
-		if sval, exists := s.data[skey]; exists {
+		if sval, exists := state.data[skey]; exists {
 			v = sval.(uint32)
 		}
 		if v > tmout.view {
@@ -207,13 +212,13 @@ func (g *Graph) process(e *entry) {
 			continue
 		}
 		hval := ""
-		if pval, exists := s.data[prepared{node: tmout.node, round: tmout.round, view: tmout.view}]; exists {
+		if pval, exists := state.data[prepared{node: tmout.node, round: tmout.round, view: tmout.view}]; exists {
 			hval = pval.(string)
 		}
-		if s.data == nil {
-			s.data = stateKV{skey: v + 1}
+		if state.data == nil {
+			state.data = stateKV{skey: v + 1}
 		} else {
-			s.data[skey] = v + 1
+			state.data[skey] = v + 1
 		}
 		out = append(out, viewchange{
 			hash:   hval,
@@ -226,19 +231,19 @@ func (g *Graph) process(e *entry) {
 
 	idx := len(out)
 	processed := map[message]bool{}
-	out = append(out, g.processMessages(s, processed, node, node, e.block, out[:idx])...)
-	for _, dep := range e.deps {
+	out = append(out, graph.processMessages(state, processed, node, node, ntry.block, out[:idx])...)
+	for _, dep := range ntry.deps {
 		if log.AtDebug() {
 			log.Debug("Processing block dep", fld.BlockID(dep))
 		}
-		out = append(out, g.processMessages(s, processed, dep.Node, node, e.block, g.states[dep].getOutput())...)
+		out = append(out, graph.processMessages(state, processed, dep.Node, node, ntry.block, graph.states[dep].getOutput())...)
 	}
-	s.out = out
-	g.states[e.block] = s
+	state.out = out
+	graph.states[ntry.block] = state
 
 }
 
-func (g *Graph) processMessage(s *state, sender uint64, receiver uint64, origin BlockID, msg message) message {
+func (graph *Graph) processMessage(s *state, sender uint64, receiver uint64, origin BlockID, msg message) message {
 
 	node, round := msg.noderound()
 	if _, exists := s.data[final{node: node, round: round}]; exists {
@@ -263,7 +268,7 @@ func (g *Graph) processMessage(s *state, sender uint64, receiver uint64, origin 
 			return nil
 		}
 		// assert m.view == 0 || (nid, xround, xv, "HNV") in state
-		b := s.getBitset(g.nodeCount, m)
+		b := s.getBitset(graph.nodeCount, m)
 		b.setPrepare(sender)
 		b.setPrepare(receiver)
 		if s.data == nil {
@@ -279,17 +284,17 @@ func (g *Graph) processMessage(s *state, sender uint64, receiver uint64, origin 
 		}
 		if v < m.view {
 			// TODO: should we remember future messages?
-			b := s.getBitset(g.nodeCount, m.pre())
+			b := s.getBitset(graph.nodeCount, m.pre())
 			b.setPrepare(m.sender)
 			return nil
 		}
 		// assert m.view == 0 || (nid, xround, xv, "HNV") in state
-		b := s.getBitset(g.nodeCount, m.pre())
+		b := s.getBitset(graph.nodeCount, m.pre())
 		b.setPrepare(m.sender)
 		if log.AtDebug() {
 			log.Debugf("Prepare count == %d", b.prepareCount())
 		}
-		if b.prepareCount() != g.quorum2f1 {
+		if b.prepareCount() != graph.quorum2f1 {
 			return nil
 		}
 		if b.hasCommit(receiver) {
@@ -311,12 +316,12 @@ func (g *Graph) processMessage(s *state, sender uint64, receiver uint64, origin 
 		if v < m.view {
 			return nil
 		}
-		b := s.getBitset(g.nodeCount, m.pre())
+		b := s.getBitset(graph.nodeCount, m.pre())
 		b.setCommit(m.sender)
 		if log.AtDebug() {
 			log.Debugf("Commit count == %d", b.commitCount())
 		}
-		if b.commitCount() != g.quorum2f1 {
+		if b.commitCount() != graph.quorum2f1 {
 			return nil
 		}
 		nr := noderound{node, round}
@@ -331,7 +336,7 @@ func (g *Graph) processMessage(s *state, sender uint64, receiver uint64, origin 
 		} else {
 			s.final[nr] = m.hash
 		}
-		g.deliver(node, round, m.hash)
+		graph.deliver(node, round, m.hash)
 
 	case viewchange:
 		if v > m.view {
@@ -351,7 +356,7 @@ func (g *Graph) processMessage(s *state, sender uint64, receiver uint64, origin 
 			}
 		}
 		vcs[m.sender] = m.hash
-		if len(vcs) != g.quorum2f1 {
+		if len(vcs) != graph.quorum2f1 {
 			return nil
 		}
 		// Increase the view number
@@ -397,13 +402,13 @@ func (g *Graph) processMessage(s *state, sender uint64, receiver uint64, origin 
 	return nil
 }
 
-func (g *Graph) processMessages(s *state, processed map[message]bool, sender uint64, receiver uint64, origin BlockID, msgs []message) []message {
+func (graph *Graph) processMessages(s *state, processed map[message]bool, sender uint64, receiver uint64, origin BlockID, msgs []message) []message {
 	var out []message
 	for _, msg := range msgs {
 		if processed[msg] {
 			continue
 		}
-		resp := g.processMessage(s, sender, receiver, origin, msg)
+		resp := graph.processMessage(s, sender, receiver, origin, msg)
 		processed[msg] = true
 		if resp != nil {
 			out = append(out, resp)
@@ -414,7 +419,7 @@ func (g *Graph) processMessages(s *state, processed map[message]bool, sender uin
 		if processed[msg] {
 			continue
 		}
-		resp := g.processMessage(s, sender, receiver, origin, msg)
+		resp := graph.processMessage(s, sender, receiver, origin, msg)
 		processed[msg] = true
 		if resp != nil {
 			out = append(out, resp)
@@ -423,14 +428,14 @@ func (g *Graph) processMessages(s *state, processed map[message]bool, sender uin
 	return out
 }
 
-func (g *Graph) run() {
+func (graph *Graph) run() {
 	for {
 		select {
-		case data := <-g.entries:
+		case data := <-graph.entries:
 			entries := make([]*entry, len(data.Deps))
-			g.mu.Lock()
+			graph.mu.Lock()
 			max := data.Block.Round
-			round := g.round
+			round := graph.round
 			for i, dep := range data.Deps {
 				if log.AtDebug() {
 					log.Debug("Dep:", fld.BlockID(dep.Block))
@@ -445,7 +450,7 @@ func (g *Graph) run() {
 					e.deps = make([]BlockID, len(dep.Deps)+1)
 					e.deps[0] = dep.Prev
 					copy(e.deps[1:], dep.Deps)
-					pmax, exists := g.max[dep.Prev]
+					pmax, exists := graph.max[dep.Prev]
 					if !exists {
 						rcheck = true
 					} else if pmax > dmax {
@@ -456,7 +461,7 @@ func (g *Graph) run() {
 				}
 				entries[i] = e
 				for _, link := range dep.Deps {
-					lmax, exists := g.max[link]
+					lmax, exists := graph.max[link]
 					if !exists {
 						rcheck = true
 					} else if lmax > dmax {
@@ -466,14 +471,14 @@ func (g *Graph) run() {
 				if rcheck && round > dmax {
 					dmax = round
 				}
-				g.max[dep.Block] = dmax
+				graph.max[dep.Block] = dmax
 				if dmax > max {
 					max = dmax
 				}
 			}
 			rcheck := false
 			if data.Block.Round != 1 {
-				pmax, exists := g.max[data.Prev]
+				pmax, exists := graph.max[data.Prev]
 				if !exists {
 					rcheck = true
 				} else if pmax > max {
@@ -483,14 +488,14 @@ func (g *Graph) run() {
 			if rcheck && round > max {
 				max = round
 			}
-			g.max[data.Block] = max
-			g.blocks = append(g.blocks, &blockInfo{
+			graph.max[data.Block] = max
+			graph.blocks = append(graph.blocks, &blockInfo{
 				data: data,
 				max:  max,
 			})
-			g.mu.Unlock()
+			graph.mu.Unlock()
 			for _, e := range entries {
-				g.process(e)
+				graph.process(e)
 			}
 			self := &entry{
 				block: data.Block,
@@ -501,19 +506,19 @@ func (g *Graph) run() {
 			for i, dep := range data.Deps {
 				self.deps[i+1] = dep.Block
 			}
-			g.process(self)
-		case <-g.ctx.Done():
+			graph.process(self)
+		case <-graph.ctx.Done():
 			return
 		}
 	}
 }
 
 // Add updates the graph and notifies the appropriate controllers.
-func (g *Graph) Add(data *BlockGraph) {
+func (graph *Graph) Add(data *BlockGraph) {
 	if log.AtDebug() {
 		log.Debug("Adding block to graph", fld.BlockID(data.Block))
 	}
-	g.entries <- data
+	graph.entries <- data
 }
 
 // New instantiates a Graph for use by the broadcast/consensus mechanism.
