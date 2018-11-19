@@ -39,6 +39,7 @@ require (
 	golang.org/x/oauth2 v0.0.0-20180821212333-d2e6202438be
 	golang.org/x/sync v0.0.0-20180314180146-1d60e4601c6f
 	golang.org/x/time v0.0.0-20180412165947-fbb02b2291d2 // indirect
+	golang.org/x/tools v0.0.0-20181117154741-2ddaf7f79a09 // indirect
 	google.golang.org/api v0.0.0-20180906000440-49a9310a9145
 	google.golang.org/appengine v1.1.0
 	google.golang.org/grpc v1.16.0 // indirect
