@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"chainspace.io/prototype/config"
+	"chainspace.io/prototype/internal/log"
 	"chainspace.io/prototype/node"
 )
 
@@ -95,4 +96,7 @@ func main() {
 	}
 	_ = cfg
 
+	nodeCfg.DisableSBAC = true
+	nodeCfg.Logging.FileLevel = log.FatalLevel
+	nodeCfg.Logging.ConsoleLevel = log.FatalLevel
 }
