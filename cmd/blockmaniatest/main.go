@@ -168,7 +168,7 @@ func (tr *testrunner) writeResults() {
 		AvgLatency: tr.txtt.avgLatency.String(),
 		AvgTxs:     tr.avgTxs,
 	}
-	b, err := json.Marshal(&tres)
+	b, err := json.MarshalIndent(&tres, "", "  ")
 	if err != nil {
 		fmt.Printf("unable to marshal test results: %v\n", err)
 		os.Exit(1)
