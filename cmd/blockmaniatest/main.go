@@ -159,13 +159,13 @@ func (tr *testrunner) calcTxPerSecs(ctx context.Context, wg *sync.WaitGroup) {
 }
 
 type testresults struct {
-	AvgLatency string `json:"avg_latency"`
-	AvgTxs     uint64 `json:"avg_txs"`
+	AvgLatency float64 `json:"avg_latency"`
+	AvgTxs     uint64  `json:"avg_txs"`
 }
 
 func (tr *testrunner) writeResults() {
 	tres := testresults{
-		AvgLatency: tr.txtt.avgLatency.String(),
+		AvgLatency: tr.txtt.avgLatency.Seconds(),
 		AvgTxs:     tr.avgTxs,
 	}
 	b, err := json.MarshalIndent(&tres, "", "  ")

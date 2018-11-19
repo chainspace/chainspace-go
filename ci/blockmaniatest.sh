@@ -1,5 +1,7 @@
 #/bin/bash
 
+expected_txs_per_secs=3500
+expected_latency=3.7
 network_name=testnet
 shard_size=4
 shard_count=1
@@ -36,3 +38,24 @@ for pid in ${pids[*]}; do
 done
 
 # analysis results
+
+tot_node="$((${shard_count} * ${shard_size}))";
+for i in $(seq 1 ${tot_node}); do
+    echo ">> checking testresults for blockmaniatest node ${i}"
+
+    # check txs per secs
+    txspersecs=`cat ~/.chainspace/testresults/blockmaniatest-results-node${i}.json | jq -r .avg_txs`
+    if [ ${txspersecs} -lt ${expected_txs_per_secs} ]; then
+	echo "blockmania node ${i} produced ${txspersecs} txs expected ${expected_txs_per_secs}"
+	exit 1
+    fi
+
+    #check txs avg latency
+    txslatency=`cat ~/.chainspace/testresults/blockmaniatest-results-node${i}.json | jq -r .avg_latency`
+    if (( $(echo "${txslatency} > ${expected_latency}" |bc -l) )); then
+	echo "blockmania node ${i} had a latency of ${txslatency}s expected ${expected_latency}s"
+	exit 1
+    fi
+
+    echo "blockmania node ${i} produced ${txspersecs}tx/s and had a latency of ${txslatency}s pass=OK"
+done
