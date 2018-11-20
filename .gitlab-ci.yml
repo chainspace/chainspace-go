@@ -33,7 +33,7 @@ unit_tests:
     - make test
 
 e2e_tests:
-  state: test
+  stage: test
   script:
     - ./ci/blockmaniatest.sh
 
