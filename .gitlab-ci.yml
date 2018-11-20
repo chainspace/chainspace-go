@@ -35,6 +35,7 @@ unit_tests:
 e2e_tests:
   stage: test
   script:
+    - make install
     - ./ci/blockmaniatest.sh
 
 #race_detector:
