@@ -11,7 +11,7 @@ session="blockmaniatest-${network_name}"
 # remove previous runs configurations
 rm -rf ~/.chainspace/${session}
 
-echo ">> initializing chainspace netwtork"
+echo ">> initializing chainspace network"
 # initialize chainspace network
 chainspace init ${session} --shard-count ${shard_count} --shard-size ${shard_size} --disable-sbac
 
