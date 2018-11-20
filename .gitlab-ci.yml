@@ -35,7 +35,7 @@ unit_tests:
 e2e_tests:
   stage: test
   script:
-    - apt-get update && apt-get install -y jq
+    - apt-get update && apt-get install -y jq bc
     - make install
     - ./ci/blockmaniatest.sh
 
