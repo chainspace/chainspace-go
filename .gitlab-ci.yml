@@ -32,6 +32,11 @@ unit_tests:
   script:
     - make test
 
+e2e_tests:
+  state: test
+  script:
+    - ./ci/blockmaniatest.sh
+
 #race_detector:
 #  stage: test
 #  script:
