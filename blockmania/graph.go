@@ -148,7 +148,7 @@ func (graph *Graph) process(ntry *entry) {
 	}
 
 	node, round, hash := ntry.block.Node, ntry.block.Round, ntry.block.Hash
-	out := []message{preprepare{
+	out := []message{prePrepare{
 		hash:  hash,
 		node:  node,
 		round: round,
@@ -220,7 +220,7 @@ func (graph *Graph) process(ntry *entry) {
 		} else {
 			state.data[skey] = v + 1
 		}
-		out = append(out, viewchange{
+		out = append(out, viewChange{
 			hash:   hval,
 			node:   tmout.node,
 			round:  tmout.round,
@@ -245,7 +245,7 @@ func (graph *Graph) process(ntry *entry) {
 
 func (graph *Graph) processMessage(s *state, sender uint64, receiver uint64, origin BlockID, msg message) message {
 
-	node, round := msg.noderound()
+	node, round := msg.nodeRound()
 	if _, exists := s.data[final{node: node, round: round}]; exists {
 		return nil
 	}
@@ -258,12 +258,12 @@ func (graph *Graph) processMessage(s *state, sender uint64, receiver uint64, ori
 
 	switch m := msg.(type) {
 
-	case preprepare:
+	case prePrepare:
 		// TODO: and valid view!
 		if v != m.view {
 			return nil
 		}
-		pp := preprepared{node: node, round: round, view: m.view}
+		pp := prePrepared{node: node, round: round, view: m.view}
 		if _, exists := s.data[pp]; exists {
 			return nil
 		}
@@ -324,13 +324,13 @@ func (graph *Graph) processMessage(s *state, sender uint64, receiver uint64, ori
 		if b.commitCount() != graph.quorum2f1 {
 			return nil
 		}
-		nr := noderound{node, round}
+		nr := nodeRound{node, round}
 		if _, exists := s.final[nr]; exists {
 			// assert value == m.hash
 			return nil
 		}
 		if s.final == nil {
-			s.final = map[noderound]string{
+			s.final = map[nodeRound]string{
 				nr: m.hash,
 			}
 		} else {
@@ -338,13 +338,13 @@ func (graph *Graph) processMessage(s *state, sender uint64, receiver uint64, ori
 		}
 		graph.deliver(node, round, m.hash)
 
-	case viewchange:
+	case viewChange:
 		if v > m.view {
 			return nil
 		}
 		var vcs map[uint64]string
-		// TODO: check whether we should store the viewchanged by view number
-		key := viewchanged{node: node, round: round, view: v}
+		// TODO: check whether we should store the viewChanged by view number
+		key := viewChanged{node: node, round: round, view: v}
 		if val, exists := s.data[key]; exists {
 			vcs = val.(map[uint64]string)
 		} else {
@@ -372,11 +372,11 @@ func (graph *Graph) processMessage(s *state, sender uint64, receiver uint64, ori
 				hash = hval
 			}
 		}
-		return newview{
+		return newView{
 			hash: hash, node: node, round: round, sender: receiver, view: m.view,
 		}
 
-	case newview:
+	case newView:
 		if v > m.view {
 			return nil
 		}
@@ -392,7 +392,7 @@ func (graph *Graph) processMessage(s *state, sender uint64, receiver uint64, ori
 		tval := origin.Round + s.timeout + 5 // uint64(10*m.view)
 		s.timeouts[tval] = append(s.timeouts[tval], timeout{node: node, round: round, view: m.view})
 		s.data[key] = true
-		return preprepare{hash: m.hash, node: node, round: round, view: m.view}
+		return prePrepare{hash: m.hash, node: node, round: round, view: m.view}
 
 	default:
 		panic(fmt.Errorf("blockmania: unknown message kind to process: %s", msg.kind()))

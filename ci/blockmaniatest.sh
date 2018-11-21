@@ -1,7 +1,7 @@
 #/bin/bash
 
-expected_txs_per_secs=3500
-expected_latency=3.7
+expected_txs_per_secs=3200
+expected_latency=4.5
 network_name=testnet
 shard_size=4
 shard_count=1

@@ -6,9 +6,9 @@ import (
 )
 
 var _ = Describe("Graph", func() {
-
-	var graph = Graph{}
 	var e entry
+	var graph = Graph{}
+
 	BeforeEach(func() {
 		e = entry{}
 	})
@@ -20,20 +20,23 @@ var _ = Describe("Graph", func() {
 					prev: BlockID{Hash: "barbarbarbar"},
 				}
 			})
+
 			It("returns a state", func() {
-				var result = graph.findOrCreateState(&e)
-				var expected = graph.states[e.prev].clone(graph.round)
-				Expect(result).To(Equal(expected))
+				actual := graph.findOrCreateState(&e)
+				expected := graph.states[e.prev].clone(graph.round)
+
+				Expect(actual).To(Equal(expected))
 			})
 		})
 
 		Context("when no previous state exists", func() {
 			It("returns a blank state populated with a timeout map", func() {
-				var result = graph.findOrCreateState(&e)
-				var expected = &state{
+				actual := graph.findOrCreateState(&e)
+				expected := &state{
 					timeouts: map[uint64][]timeout{},
 				}
-				Expect(result).To(Equal(expected))
+
+				Expect(actual).To(Equal(expected))
 			})
 		})
 	})

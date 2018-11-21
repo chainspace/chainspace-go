@@ -6,11 +6,11 @@ import (
 
 const (
 	unknownMsg messageKind = iota
-	preprepareMsg
+	prePrepareMsg
 	prepareMsg
 	commitMsg
-	viewchangeMsg
-	newviewMsg
+	viewChangedMsg
+	newViewMsg
 )
 
 const (
@@ -18,10 +18,18 @@ const (
 	finalState
 	hnvState
 	preparedState
-	prepreparedState
+	prePreparedState
 	viewState
-	viewchangedState
+	viewChangedState
 )
+
+type entry struct {
+	block BlockID
+	deps  []BlockID
+	prev  BlockID
+}
+
+// commit
 
 type commit struct {
 	hash   string
@@ -35,8 +43,12 @@ func (c commit) kind() messageKind {
 	return commitMsg
 }
 
-func (c commit) noderound() (uint64, uint64) {
+func (c commit) nodeRound() (uint64, uint64) {
 	return c.node, c.round
+}
+
+func (c commit) pre() prePrepare {
+	return prePrepare{hash: c.hash, node: c.node, round: c.round, view: c.view}
 }
 
 func (c commit) String() string {
@@ -46,15 +58,7 @@ func (c commit) String() string {
 	)
 }
 
-func (c commit) pre() preprepare {
-	return preprepare{hash: c.hash, node: c.node, round: c.round, view: c.view}
-}
-
-type entry struct {
-	block BlockID
-	deps  []BlockID
-	prev  BlockID
-}
+// final
 
 type final struct {
 	node  uint64
@@ -65,9 +69,11 @@ func (f final) getRound() uint64 {
 	return f.round
 }
 
-func (f final) skind() stateDataKind {
+func (f final) sdKind() stateDataKind {
 	return finalState
 }
+
+// hnv
 
 type hnv struct {
 	node  uint64
@@ -79,13 +85,15 @@ func (h hnv) getRound() uint64 {
 	return h.round
 }
 
-func (h hnv) skind() stateDataKind {
+func (h hnv) sdKind() stateDataKind {
 	return hnvState
 }
 
+// message
+
 type message interface {
 	kind() messageKind
-	noderound() (uint64, uint64)
+	nodeRound() (uint64, uint64)
 	String() string
 }
 
@@ -95,22 +103,24 @@ func (m messageKind) String() string {
 	switch m {
 	case commitMsg:
 		return "commit"
-	case newviewMsg:
+	case newViewMsg:
 		return "new-view"
 	case prepareMsg:
 		return "prepare"
-	case preprepareMsg:
+	case prePrepareMsg:
 		return "pre-prepare"
 	case unknownMsg:
 		return "unknown"
-	case viewchangeMsg:
+	case viewChangedMsg:
 		return "view-change"
 	default:
 		panic(fmt.Errorf("blockmania: unknown message kind: %d", m))
 	}
 }
 
-type newview struct {
+// newView
+
+type newView struct {
 	hash   string
 	node   uint64
 	round  uint64
@@ -118,25 +128,29 @@ type newview struct {
 	view   uint32
 }
 
-func (n newview) kind() messageKind {
-	return newviewMsg
+func (n newView) kind() messageKind {
+	return newViewMsg
 }
 
-func (n newview) noderound() (uint64, uint64) {
+func (n newView) nodeRound() (uint64, uint64) {
 	return n.node, n.round
 }
 
-func (n newview) String() string {
+func (n newView) String() string {
 	return fmt.Sprintf(
 		"new-view{node: %d, round: %d, view: %d, hash: '%s', sender: %d}",
 		n.node, n.round, n.view, fmtHash(n.hash), n.sender,
 	)
 }
 
-type noderound struct {
+// nodeRound
+
+type nodeRound struct {
 	node  uint64
 	round uint64
 }
+
+// prepare
 
 type prepare struct {
 	hash   string
@@ -146,16 +160,18 @@ type prepare struct {
 	view   uint32
 }
 
+// prepare
+
 func (p prepare) kind() messageKind {
 	return prepareMsg
 }
 
-func (p prepare) noderound() (uint64, uint64) {
+func (p prepare) nodeRound() (uint64, uint64) {
 	return p.node, p.round
 }
 
-func (p prepare) pre() preprepare {
-	return preprepare{hash: p.hash, node: p.node, round: p.round, view: p.view}
+func (p prepare) pre() prePrepare {
+	return prePrepare{hash: p.hash, node: p.node, round: p.round, view: p.view}
 }
 
 func (p prepare) String() string {
@@ -164,6 +180,8 @@ func (p prepare) String() string {
 		p.node, p.round, p.view, fmtHash(p.hash), p.sender,
 	)
 }
+
+// prepared
 
 type prepared struct {
 	node  uint64
@@ -175,51 +193,57 @@ func (p prepared) getRound() uint64 {
 	return p.round
 }
 
-func (p prepared) skind() stateDataKind {
+func (p prepared) sdKind() stateDataKind {
 	return preparedState
 }
 
-type preprepare struct {
+// prePrepare
+
+type prePrepare struct {
 	hash  string
 	node  uint64
 	round uint64
 	view  uint32
 }
 
-func (p preprepare) kind() messageKind {
-	return preprepareMsg
+func (p prePrepare) kind() messageKind {
+	return prePrepareMsg
 }
 
-func (p preprepare) noderound() (uint64, uint64) {
+func (p prePrepare) nodeRound() (uint64, uint64) {
 	return p.node, p.round
 }
 
-func (p preprepare) String() string {
+func (p prePrepare) String() string {
 	return fmt.Sprintf(
 		"pre-prepare{node: %d, round: %d, view: %d, hash: '%s'}",
 		p.node, p.round, p.view, fmtHash(p.hash),
 	)
 }
 
-type preprepared struct {
+// prePrepared
+
+type prePrepared struct {
 	node  uint64
 	round uint64
 	view  uint32
 }
 
-func (p preprepared) getRound() uint64 {
+func (p prePrepared) getRound() uint64 {
 	return p.round
 }
 
-func (p preprepared) skind() stateDataKind {
-	return prepreparedState
+func (p prePrepared) sdKind() stateDataKind {
+	return prePreparedState
 }
 
+// state
+
 type state struct {
-	bitsets  map[preprepare]*bitset
+	bitsets  map[prePrepare]*bitset
 	data     stateKV
 	delay    map[uint64]uint64
-	final    map[noderound]string
+	final    map[nodeRound]string
 	out      []message
 	timeout  uint64
 	timeouts map[uint64][]timeout
@@ -235,7 +259,7 @@ func (s *state) clone(minround uint64) *state {
 		timeout: s.timeout,
 	}
 	if s.bitsets != nil {
-		bitsets := map[preprepare]*bitset{}
+		bitsets := map[prePrepare]*bitset{}
 		for k, v := range s.bitsets {
 			if k.round < minround {
 				continue
@@ -262,7 +286,7 @@ func (s *state) clone(minround uint64) *state {
 		n.delay = delay
 	}
 	if s.final != nil {
-		final := map[noderound]string{}
+		final := map[nodeRound]string{}
 		for k, v := range s.final {
 			if k.round < minround {
 				continue
@@ -273,7 +297,7 @@ func (s *state) clone(minround uint64) *state {
 	}
 	var out []message
 	for _, msg := range s.out {
-		_, r := msg.noderound()
+		_, r := msg.nodeRound()
 		if r < minround {
 			continue
 		}
@@ -291,10 +315,10 @@ func (s *state) clone(minround uint64) *state {
 	return n
 }
 
-func (s *state) getBitset(size int, pp preprepare) *bitset {
+func (s *state) getBitset(size int, pp prePrepare) *bitset {
 	if s.bitsets == nil {
 		b := newBitset(size)
-		s.bitsets = map[preprepare]*bitset{
+		s.bitsets = map[prePrepare]*bitset{
 			pp: b,
 		}
 		return b
@@ -330,8 +354,10 @@ func (s *state) getView(node uint64, round uint64) uint32 {
 
 type stateData interface {
 	getRound() uint64
-	skind() stateDataKind
+	sdKind() stateDataKind
 }
+
+// stateDataKind
 
 type stateDataKind uint8
 
@@ -343,13 +369,13 @@ func (s stateDataKind) String() string {
 		return "hnv"
 	case preparedState:
 		return "prepared"
-	case prepreparedState:
+	case prePreparedState:
 		return "preprepared"
 	case unknownState:
 		return "unknown"
 	case viewState:
 		return "viewState"
-	case viewchangedState:
+	case viewChangedState:
 		return "viewchanged"
 	default:
 		panic(fmt.Errorf("blockmania: unknown status data kind: %d", s))
@@ -364,6 +390,8 @@ type timeout struct {
 	view  uint32
 }
 
+// view
+
 type view struct {
 	node  uint64
 	round uint64
@@ -373,11 +401,13 @@ func (v view) getRound() uint64 {
 	return v.round
 }
 
-func (v view) skind() stateDataKind {
+func (v view) sdKind() stateDataKind {
 	return viewState
 }
 
-type viewchange struct {
+// viewChange
+
+type viewChange struct {
 	hash   string
 	node   uint64
 	round  uint64
@@ -385,33 +415,35 @@ type viewchange struct {
 	view   uint32
 }
 
-func (v viewchange) kind() messageKind {
-	return viewchangeMsg
+func (v viewChange) kind() messageKind {
+	return viewChangedMsg
 }
 
-func (v viewchange) noderound() (uint64, uint64) {
+func (v viewChange) nodeRound() (uint64, uint64) {
 	return v.node, v.round
 }
 
-func (v viewchange) String() string {
+func (v viewChange) String() string {
 	return fmt.Sprintf(
 		"view-change{node: %d, round: %d, view: %d, hash: '%s', sender: %d}",
 		v.node, v.round, v.view, fmtHash(v.hash), v.sender,
 	)
 }
 
-type viewchanged struct {
+// viewChanged
+
+type viewChanged struct {
 	node  uint64
 	round uint64
 	view  uint32
 }
 
-func (v viewchanged) getRound() uint64 {
+func (v viewChanged) getRound() uint64 {
 	return v.round
 }
 
-func (v viewchanged) skind() stateDataKind {
-	return viewchangedState
+func (v viewChanged) sdKind() stateDataKind {
+	return viewChangedState
 }
 
 func diff(a uint64, b uint64) uint64 {

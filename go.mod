@@ -27,6 +27,8 @@ require (
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
 	github.com/miekg/dns v1.0.8 // indirect
 	github.com/minio/highwayhash v0.0.0-20180501080913-85fc8a2dacad
+	github.com/onsi/ginkgo v1.6.0
+	github.com/onsi/gomega v1.4.2
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
 	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/pkg/errors v0.8.0 // indirect
@@ -35,7 +37,7 @@ require (
 	github.com/stretchr/testify v1.2.2
 	github.com/tav/golly v0.0.0-20180823113506-ad032321f11e
 	golang.org/x/crypto v0.0.0-20180904163835-0709b304e793
-	golang.org/x/net v0.0.0-20180826012351-8a410e7b638d
+	golang.org/x/net v0.0.0-20180906233101-161cd47e91fd
 	golang.org/x/oauth2 v0.0.0-20180821212333-d2e6202438be
 	golang.org/x/sync v0.0.0-20180314180146-1d60e4601c6f
 	golang.org/x/time v0.0.0-20180412165947-fbb02b2291d2 // indirect

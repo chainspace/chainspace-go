@@ -1,16 +1,13 @@
-package blockmania_test
+package blockmania
 
 import (
 	"fmt"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-
-	. "chainspace.io/prototype/blockmania"
 )
 
 var _ = Describe("Blockmania", func() {
-
 	var (
 		blockID BlockID
 	)
@@ -26,16 +23,19 @@ var _ = Describe("Blockmania", func() {
 			})
 
 			It("should return a formatted string", func() {
+				actual := blockID.String()
+				expected := fmt.Sprintf("%v | %v | %v", blockID.Node, blockID.Round, "666F6F666F6F")
 
-				var result = fmt.Sprintf("%v | %v | %v", blockID.Node, blockID.Round, "666F6F666F6F")
-				Expect(blockID.String()).To(Equal(result))
+				Expect(actual).To(Equal(expected))
 			})
 		})
 
 		Context("An invalid BlockID", func() {
 			It("should return a formatted string", func() {
-				var result = fmt.Sprintf("%v | %v", blockID.Node, blockID.Round)
-				Expect(blockID.String()).To(Equal(result))
+				actual := blockID.String()
+				expected := fmt.Sprintf("%v | %v", blockID.Node, blockID.Round)
+
+				Expect(actual).To(Equal(expected))
 			})
 		})
 	})
@@ -43,7 +43,10 @@ var _ = Describe("Blockmania", func() {
 	Describe("Valid", func() {
 		Context("with an empty hash", func() {
 			It("should be invalid", func() {
-				Expect(blockID.Valid()).To(Equal(false))
+				actual := blockID.Valid()
+				expected := false
+
+				Expect(actual).To(Equal(expected))
 			})
 		})
 
@@ -51,8 +54,12 @@ var _ = Describe("Blockmania", func() {
 			BeforeEach(func() {
 				blockID.Hash = "foo"
 			})
+
 			It("should be valid", func() {
-				Expect(blockID.Valid()).To(Equal(true))
+				actual := blockID.Valid()
+				expected := true
+
+				Expect(actual).To(Equal(expected))
 			})
 		})
 	})
