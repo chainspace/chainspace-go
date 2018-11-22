@@ -28,11 +28,14 @@ require (
 	github.com/gorilla/context v1.1.1 // indirect
 	github.com/gorilla/mux v1.6.2 // indirect
 	github.com/grandcat/zeroconf v0.0.0-20180329153754-df75bb3ccae1
+	github.com/json-iterator/go v1.1.5 // indirect
 	github.com/mattn/go-colorable v0.0.9 // indirect
 	github.com/mattn/go-isatty v0.0.3 // indirect
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
 	github.com/miekg/dns v1.0.8 // indirect
 	github.com/minio/highwayhash v0.0.0-20180501080913-85fc8a2dacad
+	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/onsi/ginkgo v1.6.0
 	github.com/onsi/gomega v1.4.2
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect

@@ -17,7 +17,7 @@ PKG_LIST := $(shell go list ${PKG}/... | grep -v /vendor/)
 PROJECT_NAME=chainspace
 VERSION := $(shell cat VERSION)
 
-install: $(PROJECT_NAME) httptest httptest2 blockmaniatest ## install the chainspace/httptest binaries
+install: $(PROJECT_NAME) httptest httptest2 blockmaniatest pubsublistener ## install the chainspace/httptest binaries
 
 generate: ## generte bindata files # TODO: remove this once new gin-swagger stuff is working
 	cd restsrv && go-bindata-assetfs -pkg restsrv -o bindata.go swagger && cd ..
@@ -64,6 +64,9 @@ httptest2: ## build the httptest2 binary
 
 blockmaniatest: ## build the httptest2 binary
 	go install $(NAMESPACE)/prototype/cmd/blockmaniatest
+
+pubsublistener:
+	go install $(NAMESPACE)/prototype/cmd/pubsublistener
 
 proto: ## recompile all protobuf definitions
 	$(foreach f,$(FILES),\
