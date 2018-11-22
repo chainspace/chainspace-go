@@ -204,7 +204,7 @@ TODO: Write this...
 
 ## REST Documentation
 
-Many parts of the system are available to poke at via a RESTful HTTP server interface. After starting a node locally, you can see what's available by going to http://localhost:8080/docs
+Many parts of the system are available to poke at via a RESTful HTTP server interface. After starting a node locally, you can see what's available by going to http://localhost:8001/swagger/index.html - where `8001` is the node's HTTP server port as defined in `~/.chainspace/<network-name>/node-X/node.yaml`
 
 TODO: we still need to really document how to use the REST endpoints from a conceptual standpoint.
 

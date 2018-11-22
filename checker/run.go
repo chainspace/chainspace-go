@@ -35,6 +35,7 @@ func run(ctx context.Context, checkers checkersMap, tx *sbac.Transaction) (bool,
 		c := v.Checker
 		g.Go(func() error {
 			result := c.Check(t.InputObjects, t.InputReferences, t.Parameters, t.OutputObjects, t.Returns, sbac.StringsSlice(t.Labels).AsSlice(), t.Dependencies)
+
 			if !result {
 				return errors.New("check failed")
 			}

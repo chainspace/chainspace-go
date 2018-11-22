@@ -29,7 +29,7 @@ func readlabel(rw http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	return []byte(req.Label), true
 }
 
-func (s *Service) kvGetObjectID(rw http.ResponseWriter, r *http.Request) {
+func (s *Service) kvGetVersionID(rw http.ResponseWriter, r *http.Request) {
 	if !strings.EqualFold(r.Header.Get("Content-Type"), "application/json") {
 		fail(rw, http.StatusBadRequest, "unsupported content-type")
 		return

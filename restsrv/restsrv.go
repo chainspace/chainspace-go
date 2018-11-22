@@ -594,18 +594,18 @@ func (s *Service) makeServ(addr string, port int) *http.Server {
 		mux.HandleFunc("/object/get", s.objectGet)
 		mux.HandleFunc("/object/ready", s.objectsReady)
 		mux.HandleFunc("/states", s.states)
-		mux.HandleFunc("/transaction", s.transactionChecked)
 		mux.HandleFunc("/transaction/unchecked", s.transactionUnchecked)
 		// kv store
 		mux.HandleFunc("/kv/get", s.kvGet)
-		mux.HandleFunc("/kv/get-objectid", s.kvGetObjectID)
+		mux.HandleFunc("/kv/get-objectid", s.kvGetVersionID)
+		mux.HandleFunc("/transaction", s.transactionChecked)
+		mux.HandleFunc("/transaction/check", s.checkTransaction)
 	}
 	// checkers
 	if !s.sbacOnly {
 		if s.checkerOnly {
 			log.Error("restsrv started as checker-only")
 		}
-		mux.HandleFunc("/transaction/check", s.checkTransaction)
 		mux.HandleFunc("/transaction/check-raw", s.checkTransactionRaw)
 	}
 

@@ -52,7 +52,7 @@ func typeCheck(ids idmap, traces []*sbac.Trace) error {
 				len(trace.InputObjects), len(trace.OutputObjects))
 		}
 
-		for _, v := range trace.InputObjects {
+		for _, v := range trace.InputObjectVersionIDs {
 			v := v
 			if sd, ok := ids[string(v)]; ok {
 				if sd.state == inactive {
@@ -68,7 +68,7 @@ func typeCheck(ids idmap, traces []*sbac.Trace) error {
 			}
 		}
 
-		for _, v := range trace.InputReferences {
+		for _, v := range trace.InputReferenceVersionIDs {
 			v := v
 			if sd, ok := ids[string(v)]; ok {
 				if sd.state == inactive {

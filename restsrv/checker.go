@@ -35,6 +35,7 @@ func (s *Service) checkTransaction(rw http.ResponseWriter, r *http.Request) {
 	}
 	req := Transaction{}
 	if err := json.Unmarshal(body, &req); err != nil {
+		log.Error("ERROR IN REST SRV", log.Err(err))
 		fail(rw, http.StatusBadRequest, fmt.Sprintf("unable to unmarshal: %v", err))
 		return
 	}
@@ -56,6 +57,7 @@ func (s *Service) checkTransaction(rw http.ResponseWriter, r *http.Request) {
 		errorr(rw, http.StatusInternalServerError, err.Error())
 		return
 	}
+	log.Error("to sbac ok")
 	resp := CheckTransactionResponse{
 		NodeID:    s.nodeID,
 		OK:        ok,

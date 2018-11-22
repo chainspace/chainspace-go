@@ -121,7 +121,8 @@ func main() {
 	}
 	if port > 0 && len(address) > 0 {
 		getAddresses()
-		getCheckerAddresses()
+		// getCheckerAddresses()
+		checkerAddresses = addresses
 	} else if port > 0 {
 		getAddressesFromGCP()
 		if standaloneCheckers {

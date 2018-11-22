@@ -6,6 +6,7 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78 // indirect
 	github.com/Microsoft/go-winio v0.4.11 // indirect
 	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 // indirect
+	github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc
 	github.com/cenkalti/backoff v2.0.0+incompatible // indirect
 	github.com/dchest/siphash v1.2.0 // indirect
 	github.com/dgraph-io/badger v1.5.3
@@ -16,6 +17,11 @@ require (
 	github.com/docker/go-units v0.3.3 // indirect
 	github.com/elazarl/go-bindata-assetfs v1.0.0
 	github.com/flynn/go-shlex v0.0.0-20150515145356-3f9db97f8568 // indirect
+	github.com/gin-contrib/cors v0.0.0-20181008113111-488de3ec974f
+	github.com/gin-contrib/sse v0.0.0-20170109093832-22d885f9ecc7 // indirect
+	github.com/gin-gonic/gin v1.3.0
+	github.com/go-openapi/jsonreference v0.17.2 // indirect
+	github.com/go-openapi/spec v0.17.2 // indirect
 	github.com/gogo/protobuf v1.1.1
 	github.com/golang/protobuf v1.2.0
 	github.com/google/go-cmp v0.2.0 // indirect
@@ -35,9 +41,12 @@ require (
 	github.com/rs/cors v1.5.0
 	github.com/sirupsen/logrus v1.2.0 // indirect
 	github.com/stretchr/testify v1.2.2
+	github.com/swaggo/gin-swagger v1.0.0
+	github.com/swaggo/swag v1.4.0
 	github.com/tav/golly v0.0.0-20180823113506-ad032321f11e
+	github.com/ugorji/go/codec v0.0.0-20181120210156-7d13b37dbec6 // indirect
 	golang.org/x/crypto v0.0.0-20180904163835-0709b304e793
-	golang.org/x/net v0.0.0-20180906233101-161cd47e91fd
+	golang.org/x/net v0.0.0-20181005035420-146acd28ed58
 	golang.org/x/oauth2 v0.0.0-20180821212333-d2e6202438be
 	golang.org/x/sync v0.0.0-20180314180146-1d60e4601c6f
 	golang.org/x/time v0.0.0-20180412165947-fbb02b2291d2 // indirect
@@ -45,6 +54,7 @@ require (
 	google.golang.org/api v0.0.0-20180906000440-49a9310a9145
 	google.golang.org/appengine v1.1.0
 	google.golang.org/grpc v1.16.0 // indirect
+	gopkg.in/go-playground/validator.v8 v8.18.2 // indirect
 	gopkg.in/yaml.v2 v2.2.1
 	gotest.tools v2.1.0+incompatible // indirect
 )

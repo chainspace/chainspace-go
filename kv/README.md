@@ -13,7 +13,7 @@ Prerequisites
 * Set up a testnet
 
 Building the Key Value store
----------------
+----------------------------
 
 Build the docker image for your contracts, you can do this using the makefile at the root of the repository:
 
@@ -36,7 +36,7 @@ This script will:
 The generated configuration exposes a HTTP REST API on all nodes. Node 1 starts on port 8001, Node 2 on port 8002 and so on.
 
 Seeding trial objects using httptest
--------------------------------------
+------------------------------------
 
 In order to test the key value store you can use the `httptest` binary (which is installed at the same time as the chainspace binary when you run `make install`).
 
@@ -63,21 +63,20 @@ This shows you the different labels which are created by the tests and associate
 Retrieving objects
 ------------------
 
-Call this http endpoint in order to retrieve the chainspace object id associated to your label.
+Call this http endpoint in order to retrieve the chainspace object's `versionId` associated to your label.
 ```
-curl -v http://0.0.0.0:8001/kv/get-objectid -X POST -H 'Content-Type: application/json' -d '{"label": "label:0:1"}'
+curl -v http://0.0.0.0:8001/kv/get-versionid -X POST -H 'Content-Type: application/json' -d '{"label": "label:0:1"}'
 ```
 
-
-Call this http endpoint in ordet to retrieve the object associated to your label.
+Call this http endpoint to retrieve the object associated to your label:
 ```
 curl -v http://0.0.0.0:8001/kv/get -X POST -H 'Content-Type: application/json' -d '{"label": "label:0:1"}'
 ```
 
-You can see that the object / object Id associated to your label evolves over time, when transactions are consuming them.
+You can see that the `versionId` associated to your label evolves over time, when transactions are consuming them.
 
 
-Running multiple shards
------------------------
+Running the kvstore with multiple shards
+----------------------------------------
 
-This should work fine, but there's a caveat. When
+This should work fine, but there's a caveat. Objects will change their `versionId`s on each update, and currently we're sharding on `versionId`. So your object may appear to migrate between shards whenever you update it. We're working on our strategy to alleviate this.

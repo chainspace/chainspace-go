@@ -19,7 +19,7 @@ VERSION := $(shell cat VERSION)
 
 install: $(PROJECT_NAME) httptest httptest2 blockmaniatest ## install the chainspace/httptest binaries
 
-generate: ## generte bindata files
+generate: ## generte bindata files # TODO: remove this once new gin-swagger stuff is working
 	cd restsrv && go-bindata-assetfs -pkg restsrv -o bindata.go swagger && cd ..
 
 $(PROJECT_NAME): ## build the chainspace binary
@@ -69,6 +69,9 @@ proto: ## recompile all protobuf definitions
 	$(foreach f,$(FILES),\
 		./genproto.sh $(f);\
 	)
+
+swaggerdocs:
+	rm -rf rest/docs && swag init -g rest/router.go && mv docs rest/docs
 
 test: ## Run unit tests
 	go test -short ${PKG_LIST} -v

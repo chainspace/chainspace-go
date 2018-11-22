@@ -70,7 +70,7 @@ func (w *worker) callChecker(
 	client := http.Client{
 		Timeout: 5 * time.Second,
 	}
-	fmt.Printf("worker %v checking new transaction\n", w.id)
+	fmt.Printf("worker %v checking new transaction with %v\n", w.id, u)
 	// make transaction
 	payload := bytes.NewBuffer(txbytes)
 	req, err := http.NewRequest(http.MethodPost, u, payload)
