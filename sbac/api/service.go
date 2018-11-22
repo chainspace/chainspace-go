@@ -198,7 +198,7 @@ func (srv *service) buildObject(objects []*sbac.Object) (interface{}, int, error
 		}
 		data = append(data, o)
 	}
-	return data[0], http.StatusOK, nil
+	return data, http.StatusOK, nil
 }
 
 func (srv *service) States(ctx context.Context) (interface{}, int, error) {

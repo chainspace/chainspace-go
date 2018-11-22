@@ -43,15 +43,15 @@ func (ct *Transaction) ToSBAC() (*sbac.Transaction, error) {
 type Dependency Trace
 
 type Trace struct {
-	ContractID               string       `json:"contract_id"`
-	Procedure                string       `json:"procedure"`
-	InputObjectVersionIDs    []string     `json:"input_object_version_ids"`
-	InputReferenceVersionIDs []string     `json:"input_reference_version_ids"`
-	OutputObjects            []string     `json:"output_objects"`
-	Parameters               []string     `json:"parameters"`
-	Returns                  []string     `json:"returns"`
-	Labels                   [][]string   `json:"labels"`
-	Dependencies             []Dependency `json:"dependencies"`
+	ContractID               string        `json:"contract_id"`
+	Procedure                string        `json:"procedure"`
+	InputObjectVersionIDs    []string      `json:"input_object_version_ids"`
+	InputReferenceVersionIDs []string      `json:"input_reference_version_ids"`
+	OutputObjects            []interface{} `json:"output_objects"`
+	Parameters               []interface{} `json:"parameters"`
+	Returns                  []interface{} `json:"returns"`
+	Labels                   [][]string    `json:"labels"`
+	Dependencies             []Dependency  `json:"dependencies"`
 }
 
 func (ct *Trace) ToSBAC(mappings map[string]interface{}) (*sbac.Trace, error) {
@@ -63,7 +63,7 @@ func (ct *Trace) ToSBAC(mappings map[string]interface{}) (*sbac.Trace, error) {
 		}
 		return out
 	}
-	toJsonList := func(s []string) [][]byte {
+	toJsonList := func(s []interface{}) [][]byte {
 		out := make([][]byte, 0, len(s))
 		for _, v := range s {
 			bytes, _ := json.Marshal(v)

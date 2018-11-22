@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -11,7 +12,9 @@ import (
 	"sync"
 	"time"
 
+	checkerapi "chainspace.io/prototype/checker/api"
 	"chainspace.io/prototype/restsrv"
+	sbacapi "chainspace.io/prototype/sbac/api"
 )
 
 type worker struct {
@@ -33,13 +36,13 @@ func NewWorker(seed []string, labels [][]string, id int) *worker {
 		u = (&url.URL{
 			Scheme: "http",
 			Host:   addr,
-			Path:   "transaction",
+			Path:   "/api/sbac/transaction/checked",
 		}).String()
 	} else {
 		u = (&url.URL{
 			Scheme: "http",
 			Host:   addr,
-			Path:   "transaction/unchecked",
+			Path:   "/api/sbac/transaction",
 		}).String()
 	}
 
@@ -65,7 +68,7 @@ func (w *worker) callChecker(
 	u := (&url.URL{
 		Scheme: "http",
 		Host:   addr,
-		Path:   "transaction/check",
+		Path:   "api/checker/check",
 	}).String()
 	client := http.Client{
 		Timeout: 5 * time.Second,
@@ -88,17 +91,19 @@ func (w *worker) callChecker(
 		return 0, "error", err
 	}
 
-	res := struct {
-		Data   restsrv.CheckTransactionResponse `json:"data"`
-		Status string                           `json:"status"`
-	}{}
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("%v\n", string(b))
+		return 0, "error", errors.New("error")
+	}
+
+	res := checkerapi.CheckTransactionResponse{}
 	err = json.Unmarshal(b, &res)
 	if err != nil {
 		fmt.Printf("error checking transaction (%v)\n", err)
 		return 0, "error", err
 	}
 
-	return res.Data.NodeID, res.Data.Signature, nil
+	return res.NodeID, res.Signature, nil
 }
 
 func (w *worker) checkTransaction(ctx context.Context, tx []byte) map[uint64]string {
@@ -214,29 +219,26 @@ func (w *worker) run(ctx context.Context, wg *sync.WaitGroup) {
 	}
 	b, err := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("%v", string(b))
+		w.setReady(true)
+		return
+	}
 	if err != nil {
 		w.setReady(true)
 		fmt.Printf("error reading response from POST /object: %v\n", err.Error())
 		return
 	}
 
-	res := struct {
-		Data   interface{} `json:"data"`
-		Status string      `json:"status"`
-	}{}
+	res := sbacapi.ObjectResponse{}
 	err = json.Unmarshal(b, &res)
 	if err != nil {
 		w.setReady(true)
 		fmt.Printf("unable to unmarshal response: %v\n", err.Error())
 		return
 	}
-	if res.Status != "success" {
-		fmt.Printf("error from server: %v\n", string(b))
-		w.setReady(true)
-		return
-	}
 
-	data := res.Data.([]interface{})
+	data := res.Object.([]interface{})
 	w.objsdata = []interface{}{}
 	for i, v := range data {
 		w.seed[i] = v.(map[string]interface{})["version_id"].(string)
