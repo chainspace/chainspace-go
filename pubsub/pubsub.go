@@ -35,12 +35,6 @@ type server struct {
 	mu        sync.Mutex
 }
 
-func (s *server) Close() {
-	for _, v := range s.conns {
-		v.Close()
-	}
-}
-
 func (s *server) handleConnection(conn net.Conn) {
 	// may need to init with block number or sumbthing in the future
 	s.conns[conn.RemoteAddr().String()] = internal.NewConn(conn)
@@ -53,6 +47,12 @@ func (s *server) listen(ln net.Listener) {
 			log.Error("pubsub: Could not accept new connections", fld.Err(err))
 		}
 		go s.handleConnection(conn)
+	}
+}
+
+func (s *server) Close() {
+	for _, v := range s.conns {
+		v.Close()
 	}
 }
 

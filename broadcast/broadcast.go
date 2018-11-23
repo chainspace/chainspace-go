@@ -68,7 +68,7 @@ type Service struct {
 	maxPayload   int
 	mu           sync.RWMutex // protects previous, round, sent, signal, txCountLimit
 	nodeID       uint64
-	ownblocks    *ownblocks
+	ownBlocks    *ownBlocks
 	peers        []uint64
 	prevhash     []byte
 	prevref      *SignedData
@@ -394,7 +394,7 @@ func (s *Service) genBlocks() {
 			log.Debug("Created block", fld.Round(block.Round))
 		}
 		if round%50 == 0 {
-			s.ownblocks.prune(50)
+			s.ownBlocks.prune(50)
 		}
 		now := time.Now().Round(0)
 		workDuration = now.Sub(workStart)
@@ -426,7 +426,7 @@ func (s *Service) getBlocks(ids []blockmania.BlockID) []*SignedData {
 }
 
 func (s *Service) getOwnBlock(round uint64) (*SignedData, error) {
-	block := s.ownblocks.get(round)
+	block := s.ownBlocks.get(round)
 	if block != nil {
 		return block, nil
 	}
@@ -434,7 +434,7 @@ func (s *Service) getOwnBlock(round uint64) (*SignedData, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.ownblocks.set(round, block)
+	s.ownBlocks.set(round, block)
 	return block, nil
 }
 
@@ -859,7 +859,7 @@ func (s *Service) setBlock(id blockmania.BlockID, block *SignedData) error {
 }
 
 func (s *Service) setOwnBlock(block *SignedData, blockRef *SignedData, graph *blockmania.BlockGraph) error {
-	s.ownblocks.set(graph.Block.Round, block)
+	s.ownBlocks.set(graph.Block.Round, block)
 	return s.store.setOwnBlock(block, blockRef, graph)
 }
 
@@ -993,7 +993,7 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 	if err != nil {
 		return nil, err
 	}
-	ownblocks := &ownblocks{
+	ownBlocks := &ownBlocks{
 		data: map[uint64]*SignedData{},
 	}
 	store := &store{
@@ -1028,7 +1028,7 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		maxBlocks:    cfg.MaxPayload / (refSizeLimit + txSizeLimit + 100),
 		maxPayload:   cfg.MaxPayload,
 		nodeID:       cfg.NodeID,
-		ownblocks:    ownblocks,
+		ownBlocks:    ownBlocks,
 		peers:        cfg.Peers,
 		readTimeout:  cfg.Connections.ReadTimeout,
 		refSizeLimit: refSizeLimit,

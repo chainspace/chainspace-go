@@ -23,14 +23,6 @@ const (
 // CertType represents a type of transport layer certificate.
 type CertType uint8
 
-func (c CertType) String() string {
-	switch c {
-	case ECDSA:
-		return "ecdsa"
-	}
-	return ""
-}
-
 // Cert represents the public and private components of a PEM-encoded X.509
 // certificate.
 type Cert struct {
@@ -94,4 +86,12 @@ func GenCert(t CertType, networkID string, nodeID uint64) (cert *Cert, err error
 	default:
 		return nil, fmt.Errorf("transport: unknown cert type: %s", t)
 	}
+}
+
+func (c CertType) String() string {
+	switch c {
+	case ECDSA:
+		return "ecdsa"
+	}
+	return ""
 }

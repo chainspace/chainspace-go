@@ -13,6 +13,18 @@ var _ = Describe("Graph", func() {
 		e = entry{}
 	})
 
+	Describe("deliver", func() {
+		It("should do something", func() {
+			Skip("Write test(s) for this...")
+		})
+	})
+
+	Describe("deliverRound", func() {
+		It("should do something", func() {
+			Skip("Write test(s) for this...")
+		})
+	})
+
 	Describe("findOrCreateState", func() {
 		Context("when there is already a previous state", func() {
 			BeforeEach(func() {
@@ -38,6 +50,42 @@ var _ = Describe("Graph", func() {
 
 				Expect(actual).To(Equal(expected))
 			})
+		})
+	})
+
+	Describe("process", func() {
+		It("should do something", func() {
+			Skip("Write test(s) for this...")
+		})
+	})
+
+	Describe("processMessage", func() {
+		It("should do something", func() {
+			Skip("Write test(s) for this...")
+		})
+	})
+
+	Describe("processMessages", func() {
+		It("should do something", func() {
+			Skip("Write test(s) for this...")
+		})
+	})
+
+	Describe("run", func() {
+		It("should do something", func() {
+			Skip("Write test(s) for this...")
+		})
+	})
+
+	Describe("Add", func() {
+		It("should do something", func() {
+			Skip("Write test(s) for this...")
+		})
+	})
+
+	Describe("New", func() {
+		It("should do something", func() {
+			Skip("Write test(s) for this...")
 		})
 	})
 })

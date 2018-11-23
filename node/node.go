@@ -147,7 +147,6 @@ func (s *Server) handleConnection(conn net.Conn) {
 			}
 		}
 	}
-
 }
 
 func (s *Server) listen(l net.Listener) {
@@ -550,5 +549,4 @@ func Run(cfg *Config) (*Server, error) {
 	log.Info("Node is running", fld.NetworkName(cfg.NetworkName), fld.Port(port))
 	log.Info("Runtime directory", fld.Path(dir))
 	return node, nil
-
 }

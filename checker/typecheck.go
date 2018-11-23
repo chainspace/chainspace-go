@@ -23,8 +23,8 @@ type statedata struct {
 
 type idmap map[string]statedata
 
-func TypeCheck(tx *sbac.Transaction) error {
-	return typeCheck(idmap{}, tx.Traces)
+func b64(data []byte) string {
+	return base64.StdEncoding.EncodeToString(data)
 }
 
 func typeCheck(ids idmap, traces []*sbac.Trace) error {
@@ -82,6 +82,6 @@ func typeCheck(ids idmap, traces []*sbac.Trace) error {
 	return nil
 }
 
-func b64(data []byte) string {
-	return base64.StdEncoding.EncodeToString(data)
+func TypeCheck(tx *sbac.Transaction) error {
+	return typeCheck(idmap{}, tx.Traces)
 }

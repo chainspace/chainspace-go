@@ -13,12 +13,12 @@ func (k ed25519KeyPair) Algorithm() Algorithm {
 	return Ed25519
 }
 
-func (k ed25519KeyPair) PrivateKey() PrivateKey {
-	return ed25519PrivKey(k.priv)
-}
-
 func (k ed25519KeyPair) PublicKey() PublicKey {
 	return ed25519PubKey(k.pub)
+}
+
+func (k ed25519KeyPair) PrivateKey() PrivateKey {
+	return ed25519PrivKey(k.priv)
 }
 
 func (k ed25519KeyPair) Sign(data []byte) []byte {
@@ -42,12 +42,12 @@ func (k ed25519PrivKey) Algorithm() Algorithm {
 	return Ed25519
 }
 
-func (k ed25519PrivKey) Value() []byte {
-	return k
-}
-
 func (k ed25519PrivKey) Sign(data []byte) []byte {
 	return ed25519.Sign(ed25519.PrivateKey(k), data)
+}
+
+func (k ed25519PrivKey) Value() []byte {
+	return k
 }
 
 type ed25519PubKey []byte

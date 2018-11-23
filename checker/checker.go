@@ -29,48 +29,6 @@ type Service struct {
 // checkersMap map contractID to map check procedure name to checker
 type checkersMap map[string]map[string]Checker
 
-func (s *Service) Name() string { return "checker" }
-
-func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, error) {
-	ctx := context.TODO()
-	switch Opcode(m.Opcode) {
-	case Opcode_CHECK:
-		return s.check(ctx, m.Payload, m.ID)
-	default:
-		log.Error("checker: unknown message opcode",
-			log.Int32("opcode", m.Opcode),
-			fld.PeerID(peerID), log.Int("len", len(m.Payload)))
-		return nil, fmt.Errorf("checker: unknown message opcode: %v", m.Opcode)
-	}
-}
-
-func (s *Service) Check(ctx context.Context, tx *sbac.Transaction) (bool, error) {
-	if err := typeCheck(idmap{}, tx.Traces); err != nil {
-		return false, err
-	}
-	ok, err := run(ctx, s.checkers, tx)
-	if err != nil {
-		return false, fmt.Errorf("checker error [err=%v]", err)
-	}
-	return ok, nil
-}
-
-func (s *Service) CheckAndSign(
-	ctx context.Context, tx *sbac.Transaction) (bool, []byte, error) {
-	ok, err := s.Check(ctx, tx)
-	if err != nil {
-		return false, nil, err
-	}
-
-	// sign tx and make response
-	txbytes, err := proto.Marshal(tx)
-	if err != nil {
-		log.Error("checker: marshal error", fld.Err(err))
-		return false, nil, fmt.Errorf("marshal error [err=%v]", err)
-	}
-	return ok, s.privkey.Sign(txbytes), nil
-}
-
 func (s *Service) check(
 	ctx context.Context, payload []byte, msgID uint64) (*service.Message, error) {
 	req := &CheckRequest{}
@@ -107,6 +65,50 @@ func (s *Service) check(
 	}
 
 	return msg, nil
+}
+
+func (s *Service) Check(ctx context.Context, tx *sbac.Transaction) (bool, error) {
+	if err := typeCheck(idmap{}, tx.Traces); err != nil {
+		return false, err
+	}
+	ok, err := run(ctx, s.checkers, tx)
+	if err != nil {
+		return false, fmt.Errorf("checker error [err=%v]", err)
+	}
+	return ok, nil
+}
+
+func (s *Service) CheckAndSign(
+	ctx context.Context, tx *sbac.Transaction) (bool, []byte, error) {
+	ok, err := s.Check(ctx, tx)
+	if err != nil {
+		return false, nil, err
+	}
+
+	// sign tx and make response
+	txbytes, err := proto.Marshal(tx)
+	if err != nil {
+		log.Error("checker: marshal error", fld.Err(err))
+		return false, nil, fmt.Errorf("marshal error [err=%v]", err)
+	}
+	return ok, s.privkey.Sign(txbytes), nil
+}
+
+func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, error) {
+	ctx := context.TODO()
+	switch Opcode(m.Opcode) {
+	case Opcode_CHECK:
+		return s.check(ctx, m.Payload, m.ID)
+	default:
+		log.Error("checker: unknown message opcode",
+			log.Int32("opcode", m.Opcode),
+			fld.PeerID(peerID), log.Int("len", len(m.Payload)))
+		return nil, fmt.Errorf("checker: unknown message opcode: %v", m.Opcode)
+	}
+}
+
+func (s *Service) Name() string {
+	return "checker"
 }
 
 func New(cfg *Config) (*Service, error) {

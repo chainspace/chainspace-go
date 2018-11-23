@@ -446,6 +446,37 @@ func (s *store) getOwnBlock(round uint64) (*SignedData, error) {
 	return block, err
 }
 
+func (s *store) getReceivedMap() (map[uint64]receivedInfo, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return nil, errDBClosed
+	}
+	data := map[uint64]receivedInfo{}
+	key := []byte{receivedMapPrefix}
+	err := s.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(key)
+		if err != nil {
+			return err
+		}
+		val, err := item.Value()
+		if err != nil {
+			return err
+		}
+		n := int(binary.LittleEndian.Uint64(val[:8]))
+		idx := 8
+		for i := 0; i < n; i++ {
+			k := binary.LittleEndian.Uint64(val[idx : idx+8])
+			latest := binary.LittleEndian.Uint64(val[idx+8 : idx+16])
+			sequence := binary.LittleEndian.Uint64(val[idx+16 : idx+24])
+			data[k] = receivedInfo{latest, sequence}
+			idx += 24
+		}
+		return nil
+	})
+	return data, err
+}
+
 // getRoundBlocks returns all seen blocks for a given round.
 func (s *store) getRoundBlocks(round uint64) (map[blockmania.BlockID]*Block, error) {
 	s.mu.RLock()
@@ -486,37 +517,6 @@ func (s *store) getRoundBlocks(round uint64) (map[blockmania.BlockID]*Block, err
 				return err
 			}
 			data[ref] = block
-		}
-		return nil
-	})
-	return data, err
-}
-
-func (s *store) getReceivedMap() (map[uint64]receivedInfo, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if s.closed {
-		return nil, errDBClosed
-	}
-	data := map[uint64]receivedInfo{}
-	key := []byte{receivedMapPrefix}
-	err := s.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(key)
-		if err != nil {
-			return err
-		}
-		val, err := item.Value()
-		if err != nil {
-			return err
-		}
-		n := int(binary.LittleEndian.Uint64(val[:8]))
-		idx := 8
-		for i := 0; i < n; i++ {
-			k := binary.LittleEndian.Uint64(val[idx : idx+8])
-			latest := binary.LittleEndian.Uint64(val[idx+8 : idx+16])
-			sequence := binary.LittleEndian.Uint64(val[idx+16 : idx+24])
-			data[k] = receivedInfo{latest, sequence}
-			idx += 24
 		}
 		return nil
 	})

@@ -11,6 +11,53 @@ import (
 	proto "github.com/gogo/protobuf/proto"
 )
 
+func (s *Service) inputObjectsForShard(
+	shardID uint64, tx *Transaction) (objects [][]byte, allInShard bool) {
+	// get all objects part of this current shard state
+	allInShard = true
+	for _, t := range tx.Traces {
+		for _, o := range t.InputObjectVersionIDs {
+			o := o
+			if shardID := s.top.ShardForVersionID(o); shardID == s.shardID {
+				objects = append(objects, o)
+				continue
+			}
+			allInShard = false
+		}
+		for _, ref := range t.InputReferenceVersionIDs {
+			ref := ref
+			if shardID := s.top.ShardForVersionID(ref); shardID == s.shardID {
+				continue
+			}
+			allInShard = false
+		}
+	}
+	return
+}
+
+// FIXME(): need to find a more reliable way to do this
+func (s *Service) isNodeInitiatingBroadcast(txID uint32) bool {
+	nodesInShard := s.top.NodesInShard(s.shardID)
+	n := nodesInShard[txID%(uint32(len(nodesInShard)))]
+	log.Debug("consensus will be started", log.Uint64("peer", n))
+	return n == s.nodeID
+}
+
+func (s *Service) objectsExists(vids, refvids [][]byte) ([]*Object, bool) {
+	ownvids := [][]byte{}
+	for _, v := range append(vids, refvids...) {
+		if s.top.ShardForVersionID(v) == s.shardID {
+			ownvids = append(ownvids, v)
+		}
+	}
+
+	objects, err := s.store.GetObjects(ownvids)
+	if err != nil {
+		return nil, false
+	}
+	return objects, true
+}
+
 func (s *Service) publishObjects(ids *IDs, success bool) {
 	for _, topair := range ids.TraceObjectPairs {
 		for _, outo := range topair.OutputObjects {
@@ -37,54 +84,9 @@ func (s *Service) saveLabels(ids *IDs) error {
 	return nil
 }
 
-func (s *Service) verifyEvidenceSignature(txID []byte, evidences map[uint64][]byte) bool {
-	sig, ok := evidences[s.nodeID]
-	if !ok {
-		log.Error("missing self signature")
-		return false
-	}
-
-	key, ok := s.top.SeedPublicKeys()[s.nodeID]
-	if !ok {
-		log.Error("missing key for self signature")
-	}
-
-	valid := key.Verify(txID, sig)
-	if !valid {
-		log.Errorf("invalid signature")
-	}
-
-	return valid
-}
-
-func (s *Service) verifyTransactionSignature(
-	tx *Transaction, signature []byte, nodeID uint64) (bool, error) {
-	b, err := proto.Marshal(tx)
-	if err != nil {
-		return false, err
-	}
-	keys := s.top.SeedPublicKeys()
-	key := keys[nodeID]
-	return key.Verify(b, signature), nil
-}
-
-func (s *Service) verifyTransactionRawSignature(
-	tx []byte, signature []byte, nodeID uint64) (bool, error) {
-	keys := s.top.SeedPublicKeys()
-	key := keys[nodeID]
-	return key.Verify(tx, signature), nil
-}
-
-func (s *Service) signTransaction(tx *Transaction) ([]byte, error) {
-	b, err := proto.Marshal(tx)
-	if err != nil {
-		return nil, fmt.Errorf("unable to marshal transaction, %v", err)
-	}
-	return s.privkey.Sign(b), nil
-}
-
-func (s *Service) signTransactionRaw(tx []byte) ([]byte, error) {
-	return s.privkey.Sign(tx), nil
+func (s *Service) sendToAllShardInvolved(st *States, msg *service.Message) error {
+	shards := s.shardsInvolvedWithoutSelf(st.detail.Tx)
+	return s.sendToShards(shards, st, msg)
 }
 
 func (s *Service) sendToShards(shards []uint64, st *States, msg *service.Message) error {
@@ -107,50 +109,6 @@ func (s *Service) sendToShards(shards []uint64, st *States, msg *service.Message
 		}
 	}
 	return nil
-}
-
-func (s *Service) sendToAllShardInvolved(st *States, msg *service.Message) error {
-	shards := s.shardsInvolvedWithoutSelf(st.detail.Tx)
-	return s.sendToShards(shards, st, msg)
-}
-
-func (s *Service) objectsExists(vids, refvids [][]byte) ([]*Object, bool) {
-	ownvids := [][]byte{}
-	for _, v := range append(vids, refvids...) {
-		if s.top.ShardForVersionID(v) == s.shardID {
-			ownvids = append(ownvids, v)
-		}
-	}
-
-	objects, err := s.store.GetObjects(ownvids)
-	if err != nil {
-		return nil, false
-	}
-	return objects, true
-}
-
-func (s *Service) inputObjectsForShard(
-	shardID uint64, tx *Transaction) (objects [][]byte, allInShard bool) {
-	// get all objects part of this current shard state
-	allInShard = true
-	for _, t := range tx.Traces {
-		for _, o := range t.InputObjectVersionIDs {
-			o := o
-			if shardID := s.top.ShardForVersionID(o); shardID == s.shardID {
-				objects = append(objects, o)
-				continue
-			}
-			allInShard = false
-		}
-		for _, ref := range t.InputReferenceVersionIDs {
-			ref := ref
-			if shardID := s.top.ShardForVersionID(ref); shardID == s.shardID {
-				continue
-			}
-			allInShard = false
-		}
-	}
-	return
 }
 
 // shardsInvolved return a list of IDs of all shards involved in the transaction either by
@@ -183,12 +141,68 @@ func (s *Service) shardsInvolvedWithoutSelf(tx *Transaction) []uint64 {
 	return shards
 }
 
-// FIXME(): need to find a more reliable way to do this
-func (s *Service) isNodeInitiatingBroadcast(txID uint32) bool {
-	nodesInShard := s.top.NodesInShard(s.shardID)
-	n := nodesInShard[txID%(uint32(len(nodesInShard)))]
-	log.Debug("consensus will be started", log.Uint64("peer", n))
-	return n == s.nodeID
+func (s *Service) signTransaction(tx *Transaction) ([]byte, error) {
+	b, err := proto.Marshal(tx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to marshal transaction, %v", err)
+	}
+	return s.privkey.Sign(b), nil
+}
+
+func (s *Service) signTransactionRaw(tx []byte) ([]byte, error) {
+	return s.privkey.Sign(tx), nil
+}
+
+func (s *Service) verifyEvidenceSignature(txID []byte, evidences map[uint64][]byte) bool {
+	sig, ok := evidences[s.nodeID]
+	if !ok {
+		log.Error("missing self signature")
+		return false
+	}
+
+	key, ok := s.top.SeedPublicKeys()[s.nodeID]
+	if !ok {
+		log.Error("missing key for self signature")
+	}
+
+	valid := key.Verify(txID, sig)
+	if !valid {
+		log.Errorf("invalid signature")
+	}
+
+	return valid
+}
+
+func (s *Service) verifyTransactionRawSignature(
+	tx []byte, signature []byte, nodeID uint64) (bool, error) {
+	keys := s.top.SeedPublicKeys()
+	key := keys[nodeID]
+	return key.Verify(tx, signature), nil
+}
+
+func (s *Service) verifyTransactionSignature(
+	tx *Transaction, signature []byte, nodeID uint64) (bool, error) {
+	b, err := proto.Marshal(tx)
+	if err != nil {
+		return false, err
+	}
+	keys := s.top.SeedPublicKeys()
+	key := keys[nodeID]
+	return key.Verify(b, signature), nil
+}
+
+func fromUniqIds(m map[uint64]struct{}) []uint64 {
+	out := []uint64{}
+	for k, _ := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+func ID(data []byte) uint32 {
+	h := fnv.New32()
+	h.Write(data)
+	return h.Sum32()
 }
 
 func quorum2t1(shardSize uint64) uint64 {
@@ -199,23 +213,10 @@ func quorumt1(shardSize uint64) uint64 {
 	return shardSize/3 + 1
 }
 
-func ID(data []byte) uint32 {
-	h := fnv.New32()
-	h.Write(data)
-	return h.Sum32()
-}
-
-func touniqids(ls []uint64) map[uint64]struct{} {
+func toUniqIds(ls []uint64) map[uint64]struct{} {
 	out := map[uint64]struct{}{}
 	for _, v := range ls {
 		out[v] = struct{}{}
-	}
-	return out
-}
-func fromuniqids(m map[uint64]struct{}) []uint64 {
-	out := []uint64{}
-	for k, _ := range m {
-		out = append(out, k)
 	}
 	return out
 }

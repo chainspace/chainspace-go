@@ -22,32 +22,6 @@ type checkerTracePair struct {
 	Trace   *sbac.Trace
 }
 
-func run(ctx context.Context, checkers checkersMap, tx *sbac.Transaction) (bool, error) {
-	ctpairs, err := aggregate(checkers, tx.Traces)
-	if err != nil {
-		return false, err
-	}
-
-	g, ctx := errgroup.WithContext(ctx)
-	for _, v := range ctpairs {
-		v := v
-		t := v.Trace
-		c := v.Checker
-		g.Go(func() error {
-			result := c.Check(t.InputObjects, t.InputReferences, t.Parameters, t.OutputObjects, t.Returns, sbac.StringsSlice(t.Labels).AsSlice(), t.Dependencies)
-
-			if !result {
-				return errors.New("check failed")
-			}
-			return nil
-		})
-	}
-	if err := g.Wait(); err != nil {
-		return false, nil
-	}
-	return true, nil
-}
-
 // aggregateCheckers first ensure that all the contracts and procedures used in the transaction
 // exists then map each transaction to the associated contract.
 func aggregate(checkers checkersMap, traces []*sbac.Trace) ([]checkerTracePair, error) {
@@ -73,4 +47,30 @@ func aggregate(checkers checkersMap, traces []*sbac.Trace) ([]checkerTracePair, 
 		ctpairs = append(ctpairs, newpairs...)
 	}
 	return ctpairs, nil
+}
+
+func run(ctx context.Context, checkers checkersMap, tx *sbac.Transaction) (bool, error) {
+	ctpairs, err := aggregate(checkers, tx.Traces)
+	if err != nil {
+		return false, err
+	}
+
+	g, ctx := errgroup.WithContext(ctx)
+	for _, v := range ctpairs {
+		v := v
+		t := v.Trace
+		c := v.Checker
+		g.Go(func() error {
+			result := c.Check(t.InputObjects, t.InputReferences, t.Parameters, t.OutputObjects, t.Returns, sbac.StringsSlice(t.Labels).AsSlice(), t.Dependencies)
+
+			if !result {
+				return errors.New("check failed")
+			}
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return false, nil
+	}
+	return true, nil
 }

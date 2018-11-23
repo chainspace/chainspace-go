@@ -8,12 +8,6 @@ import (
 	"chainspace.io/prototype/service"
 )
 
-type Pool interface {
-	MessageAckPending() int
-	Close()
-	Borrow() Cache
-}
-
 type pool struct {
 	mu    sync.Mutex
 	i     int
@@ -21,17 +15,27 @@ type pool struct {
 	conns []*cache
 }
 
-func NewPool(size int, nodeID uint64, top network.NetTopology, maxPayload int, key signature.KeyPair, connection service.CONNECTION) *pool {
-	conns := make([]*cache, 0, size)
-	for i := 0; i < size; i += 1 {
-		cc := NewCache(
-			nodeID, top, maxPayload, key, connection)
-		conns = append(conns, cc)
+type Pool interface {
+	MessageAckPending() int
+	Close()
+	Borrow() Cache
+}
+
+func (c *pool) Borrow() Cache {
+	c.mu.Lock()
+	cc := c.conns[c.i]
+	c.i += 1
+	if c.i >= c.size {
+		c.i = 0
 	}
-	return &pool{
-		i:     0,
-		size:  size,
-		conns: conns,
+	c.mu.Unlock()
+	return cc
+}
+
+func (c *pool) Close() {
+	for _, conn := range c.conns {
+		conn := conn
+		conn.Close()
 	}
 }
 
@@ -46,20 +50,16 @@ func (c *pool) MessageAckPending() int {
 	return cnt
 }
 
-func (c *pool) Close() {
-	for _, conn := range c.conns {
-		conn := conn
-		conn.Close()
+func NewPool(size int, nodeID uint64, top network.NetTopology, maxPayload int, key signature.KeyPair, connection service.CONNECTION) *pool {
+	conns := make([]*cache, 0, size)
+	for i := 0; i < size; i += 1 {
+		cc := NewCache(
+			nodeID, top, maxPayload, key, connection)
+		conns = append(conns, cc)
 	}
-}
-
-func (c *pool) Borrow() Cache {
-	c.mu.Lock()
-	cc := c.conns[c.i]
-	c.i += 1
-	if c.i >= c.size {
-		c.i = 0
+	return &pool{
+		i:     0,
+		size:  size,
+		conns: conns,
 	}
-	c.mu.Unlock()
-	return cc
 }

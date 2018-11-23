@@ -345,7 +345,7 @@ func (s *Service) toCommitObjectsBroadcasted(st *States) (State, error) {
 
 	// send to all shards which will hold state for new object, and was not involved before
 	shards := s.shardsInvolved(st.detail.Tx)
-	shardsUniq := touniqids(shards)
+	shardsUniq := toUniqIds(shards)
 	ids, err := MakeIDs(st.detail.Tx)
 	if err != nil {
 		return StateAborted, err
@@ -362,7 +362,7 @@ func (s *Service) toCommitObjectsBroadcasted(st *States) (State, error) {
 		}
 	}
 
-	shardsInvolved := fromuniqids(shardsInvolvedUniq)
+	shardsInvolved := fromUniqIds(shardsInvolvedUniq)
 	if len(shardsInvolved) > 0 {
 		err = s.sendToShards(shardsInvolved, st, msg)
 		if err != nil {

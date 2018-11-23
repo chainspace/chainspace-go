@@ -43,19 +43,6 @@ func encodeToStrings(ls [][]byte) []string {
 	return out
 }
 
-func unmarshalIfaceSlice(ls [][]byte) []interface{} {
-	out := []interface{}{}
-	for _, v := range ls {
-		var val interface{}
-		err := json.Unmarshal(v, &val)
-		if err != nil {
-			log.Fatal("unable to Unmarshal slice", fld.Err(err))
-		}
-		out = append(out, val)
-	}
-	return out
-}
-
 func makeTrace(inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string, traces []*sbac.Trace) trace {
 	deps := []trace{}
 	for _, t := range traces {
@@ -82,9 +69,18 @@ func makeTrace(inputs, refInputs, parameters, outputs, returns [][]byte, labels 
 	}
 }
 
-func (c Checker) Name() string { return c.procedureName }
-
-func (c Checker) ContractID() string { return c.iD }
+func unmarshalIfaceSlice(ls [][]byte) []interface{} {
+	out := []interface{}{}
+	for _, v := range ls {
+		var val interface{}
+		err := json.Unmarshal(v, &val)
+		if err != nil {
+			log.Fatal("unable to Unmarshal slice", fld.Err(err))
+		}
+		out = append(out, val)
+	}
+	return out
+}
 
 func (c Checker) Check(
 	inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string, dependencies []*sbac.Trace) bool {
@@ -130,18 +126,10 @@ func (c Checker) Check(
 	return res.Success
 }
 
-func NewDockerCheckers(cfg *config.DockerContract) []Checker {
-	u, _ := url.Parse(fmt.Sprintf("http://0.0.0.0:%v", cfg.HostPort))
-	u.Path = path.Join(u.Path, cfg.Name)
-	checkers := []Checker{}
+func (c Checker) ContractID() string { return c.iD }
 
-	for _, v := range cfg.Procedures {
-		_u := *u
-		_u.Path = path.Join(_u.Path, v)
-		checkers = append(checkers, Checker{cfg.Name, v, _u.String()})
-	}
-
-	return checkers
+func (c Checker) Name() string {
+	return c.procedureName
 }
 
 func NewCheckers(cfg *config.Contract) []Checker {
@@ -151,6 +139,20 @@ func NewCheckers(cfg *config.Contract) []Checker {
 	for _, v := range cfg.Procedures {
 		pth := path.Join(u, v)
 		_u, _ := url.Parse(pth)
+		checkers = append(checkers, Checker{cfg.Name, v, _u.String()})
+	}
+
+	return checkers
+}
+
+func NewDockerCheckers(cfg *config.DockerContract) []Checker {
+	u, _ := url.Parse(fmt.Sprintf("http://0.0.0.0:%v", cfg.HostPort))
+	u.Path = path.Join(u.Path, cfg.Name)
+	checkers := []Checker{}
+
+	for _, v := range cfg.Procedures {
+		_u := *u
+		_u.Path = path.Join(_u.Path, v)
 		checkers = append(checkers, Checker{cfg.Name, v, _u.String()})
 	}
 

@@ -34,17 +34,6 @@ type ObjectEntry struct {
 	VersionID []byte
 }
 
-func (s *kvservice) Handle(peerID uint64, m *service.Message) (*service.Message, error) {
-	switch Opcode(m.Opcode) {
-	case Opcode_GET:
-		return s.handleGet(m)
-	default:
-		log.Error("kvstore: unknown opcode",
-			log.Int32("OP", m.Opcode), fld.PeerID(peerID))
-		return nil, fmt.Errorf("kvstore: unknown opcode: %v", m.Opcode)
-	}
-}
-
 func (s *kvservice) handleGet(m *service.Message) (*service.Message, error) {
 	req := &GetRequest{}
 	err := proto.Unmarshal(m.Payload, req)
@@ -133,6 +122,17 @@ func (s *kvservice) GetByPrefix(prefix []byte) ([]ObjectEntry, error) {
 	}
 
 	return entries, nil
+}
+
+func (s *kvservice) Handle(peerID uint64, m *service.Message) (*service.Message, error) {
+	switch Opcode(m.Opcode) {
+	case Opcode_GET:
+		return s.handleGet(m)
+	default:
+		log.Error("kvstore: unknown opcode",
+			log.Int32("OP", m.Opcode), fld.PeerID(peerID))
+		return nil, fmt.Errorf("kvstore: unknown opcode: %v", m.Opcode)
+	}
 }
 
 func (s *kvservice) Set(key, value []byte) error {

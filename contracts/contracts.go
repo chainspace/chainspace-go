@@ -24,20 +24,44 @@ type Contracts struct {
 	configs *config.Contracts
 }
 
-func (c *Contracts) ensureImageExists(cfg config.DockerContract, images []types.ImageSummary) error {
-	ok := false
-	for _, image := range images {
-		for _, tag := range image.RepoTags {
-			if cfg.Image == tag {
-				ok = true
-				break
+func (c *Contracts) callHealthCheck(addr string) error {
+	resp, err := http.Get(addr)
+	if err != nil {
+		return err
+	}
+
+	b, err := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return fmt.Errorf("error reading response from healthcheck: %v", err.Error())
+	}
+	res := struct {
+		OK bool `json:"ok"`
+	}{}
+	err = json.Unmarshal(b, &res)
+	if err != nil {
+		return fmt.Errorf("unable to unmarshal response from healthcheck: %v", err.Error())
+	}
+	if res.OK != true {
+		return fmt.Errorf("invalid healthcheck response")
+	}
+
+	return nil
+}
+
+func (c *Contracts) containerExists(cfg config.DockerContract, containers []types.Container) (string, string, bool) {
+	name := fmt.Sprintf("/chainspace-%v", cfg.Name)
+
+	for _, container := range containers {
+		for _, v := range container.Names {
+			if name == v {
+				log.Info("Container already exists", log.String("container.name", name), log.String("container.state", container.State))
+				return container.ID, container.State, true
 			}
 		}
 	}
-	if !ok {
-		return fmt.Errorf("unable to find the docker image '%v', please pull the image then restart the chainspace node", cfg.Image)
-	}
-	return nil
+
+	return "", "", false
 }
 
 func (c *Contracts) createContainer(cfg config.DockerContract) (string, error) {
@@ -77,19 +101,20 @@ func (c *Contracts) createContainer(cfg config.DockerContract) (string, error) {
 	return body.ID, nil
 }
 
-func (c *Contracts) containerExists(cfg config.DockerContract, containers []types.Container) (string, string, bool) {
-	name := fmt.Sprintf("/chainspace-%v", cfg.Name)
-
-	for _, container := range containers {
-		for _, v := range container.Names {
-			if name == v {
-				log.Info("Container already exists", log.String("container.name", name), log.String("container.state", container.State))
-				return container.ID, container.State, true
+func (c *Contracts) ensureImageExists(cfg config.DockerContract, images []types.ImageSummary) error {
+	ok := false
+	for _, image := range images {
+		for _, tag := range image.RepoTags {
+			if cfg.Image == tag {
+				ok = true
+				break
 			}
 		}
 	}
-
-	return "", "", false
+	if !ok {
+		return fmt.Errorf("unable to find the docker image '%v', please pull the image then restart the chainspace node", cfg.Image)
+	}
+	return nil
 }
 
 func (c *Contracts) startContainer(cfg config.DockerContract, images []types.ImageSummary, containers []types.Container) error {
@@ -115,27 +140,6 @@ func (c *Contracts) startContainer(cfg config.DockerContract, images []types.Ima
 	return nil
 }
 
-func (c *Contracts) Start() error {
-	// get images list
-	images, err := c.client.ImageList(context.Background(), types.ImageListOptions{})
-	if err != nil {
-		return fmt.Errorf("unable to load docker image list, %v", err)
-	}
-
-	// get containers list
-	containers, err := c.client.ContainerList(context.Background(), types.ContainerListOptions{All: true})
-	if err != nil {
-		return fmt.Errorf("unable to load docker containers lists, %v", err)
-	}
-
-	for _, v := range c.configs.DockerContracts {
-		if err := c.startContainer(v, images, containers); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (c *Contracts) stopContainer(cfg config.DockerContract, containers []types.Container) {
 	name := fmt.Sprintf("/chainspace-%v", cfg.Name)
 	for _, container := range containers {
@@ -156,45 +160,6 @@ func (c *Contracts) stopContainer(cfg config.DockerContract, containers []types.
 		}
 	}
 
-}
-
-func (c *Contracts) Stop() error {
-	containers, err := c.client.ContainerList(
-		context.Background(), types.ContainerListOptions{All: true})
-	if err != nil {
-		return fmt.Errorf("unable to load docker containers lists, %v", err)
-	}
-
-	for _, v := range c.configs.DockerContracts {
-		c.stopContainer(v, containers)
-	}
-
-	return nil
-}
-
-func (c *Contracts) callHealthCheck(addr string) error {
-	resp, err := http.Get(addr)
-	if err != nil {
-		return err
-	}
-
-	b, err := ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		return fmt.Errorf("error reading response from healthcheck: %v", err.Error())
-	}
-	res := struct {
-		OK bool `json:"ok"`
-	}{}
-	err = json.Unmarshal(b, &res)
-	if err != nil {
-		return fmt.Errorf("unable to unmarshal response from healthcheck: %v", err.Error())
-	}
-	if res.OK != true {
-		return fmt.Errorf("invalid healthcheck response")
-	}
-
-	return nil
 }
 
 func (c *Contracts) EnsureUp() error {
@@ -236,6 +201,41 @@ func (c *Contracts) GetCheckers() []Checker {
 		checkers = append(checkers, NewCheckers(&v)...)
 	}
 	return checkers
+}
+
+func (c *Contracts) Start() error {
+	// get images list
+	images, err := c.client.ImageList(context.Background(), types.ImageListOptions{})
+	if err != nil {
+		return fmt.Errorf("unable to load docker image list, %v", err)
+	}
+
+	// get containers list
+	containers, err := c.client.ContainerList(context.Background(), types.ContainerListOptions{All: true})
+	if err != nil {
+		return fmt.Errorf("unable to load docker containers lists, %v", err)
+	}
+
+	for _, v := range c.configs.DockerContracts {
+		if err := c.startContainer(v, images, containers); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Contracts) Stop() error {
+	containers, err := c.client.ContainerList(
+		context.Background(), types.ContainerListOptions{All: true})
+	if err != nil {
+		return fmt.Errorf("unable to load docker containers lists, %v", err)
+	}
+
+	for _, v := range c.configs.DockerContracts {
+		c.stopContainer(v, containers)
+	}
+
+	return nil
 }
 
 func New(cfg *config.Contracts) (*Contracts, error) {
