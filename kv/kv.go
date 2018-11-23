@@ -21,11 +21,17 @@ type Config struct {
 
 type Service interface {
 	Get(key []byte) ([]byte, error)
+	GetByPrefix(prefix []byte) ([]ObjectEntry, error)
 	Set(key, value []byte) error
 }
 
 type kvservice struct {
 	store *badger.DB
+}
+
+type ObjectEntry struct {
+	Label     []byte
+	VersionID []byte
 }
 
 func (s *kvservice) Handle(peerID uint64, m *service.Message) (*service.Message, error) {
@@ -94,6 +100,39 @@ func (s *kvservice) Get(key []byte) ([]byte, error) {
 	}
 
 	return valueout, nil
+}
+
+func (s *kvservice) GetByPrefix(prefix []byte) ([]ObjectEntry, error) {
+	entries := []ObjectEntry{}
+	err := s.store.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer it.Close()
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			var entry ObjectEntry
+			item := it.Item()
+
+			k := item.Key()
+			entry.Label = make([]byte, len(k))
+			copy(entry.Label, k)
+
+			v, err := item.Value()
+			if err != nil {
+				return err
+			}
+			entry.VersionID = make([]byte, len(v))
+			copy(entry.VersionID, v)
+
+			entries = append(entries, entry)
+		}
+		return nil
+	})
+
+	if err != nil {
+		log.Error("unable to get entries from prefix", fld.Err(err))
+		return nil, err
+	}
+
+	return entries, nil
 }
 
 func (s *kvservice) Set(key, value []byte) error {

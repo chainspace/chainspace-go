@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"chainspace.io/prototype/internal/log"
 	"chainspace.io/prototype/kv"
 	"chainspace.io/prototype/sbac"
 )
@@ -44,6 +45,37 @@ func (srv *service) Get(label string) (interface{}, int, error) {
 	return object, http.StatusOK, nil
 }
 
+// GetByPrefix grabs a values based on the prefix string
+func (srv *service) GetByPrefix(
+	prefix string) ([]LabelObject, int, error) {
+	pairs, err := srv.kvStore.GetByPrefix([]byte(prefix))
+	if err != nil {
+		return nil, http.StatusNotFound, err
+	}
+
+	out := make([]LabelObject, 0, len(pairs))
+	for _, v := range pairs {
+		rawobject, err :=
+			srv.sbac.QueryObjectByVersionID(v.VersionID)
+		if err != nil {
+			return nil, http.StatusBadRequest, err
+		}
+
+		var object interface{}
+		err = json.Unmarshal(rawobject, &object)
+		if err != nil {
+			return nil, http.StatusInternalServerError, err
+		}
+		lobj := LabelObject{
+			Label:  string(v.Label),
+			Object: object,
+		}
+		out = append(out, lobj)
+	}
+
+	return out, http.StatusOK, nil
+}
+
 // GetVersionID ...
 func (srv *service) GetVersionID(label string) (string, int, error) {
 	objectID, err := srv.kvStore.Get([]byte(label))
@@ -52,4 +84,25 @@ func (srv *service) GetVersionID(label string) (string, int, error) {
 	}
 
 	return base64.StdEncoding.EncodeToString(objectID), http.StatusOK, nil
+}
+
+// GetVersionIDByPrefix ...
+func (srv *service) GetVersionIDByPrefix(
+	prefix string) ([]LabelVersionID, int, error) {
+	log.Error("PREFIX: ", log.String("prefix", prefix))
+	pairs, err := srv.kvStore.GetByPrefix([]byte(prefix))
+	if err != nil {
+		return nil, http.StatusNotFound, err
+	}
+	out := make([]LabelVersionID, 0, len(pairs))
+	log.Error("PREFIX RESULT: ", log.Int("pairs", len(pairs)))
+	for _, v := range pairs {
+		lvid := LabelVersionID{
+			Label:     string(v.Label),
+			VersionID: base64.StdEncoding.EncodeToString(v.VersionID),
+		}
+		out = append(out, lvid)
+	}
+
+	return out, http.StatusOK, nil
 }

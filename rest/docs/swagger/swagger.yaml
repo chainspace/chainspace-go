@@ -1,4 +1,3 @@
-basePath: '{{.BasePath}}'
 definitions:
   api.CheckTransactionResponse:
     properties:
@@ -9,10 +8,25 @@ definitions:
       signature:
         type: string
     type: object
-  api.Dependency: {}
+  api.Dependency:
+    type: object
   api.Error:
     properties:
       error:
+        type: string
+    type: object
+  api.LabelObject:
+    properties:
+      label:
+        type: string
+      object:
+        type: object
+    type: object
+  api.LabelVersionID:
+    properties:
+      label:
+        type: string
+      version_id:
         type: string
     type: object
   api.Object:
@@ -29,6 +43,13 @@ definitions:
       id:
         type: string
     type: object
+  api.ObjectListResponse:
+    properties:
+      pairs:
+        items:
+          $ref: '#/definitions/api.LabelObject'
+        type: array
+    type: object
   api.ObjectRequest:
     properties:
       object:
@@ -38,30 +59,6 @@ definitions:
     properties:
       object:
         type: object
-    type: object
-  api.StateReport:
-    properties:
-      commit_decisions:
-        type: object
-      hash_id:
-        type: integer
-      pending_events:
-        type: integer
-      phase1_decisions:
-        type: object
-      phase2_decisions:
-        type: object
-      state:
-        type: string
-    type: object
-  api.StateReportResponse:
-    properties:
-      pending_events:
-        type: integer
-      states:
-        items:
-          $ref: '#/definitions/api.StateReport'
-        type: array
     type: object
   api.Trace:
     properties:
@@ -81,21 +78,21 @@ definitions:
         type: array
       labels:
         items:
-          type: '&{%!s(token.Pos=1379) <nil> string}'
+          type: '&{%!s(token.Pos=2188) <nil> string}'
         type: array
       output_objects:
         items:
-          type: string
+          type: '&{%!s(token.Pos=2007) %!s(*ast.FieldList=&{2016 [] 2017}) %!s(bool=false)}'
         type: array
       parameters:
         items:
-          type: string
+          type: '&{%!s(token.Pos=2071) %!s(*ast.FieldList=&{2080 [] 2081}) %!s(bool=false)}'
         type: array
       procedure:
         type: string
       returns:
         items:
-          type: string
+          type: '&{%!s(token.Pos=2131) %!s(*ast.FieldList=&{2140 [] 2141}) %!s(bool=false)}'
         type: array
     type: object
   api.Transaction:
@@ -109,12 +106,18 @@ definitions:
           $ref: '#/definitions/api.Trace'
         type: array
     type: object
+  api.VersionIDListResponse:
+    properties:
+      pairs:
+        items:
+          $ref: '#/definitions/api.LabelVersionID'
+        type: array
+    type: object
   api.VersionIDResponse:
     properties:
       version_id:
         type: string
     type: object
-host: '{{.Host}}'
 info:
   contact: {}
   description: Chainspace REST API endpoints
@@ -165,7 +168,7 @@ paths:
       summary: Checks something
       tags:
       - checker
-  /api/kv/{label}:
+  /api/kv/label/{label}:
     get:
       consumes:
       - application/json
@@ -203,7 +206,7 @@ paths:
       summary: Retrieve a key by its label
       tags:
       - kv
-  /api/kv/{label}/version-id:
+  /api/kv/label/{label}/version-id:
     get:
       consumes:
       - application/json
@@ -239,6 +242,82 @@ paths:
             $ref: '#/definitions/api.Error'
             type: object
       summary: Retrieve a version ID by its label
+      tags:
+      - kv
+  /api/kv/prefix/{prefix}:
+    get:
+      consumes:
+      - application/json
+      description: See before
+      operationId: getByPrefix
+      parameters:
+      - description: prefix
+        in: path
+        name: prefix
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ObjectListResponse'
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+      summary: See before
+      tags:
+      - kv
+  /api/kv/prefix/{prefix}/version-id:
+    get:
+      consumes:
+      - application/json
+      description: see before
+      operationId: getVersionIDbyPrefix
+      parameters:
+      - description: prefix
+        in: path
+        name: prefix
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.VersionIDListResponse'
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+      summary: See before
       tags:
       - kv
   /api/sbac/object:
@@ -293,7 +372,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/api.StateReportResponse'
+            $ref: '#/definitions/api.Object'
             type: object
         "400":
           description: Bad Request

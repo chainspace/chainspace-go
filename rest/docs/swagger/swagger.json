@@ -11,8 +11,6 @@
         },
         "version": "1.0"
     },
-    "host": "{{.Host}}",
-    "basePath": "{{.BasePath}}",
     "paths": {
         "/api/checker/check": {
             "post": {
@@ -72,7 +70,7 @@
                 }
             }
         },
-        "/api/kv/{label}": {
+        "/api/kv/label/{label}": {
             "get": {
                 "description": "get string by label",
                 "consumes": [
@@ -127,7 +125,7 @@
                 }
             }
         },
-        "/api/kv/{label}/version-id": {
+        "/api/kv/label/{label}/version-id": {
             "get": {
                 "description": "get version ID by label",
                 "consumes": [
@@ -156,6 +154,116 @@
                         "schema": {
                             "type": "object",
                             "$ref": "#/definitions/api.VersionIDResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "$ref": "#/definitions/api.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "$ref": "#/definitions/api.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "$ref": "#/definitions/api.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/kv/prefix/{prefix}": {
+            "get": {
+                "description": "See before",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "kv"
+                ],
+                "summary": "See before",
+                "operationId": "getByPrefix",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "prefix",
+                        "name": "prefix",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "$ref": "#/definitions/api.ObjectListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "$ref": "#/definitions/api.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "$ref": "#/definitions/api.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "$ref": "#/definitions/api.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/kv/prefix/{prefix}/version-id": {
+            "get": {
+                "description": "see before",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "kv"
+                ],
+                "summary": "See before",
+                "operationId": "getVersionIDbyPrefix",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "prefix",
+                        "name": "prefix",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "$ref": "#/definitions/api.VersionIDListResponse"
                         }
                     },
                     "400": {
@@ -259,7 +367,7 @@
                         "description": "OK",
                         "schema": {
                             "type": "object",
-                            "$ref": "#/definitions/api.StateReportResponse"
+                            "$ref": "#/definitions/api.Object"
                         }
                     },
                     "400": {
@@ -418,11 +526,35 @@
                 }
             }
         },
-        "api.Dependency": {},
+        "api.Dependency": {
+            "type": "object"
+        },
         "api.Error": {
             "type": "object",
             "properties": {
                 "error": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.LabelObject": {
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string"
+                },
+                "object": {
+                    "type": "object"
+                }
+            }
+        },
+        "api.LabelVersionID": {
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string"
+                },
+                "version_id": {
                     "type": "string"
                 }
             }
@@ -449,6 +581,17 @@
                 }
             }
         },
+        "api.ObjectListResponse": {
+            "type": "object",
+            "properties": {
+                "pairs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.LabelObject"
+                    }
+                }
+            }
+        },
         "api.ObjectRequest": {
             "type": "object",
             "properties": {
@@ -462,43 +605,6 @@
             "properties": {
                 "object": {
                     "type": "object"
-                }
-            }
-        },
-        "api.StateReport": {
-            "type": "object",
-            "properties": {
-                "commit_decisions": {
-                    "type": "object"
-                },
-                "hash_id": {
-                    "type": "integer"
-                },
-                "pending_events": {
-                    "type": "integer"
-                },
-                "phase1_decisions": {
-                    "type": "object"
-                },
-                "phase2_decisions": {
-                    "type": "object"
-                },
-                "state": {
-                    "type": "string"
-                }
-            }
-        },
-        "api.StateReportResponse": {
-            "type": "object",
-            "properties": {
-                "pending_events": {
-                    "type": "integer"
-                },
-                "states": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/api.StateReport"
-                    }
                 }
             }
         },
@@ -529,19 +635,19 @@
                 "labels": {
                     "type": "array",
                     "items": {
-                        "type": "\u0026{%!s(token.Pos=1379) \u003cnil\u003e string}"
+                        "type": "\u0026{%!s(token.Pos=2188) \u003cnil\u003e string}"
                     }
                 },
                 "output_objects": {
                     "type": "array",
                     "items": {
-                        "type": "string"
+                        "type": "\u0026{%!s(token.Pos=2007) %!s(*ast.FieldList=\u0026{2016 [] 2017}) %!s(bool=false)}"
                     }
                 },
                 "parameters": {
                     "type": "array",
                     "items": {
-                        "type": "string"
+                        "type": "\u0026{%!s(token.Pos=2071) %!s(*ast.FieldList=\u0026{2080 [] 2081}) %!s(bool=false)}"
                     }
                 },
                 "procedure": {
@@ -550,7 +656,7 @@
                 "returns": {
                     "type": "array",
                     "items": {
-                        "type": "string"
+                        "type": "\u0026{%!s(token.Pos=2131) %!s(*ast.FieldList=\u0026{2140 [] 2141}) %!s(bool=false)}"
                     }
                 }
             }
@@ -568,6 +674,17 @@
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/api.Trace"
+                    }
+                }
+            }
+        },
+        "api.VersionIDListResponse": {
+            "type": "object",
+            "properties": {
+                "pairs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.LabelVersionID"
                     }
                 }
             }
