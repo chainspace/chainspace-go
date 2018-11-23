@@ -9,7 +9,8 @@ import (
 	"chainspace.io/prototype/checker"
 	"chainspace.io/prototype/internal/log"
 	"chainspace.io/prototype/internal/log/fld"
-	"chainspace.io/prototype/restsrv"
+	sbacapi "chainspace.io/prototype/sbac/api"
+
 	"github.com/tav/golly/optparse"
 )
 
@@ -42,7 +43,7 @@ func cmdCheck(args []string, usage string) {
 	if err != nil {
 		log.Fatal("unable to read transaction", fld.Err(err))
 	}
-	var tx restsrv.Transaction
+	var tx sbacapi.Transaction
 	err = json.Unmarshal(b, &tx)
 	if err != nil {
 		log.Fatal("unable to unmarshal transction", fld.Err(err))
@@ -57,7 +58,7 @@ func cmdCheck(args []string, usage string) {
 	fmt.Printf("%v\n", result)
 }
 
-func typeCheckOnly(tx *restsrv.Transaction) bool {
+func typeCheckOnly(tx *sbacapi.Transaction) bool {
 	t, err := tx.ToSBAC()
 	if err != nil {
 		log.Fatal("invalid transaction", fld.Err(err))
@@ -69,6 +70,6 @@ func typeCheckOnly(tx *restsrv.Transaction) bool {
 	return true
 }
 
-func fullCheck(tx *restsrv.Transaction, networkName string) bool {
+func fullCheck(tx *sbacapi.Transaction, networkName string) bool {
 	return true
 }

@@ -17,7 +17,7 @@ import (
 	"chainspace.io/prototype/internal/log"
 	"chainspace.io/prototype/internal/log/fld"
 	"chainspace.io/prototype/node"
-	"chainspace.io/prototype/restsrv"
+	"chainspace.io/prototype/rest"
 
 	"github.com/tav/golly/process"
 )
@@ -132,7 +132,7 @@ func cmdRun(args []string, usage string) {
 	}()
 
 	var s *node.Server
-	var rstsrv *restsrv.Service
+	var rstsrv *rest.Service
 	if !*checkerOnly {
 		s, err = node.Run(cfg)
 		if err != nil {
@@ -167,7 +167,7 @@ func cmdRun(args []string, usage string) {
 	<-wait
 }
 
-func runCheckerOnly(cfg *node.Config) *restsrv.Service {
+func runCheckerOnly(cfg *node.Config) *rest.Service {
 	maxPayload, err := cfg.Network.MaxPayload.Int()
 	if err != nil {
 		log.Fatal("invalid maxpayload", fld.Err(err))
@@ -230,7 +230,7 @@ func runCheckerOnly(cfg *node.Config) *restsrv.Service {
 	} else {
 		rport, _ = freeport.TCP("")
 	}
-	restsrvcfg := &restsrv.Config{
+	restsrvcfg := &rest.Config{
 		Addr:        "",
 		Key:         key,
 		Port:        rport,
@@ -240,6 +240,6 @@ func runCheckerOnly(cfg *node.Config) *restsrv.Service {
 		SBACOnly:    cfg.SBACOnly,
 		CheckerOnly: cfg.CheckerOnly,
 	}
-	rstsrv := restsrv.New(restsrvcfg)
+	rstsrv := rest.New(restsrvcfg)
 	return rstsrv
 }

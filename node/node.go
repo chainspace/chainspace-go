@@ -25,7 +25,6 @@ import (
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/pubsub"
 	"chainspace.io/prototype/rest"
-	"chainspace.io/prototype/restsrv"
 	"chainspace.io/prototype/sbac"
 	"chainspace.io/prototype/service"
 	"github.com/gogo/protobuf/proto"
@@ -76,8 +75,7 @@ type Server struct {
 	mu              sync.RWMutex // protects nonceMap
 	nonceExpiration time.Duration
 	nonceMap        map[uint64][]usedNonce
-	restsrv         *restsrv.Service
-	newrest         *rest.Service
+	rst             *rest.Service
 	sharder         service.Handler
 	top             *network.Topology
 	sbac            service.Handler
@@ -420,7 +418,6 @@ func Run(cfg *Config) (*Server, error) {
 	var (
 		kvstore kv.Service
 		rst     *rest.Service
-		rstsrv  *restsrv.Service
 		ssbac   *sbac.Service
 		pbsb    pubsub.Server
 		checkr  *checker.Service
@@ -495,31 +492,19 @@ func Run(cfg *Config) (*Server, error) {
 			rport, _ = freeport.TCP("")
 		}
 		restcfg := &rest.Config{
-			Addr:       "",
-			Checker:    checkr,
-			Key:        key,
-			MaxPayload: config.ByteSize(maxPayload),
-			Port:       1000 + rport,
-			SelfID:     cfg.NodeID,
-			SBAC:       ssbac,
-			Store:      kvstore,
-			Top:        top,
-		}
-		rst = rest.New(restcfg)
-		restsrvcfg := &restsrv.Config{
 			Addr:        "",
 			Checker:     checkr,
 			CheckerOnly: cfg.CheckerOnly,
 			Key:         key,
 			MaxPayload:  config.ByteSize(maxPayload),
-			Port:        rport,
+			Port:        1000 + rport,
 			SelfID:      cfg.NodeID,
 			SBAC:        ssbac,
-			Store:       kvstore,
 			SBACOnly:    cfg.SBACOnly,
+			Store:       kvstore,
 			Top:         top,
 		}
-		rstsrv = restsrv.New(restsrvcfg)
+		rst = rest.New(restcfg)
 	}
 
 	node := &Server{
@@ -534,8 +519,7 @@ func Run(cfg *Config) (*Server, error) {
 		nonceExpiration: cfg.Network.Consensus.NonceExpiration,
 		nonceMap:        map[uint64][]usedNonce{},
 		readTimeout:     cfg.Node.Connections.ReadTimeout,
-		newrest:         rst,
-		restsrv:         rstsrv,
+		rst:             rst,
 		top:             top,
 		sbac:            ssbac,
 		writeTimeout:    cfg.Node.Connections.WriteTimeout,

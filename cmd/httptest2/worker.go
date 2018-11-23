@@ -13,7 +13,6 @@ import (
 	"time"
 
 	checkerapi "chainspace.io/prototype/checker/api"
-	"chainspace.io/prototype/restsrv"
 	sbacapi "chainspace.io/prototype/sbac/api"
 )
 
@@ -142,8 +141,8 @@ func (w *worker) makeTransactionPayload(
 	for i, _ := range objsdata {
 		mappings[seed[i]] = objsdata[i]
 	}
-	tx := restsrv.Transaction{
-		Traces: []restsrv.Trace{
+	tx := sbacapi.Transaction{
+		Traces: []sbacapi.Trace{
 			{
 				ContractID:            contractID,
 				Procedure:             procedure,

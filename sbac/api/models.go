@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"chainspace.io/prototype/sbac"
@@ -142,4 +143,32 @@ func (ct *Trace) ToSBAC(mappings map[string]interface{}) (*sbac.Trace, error) {
 		Labels:                   sbac.StringsSlice{}.FromSlice(ct.Labels),
 		Dependencies:             deps,
 	}, nil
+}
+
+func BuildObjectResponse(objects []*sbac.Object) (Object, error) {
+	if len(objects) <= 0 {
+		return Object{}, errors.New("object already inactive")
+	}
+	for _, v := range objects {
+		if string(v.Value) != string(objects[0].Value) {
+			return Object{}, errors.New("inconsistent data")
+		}
+	}
+
+	data := []Object{}
+	for _, v := range objects {
+		var val interface{}
+		err := json.Unmarshal(v.Value, &val)
+		if err != nil {
+			return Object{}, fmt.Errorf("unable to unmarshal value: %v", err)
+		}
+		o := Object{
+			VersionID: base64.StdEncoding.EncodeToString(v.VersionID),
+			Value:     val,
+			Status:    v.Status.String(),
+		}
+		data = append(data, o)
+
+	}
+	return data[0], nil
 }

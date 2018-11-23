@@ -22,72 +22,87 @@ import (
 
 // Config defines the values passed into the REST Service
 type Config struct {
-	Addr       string
-	Checker    *checker.Service
-	Key        signature.KeyPair
-	Port       int
-	Top        *network.Topology
-	MaxPayload config.ByteSize
-	SelfID     uint64
-	Store      kv.Service
-	SBAC       *sbac.Service
+	Addr        string
+	Checker     *checker.Service
+	CheckerOnly bool
+	Key         signature.KeyPair
+	Port        int
+	Top         *network.Topology
+	MaxPayload  config.ByteSize
+	SelfID      uint64
+	Store       kv.Service
+	SBAC        *sbac.Service
+	SBACOnly    bool
 }
 
 // Service gives us a place to store values for our REST API
 type Service struct {
-	port       int
-	router     *gin.Engine
-	store      kv.Service
-	top        *network.Topology
-	maxPayload config.ByteSize
-	sbac       *sbac.Service
-	client     sbacclient.Client
-	checker    *checkerclient.Client
+	port        int
+	router      *gin.Engine
+	store       kv.Service
+	top         *network.Topology
+	maxPayload  config.ByteSize
+	sbac        *sbac.Service
+	client      sbacclient.Client
+	checker     *checkerclient.Client
+	checkerOnly bool
+	sbacOnly    bool
+	controllers []controller
 }
 
 // New returns a new REST API
 func New(cfg *Config) *Service {
-	clcfg := sbacclient.Config{
-		NodeID:     cfg.SelfID,
-		Top:        cfg.Top,
-		MaxPayload: cfg.MaxPayload,
-		Key:        cfg.Key,
+	var controllers []controller
+	var txclient sbacclient.Client
+	var checkrclt *checkerclient.Client
+
+	if !cfg.CheckerOnly {
+		clcfg := sbacclient.Config{
+			NodeID:     cfg.SelfID,
+			Top:        cfg.Top,
+			MaxPayload: cfg.MaxPayload,
+			Key:        cfg.Key,
+		}
+
+		checkrcfg := checkerclient.Config{
+			NodeID:     cfg.SelfID,
+			Top:        cfg.Top,
+			MaxPayload: cfg.MaxPayload,
+			Key:        cfg.Key,
+		}
+		checkrclt := checkerclient.New(&checkrcfg)
+
+		txclient := sbacclient.New(&clcfg)
+		sbacCfg := sbacapi.Config{
+			Sbac:       cfg.SBAC,
+			Checkerclt: checkrclt,
+			ShardID:    0,
+			NodeID:     cfg.SelfID,
+			Checker:    cfg.Checker,
+			Top:        cfg.Top,
+			Sbacclt:    txclient,
+		}
+		controllers = append(controllers, kvapi.New(cfg.Store, cfg.SBAC))
+		controllers = append(controllers, sbacapi.New(&sbacCfg))
 	}
 
-	checkrcfg := checkerclient.Config{
-		NodeID:     cfg.SelfID,
-		Top:        cfg.Top,
-		MaxPayload: cfg.MaxPayload,
-		Key:        cfg.Key,
+	if !cfg.SBACOnly {
+		controllers = append(
+			controllers, checkerapi.New(cfg.Checker, cfg.SelfID))
 	}
-	checkrclt := checkerclient.New(&checkrcfg)
 
-	txclient := sbacclient.New(&clcfg)
 	s := &Service{
-		port:       cfg.Port,
-		top:        cfg.Top,
-		maxPayload: cfg.MaxPayload,
-		client:     txclient,
-		store:      cfg.Store,
-		sbac:       cfg.SBAC,
-		checker:    checkrclt,
+		port:        cfg.Port,
+		top:         cfg.Top,
+		maxPayload:  cfg.MaxPayload,
+		client:      txclient,
+		store:       cfg.Store,
+		sbac:        cfg.SBAC,
+		checker:     checkrclt,
+		controllers: controllers,
 	}
+	s.router = s.makeRouter(controllers...)
 
-	checkerCtrl := checkerapi.New(cfg.Checker, cfg.SelfID)
-	kvCtrl := kvapi.New(cfg.Store, cfg.SBAC)
-
-	sbacCfg := sbacapi.Config{
-		Sbac:       cfg.SBAC,
-		Checkerclt: checkrclt,
-		ShardID:    0,
-		NodeID:     cfg.SelfID,
-		Checker:    cfg.Checker,
-		Top:        cfg.Top,
-		Sbacclt:    txclient,
-	}
-	sbacCtrl := sbacapi.New(&sbacCfg)
-
-	s.router = s.makeRouter(checkerCtrl, kvCtrl, sbacCtrl)
 	go func() {
 		log.Info("http server started", fld.Port(cfg.Port))
 		log.Fatal("http server exited", fld.Err(s.router.Run(":"+fmt.Sprintf("%d", cfg.Port))))

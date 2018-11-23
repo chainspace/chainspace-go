@@ -13,7 +13,7 @@ import (
 	"chainspace.io/prototype/internal/log"
 	"chainspace.io/prototype/internal/log/fld"
 	"chainspace.io/prototype/network"
-	"chainspace.io/prototype/restsrv"
+	sbacapi "chainspace.io/prototype/sbac/api"
 	sbacclient "chainspace.io/prototype/sbac/client"
 	"github.com/tav/golly/optparse"
 )
@@ -98,7 +98,7 @@ func cmdSBAC(args []string, usage string) {
 			log.Fatal("Unable to read payload file", fld.Err(err))
 		}
 
-		tx := restsrv.Transaction{}
+		tx := sbacapi.Transaction{}
 		err = json.Unmarshal(payload, &tx)
 		if err != nil {
 			log.Fatal("Invalid payload format for transaction", fld.Err(err))
@@ -110,7 +110,7 @@ func cmdSBAC(args []string, usage string) {
 		if err != nil {
 			log.Fatal("unable to send transaction", fld.Err(err))
 		}
-		data := []restsrv.Object{}
+		data := []sbacapi.Object{}
 		/*
 			for _, v := range objects {
 				v := v
@@ -136,7 +136,7 @@ func cmdSBAC(args []string, usage string) {
 		if err != nil {
 			log.Fatal("unable to query object", fld.Err(err))
 		}
-		obj, err := restsrv.BuildObjectResponse(objs)
+		obj, err := sbacapi.BuildObjectResponse(objs)
 		if err != nil {
 			log.Fatal("error building result", fld.Err(err))
 		}
