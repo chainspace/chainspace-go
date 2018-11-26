@@ -6,7 +6,6 @@ import (
 )
 
 var _ = Describe("Bitset", func() {
-
 	var b bitset
 
 	BeforeEach(func() {

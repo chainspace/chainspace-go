@@ -74,6 +74,10 @@ func makeKey(ty keyType, key []byte) []byte {
 	return out
 }
 
+func committedTxnKey(key []byte) []byte {
+	return makeKey(keyTypeCommittedTxn, key)
+}
+
 func finishedTxnKey(key []byte) []byte {
 	return makeKey(keyFinishedTxn, key)
 }
@@ -84,10 +88,6 @@ func objectKey(key []byte) []byte {
 
 func objectStatusKey(key []byte) []byte {
 	return makeKey(keyTypeObjectStatus, key)
-}
-
-func committedTxnKey(key []byte) []byte {
-	return makeKey(keyTypeCommittedTxn, key)
 }
 
 func seenTxnKey(key []byte) []byte {
