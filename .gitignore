@@ -9,4 +9,3 @@ coverhtml.txt
 /infrastructure/conf/
 /infrastructure/terraform.tfstate
 /infrastructure/terraform.tfstate.backup
-/vendor
