@@ -464,6 +464,14 @@ var _ = Describe("State", func() {
 					Expect(actual).To(Equal(expected))
 				})
 			}
+
+			Context("with an incorrect messageKind", func() {
+				It("should panic by default", func() {
+					var mkt = messageKindStringTest{msgKind: 99}
+					actual := func() { mkt.msgKind.String() }
+					Expect(actual).To(Panic())
+				})
+			})
 		})
 
 		Context("for newView", func() {
