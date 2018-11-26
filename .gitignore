@@ -1,7 +1,6 @@
 .idea
 coverage.txt
 coverhtml.txt
-/Gopkg.lock
 /cmd/chainspace/chainspace
 /cmd/httptest/httptest
 /cmd/httptest2/httptest2
