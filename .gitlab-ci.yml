@@ -20,6 +20,7 @@ stages:
   - deploy
 
 before_script:
+  - echo $GOPATH
   - mkdir -p /tmp/src/${GO_PROJECT} /go/src/_/builds
   - mkdir -p ${CI_PROJECT_DIR}/${ARTIFACTS_DIR}
   - cp -r ${CI_PROJECT_DIR}/* /tmp/src/${GO_PROJECT}/
