@@ -11,76 +11,6 @@ At present, our running code has two main components:
 
 Eventually, it's likely that we will split these two components. A project wanting only fast consensus, but no sharding, should be able use Blockmania by itself. For projects that need the added horizontal scalability of sharding, the S-BAC component would be added. But for the moment, the two components co-exist in the same codebase.
 
-## Prerequisites
-
-This project is using Git submodules. If you are about to clone a clean version of the project you should run:
-
-```bash
-git clone --recursive git@code.constructiveproof.com:chainspace/prototype.git
-```
-
-For an existing cloned repo you should run:
-
-```bash
-git submodule init
-git submodule update
-```
-
-## Development Setup
-
-You will need to the following to get Chainspace running locally:
-
-* [Go](https://golang.org/dl/) `1.11` or above. Earlier versions won't work
-* [Docker](https://docs.docker.com/install/)
-
-To test that Docker is working run `docker run hello-world` in a shell. Fix any errors before proceeding.
-
-With these requirements met, run `make install`. This will build and install the `chainspace` binary as well as the `httptest` load generator. You can generate a new set of shards, start the nodes, and hit them with a load test.
-
-See the help documentation (`chainspace -h` and `httptest -h`) for each binary.
-
-### Git Flow and Versioning
-
-#### Git Flow
-
-If you are of the Mac persuasion you should install [Git Flow AVH](https://github.com/petervanderdoes/gitflow-avh) rather than the standard Git Flow. This can be done via [Brew](https://brew.sh/) using:
-
-```sh
-brew update && brew install git-flow-avh
-```
-
-Note: Linux users can use the standard Git Flow binaries installed via `apt`.
-
-For more information on Git Flow, here is a handy [Git Flow Cheatsheat](https://danielkummer.github.io/git-flow-cheatsheet/).
-
-#### Repo Init
-
-Use the defaults for everything except the `Hooks and filters directory?` which should be set to  `{PATH_TO_REPO_DIR}/.githooks`. The `.githooks` directory is a Git submodule of these handy [Git Flow Hooks](https://github.com/jaspernbrouwer/git-flow-hooks) which include the auto updating of the `VERSION` file.
-
-```sh
-git flow init # add -f for previously init'd repos
-
-Which branch should be used for bringing forth production releases?
-   - master
-Branch name for production releases: [master]
-Branch name for "next release" development: [develop]
-
-How to name your supporting branch prefixes?
-Feature branches? [feature/]
-Bugfix branches? [bugfix/]
-Release branches? [release/]
-Hotfix branches? [hotfix/]
-Support branches? [support/]
-Version tag prefix? []
-Hooks and filters directory? [{PATH_TO_REPO_DIR}/.git/hooks] # Set this to {PATH_TO_REPO_DIR}/.githooks
-```
-
-NOTE: `{PATH_TO_REPO_DIR}` should be the full path of the repo on your local machine.
-
-#### Versioning
-
-The version of the Chainspace application is set in the `VERSION` file found in the root of the project. This will be updated the automatically when creating either a `release` or `hotfix` using the installed Git hooks mentioned above.
-
 ## Setting Up and Running Nodes
 
 The `chainspace init <networkname>` command, by default, creates a network consisting of 12 nodes grouped into 3 shards of 4 nodes each.
@@ -208,6 +138,30 @@ Many parts of the system are available to poke at via a RESTful HTTP server inte
 
 TODO: we still need to really document how to use the REST endpoints from a conceptual standpoint.
 
+
+# Developer Documentation
+
+## Setup
+
+You will need to the following to get Chainspace running locally:
+
+* [Go](https://golang.org/dl/) `1.11` or above. Earlier versions won't work
+* [Docker](https://docs.docker.com/install/)
+
+To test that Docker is working run `docker run hello-world` in a shell. Fix any errors before proceeding.
+
+With these requirements met, run `make install`. This will build and install the `chainspace` binary as well as the `httptest` load generator. You can generate a new set of shards, start the nodes, and hit them with a load test.
+
+See the help documentation (`chainspace -h` and `httptest -h`) for each binary.
+
+## Committing
+
+Please use Git Flow - work in feature branches, and send merge requests to `develop`.
+
+#### Versioning
+
+The version of the Chainspace application is set in the `VERSION` file found in the root of the project. Please update it when creating either a `release` or `hotfix` using the installed Git hooks mentioned above.
+
 ## Adding Dependencies
 
-Dependency management is done via `go mod`. See the latest Go docs for a primer on that if you're doing development. `go mod help` should give you the basics.
+Dependency management is done via `dep`. To add a dependency, do the standard `dep ensure -add <dependency>`. We attempted to use `go mod` (and will go back to it when it stabilises). Right now `mod` breaks too many of our tools.
