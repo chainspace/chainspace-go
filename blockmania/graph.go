@@ -440,7 +440,7 @@ func (graph *Graph) run() {
 				if log.AtDebug() {
 					log.Debug("Dep:", fld.BlockID(dep.Block))
 				}
-				dmax := dep.Block.Round
+				depMax := dep.Block.Round
 				rcheck := false
 				e := &entry{
 					block: dep.Block,
@@ -450,30 +450,30 @@ func (graph *Graph) run() {
 					e.deps = make([]BlockID, len(dep.Deps)+1)
 					e.deps[0] = dep.Prev
 					copy(e.deps[1:], dep.Deps)
-					pmax, exists := graph.max[dep.Prev]
+					prevMax, exists := graph.max[dep.Prev]
 					if !exists {
 						rcheck = true
-					} else if pmax > dmax {
-						dmax = pmax
+					} else if prevMax > depMax {
+						depMax = prevMax
 					}
 				} else {
 					e.deps = dep.Deps
 				}
 				entries[i] = e
 				for _, link := range dep.Deps {
-					lmax, exists := graph.max[link]
+					linkMax, exists := graph.max[link]
 					if !exists {
 						rcheck = true
-					} else if lmax > dmax {
-						dmax = lmax
+					} else if linkMax > depMax {
+						depMax = linkMax
 					}
 				}
-				if rcheck && round > dmax {
-					dmax = round
+				if rcheck && round > depMax {
+					depMax = round
 				}
-				graph.max[dep.Block] = dmax
-				if dmax > max {
-					max = dmax
+				graph.max[dep.Block] = depMax
+				if depMax > max {
+					max = depMax
 				}
 			}
 			rcheck := false
