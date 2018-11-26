@@ -23,6 +23,7 @@ before_script:
   - echo $GOPATH
   - mkdir -p /tmp/src/${GO_PROJECT} /go/src/_/builds/${GO_PROJECT}
   - mkdir -p ${CI_PROJECT_DIR}/${ARTIFACTS_DIR}
+  - mkdir -p /go/src/${GO_PROJECT}
   - cp -r ${CI_PROJECT_DIR}/* /go/src/${GO_PROJECT}/
   - ln -s /tmp/src/${GO_PROJECT} /go/src/_/builds/${GO_PROJECT}
   - cd /go/src/${GO_PROJECT}/prototype
