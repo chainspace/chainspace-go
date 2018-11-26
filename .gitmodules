@@ -1,4 +1,1 @@
 
-[submodule ".githooks"]
-	path = .githooks
-	url = https://github.com/jaspernbrouwer/git-flow-hooks
