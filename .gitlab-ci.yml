@@ -3,7 +3,7 @@ image: golang:1.11.0
 variables:
   BIN_NAME: chainspace
   ARTIFACTS_DIR: artifacts
-  GO_PROJECT: chainspace/prototype
+  GO_PROJECT: chainspace.io/prototype
   ARTIFACTS_BIN: ${CI_PROJECT_DIR}/${ARTIFACTS_DIR}/cmd/${GO_PROJECT}/${BIN_NAME}
 
 cache:
