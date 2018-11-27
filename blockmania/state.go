@@ -20,6 +20,7 @@ type state struct {
 	timeouts map[uint64][]timeout
 }
 
+// clone the current state and return it
 func (s *state) clone(minround uint64) *state {
 	if s == nil {
 		return &state{
