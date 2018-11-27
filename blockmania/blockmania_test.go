@@ -22,7 +22,7 @@ var _ = Describe("Blockmania", func() {
 				blockID.Hash = "foofoofoofoo" // minimum 12 char hash :)
 			})
 
-			It("should return a formatted string", func() {
+			It("should return a formatted string with the node, round, and block hash", func() {
 				actual := blockID.String()
 				expected := fmt.Sprintf("%v | %v | %v", blockID.Node, blockID.Round, "666F6F666F6F")
 
@@ -31,7 +31,7 @@ var _ = Describe("Blockmania", func() {
 		})
 
 		Context("An invalid BlockID", func() {
-			It("should return a formatted string", func() {
+			It("should return a formatted string with only the node and round", func() {
 				actual := blockID.String()
 				expected := fmt.Sprintf("%v | %v", blockID.Node, blockID.Round)
 
