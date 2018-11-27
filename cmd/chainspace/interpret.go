@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"sync"
 
-	"chainspace.io/prototype/broadcast"
 	"chainspace.io/prototype/blockmania"
+	"chainspace.io/prototype/broadcast"
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/internal/log"
 	"chainspace.io/prototype/internal/log/fld"
