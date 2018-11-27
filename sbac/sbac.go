@@ -23,6 +23,10 @@ import (
 
 var b32 = base32.StdEncoding.WithPadding(base32.NoPadding)
 
+type Service interface {
+  QueryObjectByVersionID(versionid []byte) ([]byte, error)
+}
+
 type Config struct {
 	Broadcaster broadcast.Broadcaster
 	Directory   string
@@ -37,7 +41,7 @@ type Config struct {
 	Key         signature.KeyPair
 }
 
-type Service struct {
+type ServiceSBAC struct {
 	broadcaster broadcast.Broadcaster
 	conns       conns.Pool
 	kvstore     kv.Service
@@ -56,7 +60,7 @@ type Service struct {
 
 // checkEvent check the event Op and create a new StateMachine if
 // the OpCode is Consensus1 or ConsensusCommit
-func (s *Service) checkEvent(e *ConsensusEvent) {
+func (s *ServiceSBAC) checkEvent(e *ConsensusEvent) {
 	if e.data.Op == ConsensusOp_Consensus1 {
 		txbytes, _ := proto.Marshal(e.data.Tx)
 		detail := DetailTx{
@@ -70,7 +74,7 @@ func (s *Service) checkEvent(e *ConsensusEvent) {
 	}
 }
 
-func (s *Service) consumeEvents(e Event) bool {
+func (s *ServiceSBAC) consumeEvents(e Event) bool {
 	// check if statemachine is finished
 	ok, err := s.store.TxnFinished(e.TxID())
 	if err != nil {
@@ -100,7 +104,7 @@ func (s *Service) consumeEvents(e Event) bool {
 	return false
 }
 
-func (s *Service) handleAddTransaction(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
+func (s *ServiceSBAC) handleAddTransaction(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
 	req := &AddTransactionRequest{}
 	err := proto.Unmarshal(payload, req)
 	if err != nil {
@@ -129,7 +133,7 @@ func (s *Service) handleAddTransaction(ctx context.Context, payload []byte, id u
 	}, nil
 }
 
-func (s *Service) handleCreateObject(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
+func (s *ServiceSBAC) handleCreateObject(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
 	req := &CreateObjectRequest{}
 	err := proto.Unmarshal(payload, req)
 	res := &CreateObjectResponse{}
@@ -160,7 +164,7 @@ func (s *Service) handleCreateObject(ctx context.Context, payload []byte, id uin
 	return createPayload(id, res)
 }
 
-func (s *Service) handleCreateObjects(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
+func (s *ServiceSBAC) handleCreateObjects(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
 	req := &CreateObjectsRequest{}
 	err := proto.Unmarshal(payload, req)
 	res := &CreateObjectsResponse{}
@@ -193,7 +197,7 @@ func (s *Service) handleCreateObjects(ctx context.Context, payload []byte, id ui
 	return createObjectsPayload(id, res)
 }
 
-func (s *Service) handleDeliver(round uint64, blocks []*broadcast.SignedData) {
+func (s *ServiceSBAC) handleDeliver(round uint64, blocks []*broadcast.SignedData) {
 	for _, signed := range blocks {
 		block, err := signed.Block()
 		if err != nil {
@@ -216,7 +220,7 @@ func (s *Service) handleDeliver(round uint64, blocks []*broadcast.SignedData) {
 	}
 }
 
-func (s *Service) handleSBAC(
+func (s *ServiceSBAC) handleSBAC(
 	ctx context.Context, payload []byte, peerID uint64, msgID uint64,
 ) (*service.Message, error) {
 	req := &SBACMessage{}
@@ -251,7 +255,7 @@ func (s *Service) handleSBAC(
 	return &service.Message{ID: msgID, Opcode: int32(Opcode_SBAC), Payload: payloadres}, nil
 }
 
-func (s *Service) handleQueryObject(
+func (s *ServiceSBAC) handleQueryObject(
 	ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
 	req := &QueryObjectRequest{}
 	err := proto.Unmarshal(payload, req)
@@ -276,7 +280,7 @@ func (s *Service) handleQueryObject(
 	return queryPayload(id, res)
 }
 
-func (s *Service) handleStates(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
+func (s *ServiceSBAC) handleStates(ctx context.Context, payload []byte, id uint64) (*service.Message, error) {
 	sr := s.txstates.StatesReport()
 	res := &StatesReportResponse{
 		States:        sr,
@@ -293,7 +297,7 @@ func (s *Service) handleStates(ctx context.Context, payload []byte, id uint64) (
 	}, nil
 }
 
-func (s *Service) AddTransaction(
+func (s *ServiceSBAC) AddTransaction(
 	ctx context.Context, tx *Transaction, evidences map[uint64][]byte,
 ) ([]*Object, error) {
 	ids, err := MakeIDs(tx)
@@ -340,7 +344,7 @@ func (s *Service) AddTransaction(
 	return objects, nil
 }
 
-func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, error) {
+func (s *ServiceSBAC) Handle(peerID uint64, m *service.Message) (*service.Message, error) {
 	ctx := context.TODO()
 	switch Opcode(m.Opcode) {
 	case Opcode_ADD_TRANSACTION:
@@ -361,11 +365,11 @@ func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, e
 	}
 }
 
-func (s *Service) Name() string {
+func (s *ServiceSBAC) Name() string {
 	return "sbac"
 }
 
-func (s *Service) QueryObjectByVersionID(versionid []byte) ([]byte, error) {
+func (s *ServiceSBAC) QueryObjectByVersionID(versionid []byte) ([]byte, error) {
 	objects, err := s.store.GetObjects([][]byte{versionid})
 	if err != nil {
 		return nil, err
@@ -375,14 +379,14 @@ func (s *Service) QueryObjectByVersionID(versionid []byte) ([]byte, error) {
 	return objects[0].Value, nil
 }
 
-func (s *Service) StatesReport(ctx context.Context) *StatesReportResponse {
+func (s *ServiceSBAC) StatesReport(ctx context.Context) *StatesReportResponse {
 	return &StatesReportResponse{
 		States:        s.txstates.StatesReport(),
 		EventsInQueue: int32(s.pe.Len()),
 	}
 }
 
-func (s *Service) Stop() error {
+func (s *ServiceSBAC) Stop() error {
 	return s.store.Close()
 }
 
@@ -413,7 +417,7 @@ func queryPayload(id uint64, res *QueryObjectResponse) (*service.Message, error)
 	}, nil
 }
 
-func New(cfg *Config) (*Service, error) {
+func New(cfg *Config) (*ServiceSBAC, error) {
 	algorithm, err := signature.AlgorithmFromString(cfg.SigningKey.Type)
 	if err != nil {
 		return nil, err
@@ -432,7 +436,7 @@ func New(cfg *Config) (*Service, error) {
 		return nil, err
 	}
 
-	s := &Service{
+	s := &ServiceSBAC{
 		broadcaster: cfg.Broadcaster,
 		conns:       conns.NewPool(20, cfg.NodeID, cfg.Top, cfg.MaxPayload, cfg.Key, service.CONNECTION_SBAC),
 		kvstore:     cfg.KVStore,

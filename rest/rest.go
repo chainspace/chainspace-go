@@ -4,18 +4,18 @@ import (
 	"fmt"
 
 	"chainspace.io/prototype/checker"
-	checkerapi "chainspace.io/prototype/checker/api"
-	checkerclient "chainspace.io/prototype/checker/client"
+	checkerApi "chainspace.io/prototype/checker/api"
+	checkerClient "chainspace.io/prototype/checker/client"
 	"chainspace.io/prototype/config"
 	"chainspace.io/prototype/internal/crypto/signature"
 	"chainspace.io/prototype/internal/log"
 	"chainspace.io/prototype/internal/log/fld"
 	"chainspace.io/prototype/kv"
-	kvapi "chainspace.io/prototype/kv/api"
+	kvApi "chainspace.io/prototype/kv/api"
 	"chainspace.io/prototype/network"
 	"chainspace.io/prototype/sbac"
-	sbacapi "chainspace.io/prototype/sbac/api"
-	sbacclient "chainspace.io/prototype/sbac/client"
+	sbacApi "chainspace.io/prototype/sbac/api"
+	sbacClient "chainspace.io/prototype/sbac/client"
 
 	"github.com/gin-gonic/gin"
 )
@@ -26,80 +26,79 @@ type Config struct {
 	Checker     *checker.Service
 	CheckerOnly bool
 	Key         signature.KeyPair
-	Port        int
-	Top         *network.Topology
 	MaxPayload  config.ByteSize
+	Port        int
+	SBAC        *sbac.ServiceSBAC
+	SBACOnly    bool
 	SelfID      uint64
 	Store       kv.Service
-	SBAC        *sbac.Service
-	SBACOnly    bool
+	Top         *network.Topology
 }
 
 // Service gives us a place to store values for our REST API
 type Service struct {
+	checker     *checkerClient.Client
+	checkerOnly bool
+	client      sbacClient.Client
+	controllers []controller
+	maxPayload  config.ByteSize
 	port        int
 	router      *gin.Engine
+	sbac        *sbac.ServiceSBAC
+	sbacOnly    bool
 	store       kv.Service
 	top         *network.Topology
-	maxPayload  config.ByteSize
-	sbac        *sbac.Service
-	client      sbacclient.Client
-	checker     *checkerclient.Client
-	checkerOnly bool
-	sbacOnly    bool
-	controllers []controller
 }
 
 // New returns a new REST API
 func New(cfg *Config) *Service {
 	var controllers []controller
-	var txclient sbacclient.Client
-	var checkrclt *checkerclient.Client
+	var txClient sbacClient.Client
+	var checkrclt *checkerClient.Client
 
 	if !cfg.CheckerOnly {
-		clcfg := sbacclient.Config{
+		clcfg := sbacClient.Config{
 			NodeID:     cfg.SelfID,
 			Top:        cfg.Top,
 			MaxPayload: cfg.MaxPayload,
 			Key:        cfg.Key,
 		}
 
-		checkrcfg := checkerclient.Config{
+		checkrcfg := checkerClient.Config{
 			NodeID:     cfg.SelfID,
 			Top:        cfg.Top,
 			MaxPayload: cfg.MaxPayload,
 			Key:        cfg.Key,
 		}
-		checkrclt := checkerclient.New(&checkrcfg)
+		checkrclt = checkerClient.New(&checkrcfg)
+		txClient = sbacClient.New(&clcfg)
 
-		txclient := sbacclient.New(&clcfg)
-		sbacCfg := sbacapi.Config{
-			Sbac:       cfg.SBAC,
-			Checkerclt: checkrclt,
-			ShardID:    0,
-			NodeID:     cfg.SelfID,
+		sbacCfg := sbacApi.Config{
 			Checker:    cfg.Checker,
+			Checkerclt: checkrclt,
+			NodeID:     cfg.SelfID,
+			Sbac:       cfg.SBAC,
+			Sbacclt:    txClient,
+			ShardID:    0,
 			Top:        cfg.Top,
-			Sbacclt:    txclient,
 		}
-		controllers = append(controllers, kvapi.New(cfg.Store, cfg.SBAC))
-		controllers = append(controllers, sbacapi.New(&sbacCfg))
+		controllers = append(controllers, kvApi.NewController(cfg.Store, cfg.SBAC))
+		controllers = append(controllers, sbacApi.NewController(&sbacCfg))
 	}
 
 	if !cfg.SBACOnly {
-		controllers = append(
-			controllers, checkerapi.New(cfg.Checker, cfg.SelfID))
+		controllers = append(controllers, checkerApi.NewController(cfg.Checker, cfg.SelfID))
 	}
 
 	s := &Service{
-		port:        cfg.Port,
-		top:         cfg.Top,
-		maxPayload:  cfg.MaxPayload,
-		client:      txclient,
-		store:       cfg.Store,
-		sbac:        cfg.SBAC,
 		checker:     checkrclt,
+		client:      txClient,
 		controllers: controllers,
+		maxPayload:  cfg.MaxPayload,
+		port:        cfg.Port,
+		sbac:        cfg.SBAC,
+		store:       cfg.Store,
+		top:         cfg.Top,
 	}
 	s.router = s.makeRouter(controllers...)
 

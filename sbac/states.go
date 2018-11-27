@@ -82,7 +82,7 @@ func (s State) String() string {
 	}
 }
 
-func (s *Service) makeStateTable() *StateTable {
+func (s *ServiceSBAC) makeStateTable() *StateTable {
 	// change state are triggered on events
 	actionTable := map[State]Action{
 		StateWaitingForConsensus1:      s.onWaitingForConsensus1,
@@ -134,7 +134,7 @@ func (s *Service) makeStateTable() *StateTable {
 	return &StateTable{actionTable, transitionTable}
 }
 
-func (s *Service) onWaitingForPhase1(st *States) (State, error) {
+func (s *ServiceSBAC) onWaitingForPhase1(st *States) (State, error) {
 	switch st.sbac[SBACOp_Phase1].State() {
 	case StateSBACRejected:
 		return StateAborted, nil
@@ -145,7 +145,7 @@ func (s *Service) onWaitingForPhase1(st *States) (State, error) {
 	}
 }
 
-func (s *Service) onWaitingForPhase2(st *States) (State, error) {
+func (s *ServiceSBAC) onWaitingForPhase2(st *States) (State, error) {
 	switch st.sbac[SBACOp_Phase2].State() {
 	case StateSBACRejected:
 		return StateAborted, nil
@@ -156,7 +156,7 @@ func (s *Service) onWaitingForPhase2(st *States) (State, error) {
 	}
 }
 
-func (s *Service) onWaitingForCommit(st *States) (State, error) {
+func (s *ServiceSBAC) onWaitingForCommit(st *States) (State, error) {
 	switch st.sbac[SBACOp_Commit].State() {
 	case StateSBACRejected:
 		return StateAborted, nil
@@ -167,7 +167,7 @@ func (s *Service) onWaitingForCommit(st *States) (State, error) {
 	}
 }
 
-func (s *Service) onWaitingForConsensus1(st *States) (State, error) {
+func (s *ServiceSBAC) onWaitingForConsensus1(st *States) (State, error) {
 	state := st.consensus[ConsensusOp_Consensus1].State()
 	if state == StateConsensusWaiting {
 		return StateWaitingForConsensus1, nil
@@ -199,7 +199,7 @@ func (s *Service) onWaitingForConsensus1(st *States) (State, error) {
 }
 
 // TODO(): kick bad node here ? not sure which one are bad
-func (s *Service) onWaitingForConsensus2(st *States) (State, error) {
+func (s *ServiceSBAC) onWaitingForConsensus2(st *States) (State, error) {
 	state := st.consensus[ConsensusOp_Consensus2].State()
 	if state == StateConsensusWaiting {
 		return StateWaitingForConsensus2, nil
@@ -210,7 +210,7 @@ func (s *Service) onWaitingForConsensus2(st *States) (State, error) {
 }
 
 // TODO(): verify signatures here, but need to be passed to first.
-func (s *Service) onWaitingForConsensusCommit(st *States) (State, error) {
+func (s *ServiceSBAC) onWaitingForConsensusCommit(st *States) (State, error) {
 	state := st.consensus[ConsensusOp_ConsensusCommit].State()
 	if state == StateConsensusWaiting {
 		return StateWaitingForConsensusCommit, nil
@@ -223,7 +223,7 @@ func (s *Service) onWaitingForConsensusCommit(st *States) (State, error) {
 // can abort, if impossible to lock object
 // then check if one shard or more is involved and return StateAcceptBroadcasted
 // or StateObjectSetInactive
-func (s *Service) toObjectLocked(st *States) (State, error) {
+func (s *ServiceSBAC) toObjectLocked(st *States) (State, error) {
 	objects, allInShard := s.inputObjectsForShard(s.shardID, st.detail.Tx)
 	// lock them
 	if err := s.store.LockObjects(objects); err != nil {
@@ -238,7 +238,7 @@ func (s *Service) toObjectLocked(st *States) (State, error) {
 	return StateAcceptPhase1Broadcasted, nil
 }
 
-func (s *Service) signSBACMessage(
+func (s *ServiceSBAC) signSBACMessage(
 	sbacphase SBACOp, decision SBACDecision, st *States) (*service.Message, error) {
 	signature, err := s.signTransaction(st.detail.Tx)
 	if err != nil {
@@ -266,7 +266,7 @@ func (s *Service) signSBACMessage(
 	return &service.Message{Opcode: int32(Opcode_SBAC), Payload: payload}, nil
 }
 
-func (s *Service) toRejectPhase1Broadcasted(st *States) (State, error) {
+func (s *ServiceSBAC) toRejectPhase1Broadcasted(st *States) (State, error) {
 	msg, err := s.signSBACMessage(SBACOp_Phase1, SBACDecision_REJECT, st)
 	if err != nil {
 		return StateAborted, nil
@@ -284,7 +284,7 @@ func (s *Service) toRejectPhase1Broadcasted(st *States) (State, error) {
 	return StateAborted, err
 }
 
-func (s *Service) toAcceptPhase1Broadcasted(st *States) (State, error) {
+func (s *ServiceSBAC) toAcceptPhase1Broadcasted(st *States) (State, error) {
 	msg, err := s.signSBACMessage(SBACOp_Phase1, SBACDecision_ACCEPT, st)
 	if err != nil {
 		return StateAborted, nil
@@ -302,7 +302,7 @@ func (s *Service) toAcceptPhase1Broadcasted(st *States) (State, error) {
 	return StateWaitingForPhase1, nil
 }
 
-func (s *Service) toRejectPhase2Broadcasted(st *States) (State, error) {
+func (s *ServiceSBAC) toRejectPhase2Broadcasted(st *States) (State, error) {
 	msg, err := s.signSBACMessage(SBACOp_Phase2, SBACDecision_REJECT, st)
 	if err != nil {
 		return StateAborted, nil
@@ -319,7 +319,7 @@ func (s *Service) toRejectPhase2Broadcasted(st *States) (State, error) {
 	return StateAborted, err
 }
 
-func (s *Service) toAcceptPhase2Broadcasted(st *States) (State, error) {
+func (s *ServiceSBAC) toAcceptPhase2Broadcasted(st *States) (State, error) {
 	msg, err := s.signSBACMessage(SBACOp_Phase2, SBACDecision_ACCEPT, st)
 	if err != nil {
 		return StateAborted, nil
@@ -337,7 +337,7 @@ func (s *Service) toAcceptPhase2Broadcasted(st *States) (State, error) {
 	return StateWaitingForPhase2, nil
 }
 
-func (s *Service) toCommitObjectsBroadcasted(st *States) (State, error) {
+func (s *ServiceSBAC) toCommitObjectsBroadcasted(st *States) (State, error) {
 	msg, err := s.signSBACMessage(SBACOp_Commit, SBACDecision_ACCEPT, st)
 	if err != nil {
 		return StateAborted, nil
@@ -378,15 +378,15 @@ func (s *Service) toCommitObjectsBroadcasted(st *States) (State, error) {
 	return StateSucceeded, nil
 }
 
-func (s *Service) toWaitingForPhase1(st *States) (State, error) {
+func (s *ServiceSBAC) toWaitingForPhase1(st *States) (State, error) {
 	return StateWaitingForPhase1, nil
 }
 
-func (s *Service) toWaitingForPhase2(st *States) (State, error) {
+func (s *ServiceSBAC) toWaitingForPhase2(st *States) (State, error) {
 	return StateWaitingForPhase2, nil
 }
 
-func (s *Service) toObjectDeactivated(st *States) (State, error) {
+func (s *ServiceSBAC) toObjectDeactivated(st *States) (State, error) {
 	objects, _ := s.inputObjectsForShard(s.shardID, st.detail.Tx)
 	// lock them
 	if err := s.store.DeactivateObjects(objects); err != nil {
@@ -401,7 +401,7 @@ func (s *Service) toObjectDeactivated(st *States) (State, error) {
 	return StateObjectsCreated, nil
 }
 
-func (s *Service) toObjectsCreated(st *States) (State, error) {
+func (s *ServiceSBAC) toObjectsCreated(st *States) (State, error) {
 	traceIDPairs, err := MakeTraceIDs(st.detail.Tx.Traces)
 	if err != nil {
 		return StateAborted, err
@@ -437,7 +437,7 @@ func (s *Service) toObjectsCreated(st *States) (State, error) {
 	return StateCommitObjectsBroadcasted, nil
 }
 
-func (s *Service) toSucceeded(st *States) (State, error) {
+func (s *ServiceSBAC) toSucceeded(st *States) (State, error) {
 	// st.detail.Result <- true
 	log.Error("finishing transaction", fld.TxID(st.detail.HashID))
 	err := s.store.FinishTransaction(st.detail.ID)
@@ -457,7 +457,7 @@ func (s *Service) toSucceeded(st *States) (State, error) {
 	return StateSucceeded, nil
 }
 
-func (s *Service) toAborted(st *States) (State, error) {
+func (s *ServiceSBAC) toAborted(st *States) (State, error) {
 	// unlock any objects maybe related to this transaction.
 	objects, _ := s.inputObjectsForShard(s.shardID, st.detail.Tx)
 	err := s.store.UnlockObjects(objects)
@@ -482,7 +482,7 @@ func (s *Service) toAborted(st *States) (State, error) {
 }
 
 // TODO(): should we make our own evidences ourselves here ?
-func (s *Service) toConsensus2Triggered(st *States) (State, error) {
+func (s *ServiceSBAC) toConsensus2Triggered(st *States) (State, error) {
 	if s.isNodeInitiatingBroadcast(st.detail.HashID) {
 		// broadcast transaction
 		consensusTx := &ConsensusTransaction{
@@ -503,7 +503,7 @@ func (s *Service) toConsensus2Triggered(st *States) (State, error) {
 	return StateWaitingForConsensus2, nil
 }
 
-func (s *Service) toConsensusCommitTriggered(st *States) (State, error) {
+func (s *ServiceSBAC) toConsensusCommitTriggered(st *States) (State, error) {
 	if s.isNodeInitiatingBroadcast(st.detail.HashID) {
 		// broadcast transaction
 		consensusTx := &ConsensusTransaction{
@@ -525,10 +525,10 @@ func (s *Service) toConsensusCommitTriggered(st *States) (State, error) {
 	return StateWaitingForConsensusCommit, nil
 }
 
-func (s *Service) toWaitingForConsensusCommit(st *States) (State, error) {
+func (s *ServiceSBAC) toWaitingForConsensusCommit(st *States) (State, error) {
 	return StateWaitingForConsensusCommit, nil
 }
 
-func (s *Service) toWaitingForConsensus2(st *States) (State, error) {
+func (s *ServiceSBAC) toWaitingForConsensus2(st *States) (State, error) {
 	return StateWaitingForConsensus2, nil
 }

@@ -19,8 +19,8 @@ type Controller interface {
 	RegisterRoutes(router *gin.Engine)
 }
 
-// New returns a new kv.Controller
-func New(checkr *checker.Service, nodeID uint64) Controller {
+// NewController returns a new kv.Controller
+func NewController(checkr *checker.Service, nodeID uint64) Controller {
 	return &controller{newService(checkr, nodeID)}
 }
 

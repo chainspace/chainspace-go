@@ -16,25 +16,25 @@ import (
 )
 
 type service struct {
-	sbac       *sbac.Service
+	checker    *checker.Service
 	checkerclt *checkerclient.Client
+	nodeID     uint64
+	sbac       *sbac.ServiceSBAC
 	sbacclt    sbacclient.Client
 	shardID    uint64
-	nodeID     uint64
-	checker    *checker.Service
 	top        *network.Topology
 }
 
 // newService ...
 func newService(cfg *Config) *service {
 	return &service{
-		sbac:       cfg.Sbac,
-		checkerclt: cfg.Checkerclt,
-		shardID:    cfg.ShardID,
-		nodeID:     cfg.NodeID,
 		checker:    cfg.Checker,
-		top:        cfg.Top,
+		checkerclt: cfg.Checkerclt,
+		nodeID:     cfg.NodeID,
+		sbac:       cfg.Sbac,
 		sbacclt:    cfg.Sbacclt,
+		shardID:    cfg.ShardID,
+		top:        cfg.Top,
 	}
 }
 

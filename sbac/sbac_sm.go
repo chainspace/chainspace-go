@@ -96,7 +96,7 @@ func NewSBACStateMachine(phase SBACOp, action SBACEventAction) *SBACStateMachine
 	}
 }
 
-func (s *Service) onSBACEvent(
+func (s *ServiceSBAC) onSBACEvent(
 	st *States, decisions map[uint64]SignedDecision, e *SBACEvent) (StateSBAC, error) {
 	shards := s.shardsInvolvedWithoutSelf(st.detail.Tx)
 	var somePending bool

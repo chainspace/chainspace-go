@@ -10,24 +10,29 @@ import (
 
 // Controller is the Key-Value controller
 type controller struct {
-	service *service
+	service Service
 }
 
 // Controller is the Key-Value controller
 type Controller interface {
-	GetByLabel(c *gin.Context)
+	// GetByLabel(c *gin.Context)
 	RegisterRoutes(router *gin.Engine)
 }
 
-// New returns a new kv.Controller
-func New(kvStore kv.Service, sbac *sbac.Service) Controller {
-	return &controller{newService(kvStore, sbac)}
+// NewControllerWithService returns a new kv.Controller
+func NewControllerWithService(service Service) Controller {
+	return &controller{service}
+}
+
+// NewController returns a new kv.Controller
+func NewController(kvService kv.Service, sbacService sbac.Service) Controller {
+	return &controller{NewService(kvService, sbacService)}
 }
 
 func (controller *controller) RegisterRoutes(router *gin.Engine) {
 	router.GET("/api/kv/label/:label", controller.GetByLabel)
-	router.GET("/api/kv/prefix/:prefix", controller.GetByPrefix)
 	router.GET("/api/kv/label/:label/version-id", controller.GetVersionIDByLabel)
+	router.GET("/api/kv/prefix/:prefix", controller.GetByPrefix)
 	router.GET("/api/kv/prefix/:prefix/version-id", controller.GetVersionIDByPrefix)
 }
 
@@ -46,7 +51,7 @@ func (controller *controller) RegisterRoutes(router *gin.Engine) {
 // @Router /api/kv/label/{label} [get]
 func (controller *controller) GetByLabel(c *gin.Context) {
 	label := c.Param("label")
-	obj, status, err := controller.service.Get(label)
+	obj, status, err := controller.service.GetByLabel(label)
 	if err != nil {
 		c.JSON(status, Error{err.Error()})
 		return
@@ -62,7 +67,7 @@ func (controller *controller) GetByLabel(c *gin.Context) {
 // @Produce json
 // @Tags kv
 // @Param prefix path string true "prefix"
-// @Success 200 {object} api.ObjectListResponse
+// @Success 200 {object} api.ListObjectsResponse
 // @Failure 400 {object} api.Error
 // @Failure 404 {object} api.Error
 // @Failure 500 {object} api.Error
@@ -74,7 +79,7 @@ func (controller *controller) GetByPrefix(c *gin.Context) {
 		c.JSON(status, Error{err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, ObjectListResponse{Pairs: ls})
+	c.JSON(http.StatusOK, ListObjectsResponse{Pairs: ls})
 }
 
 // GetVersionIDByLabel Retrieves a version ID by its value
@@ -108,18 +113,17 @@ func (controller *controller) GetVersionIDByLabel(c *gin.Context) {
 // @Produce json
 // @Tags kv
 // @Param prefix path string true "prefix"
-// @Success 200 {object} api.VersionIDListResponse
+// @Success 200 {object} api.ListVersionIDsResponse
 // @Failure 400 {object} api.Error
 // @Failure 404 {object} api.Error
 // @Failure 500 {object} api.Error
 // @Router /api/kv/prefix/{prefix}/version-id [get]
 func (controller *controller) GetVersionIDByPrefix(c *gin.Context) {
 	prefix := c.Param("prefix")
-	versionIDs, status, err :=
-		controller.service.GetVersionIDByPrefix(prefix)
+	versionIDs, status, err := controller.service.GetVersionIDByPrefix(prefix)
 	if err != nil {
 		c.JSON(status, Error{err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, VersionIDListResponse{Pairs: versionIDs})
+	c.JSON(http.StatusOK, ListVersionIDsResponse{Pairs: versionIDs})
 }

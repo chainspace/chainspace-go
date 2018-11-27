@@ -417,7 +417,7 @@ func Run(cfg *Config) (*Server, error) {
 	var (
 		kvstore kv.Service
 		rst     *rest.Service
-		ssbac   *sbac.Service
+		ssbac   *sbac.ServiceSBAC
 		pbsb    pubsub.Server
 		checkr  *checker.Service
 	)

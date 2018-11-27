@@ -14,7 +14,7 @@ import (
 
 // Config ...
 type Config struct {
-	Sbac       *sbac.Service
+	Sbac       *sbac.ServiceSBAC
 	Checkerclt *checkerclient.Client
 	Sbacclt    sbacclient.Client
 	ShardID    uint64
@@ -34,8 +34,8 @@ type Controller interface {
 	RegisterRoutes(router *gin.Engine)
 }
 
-// New returns a new kv.Controller
-func New(config *Config) Controller {
+// NewController returns a new kv.Controller
+func NewController(config *Config) Controller {
 	return &controller{newService(config)}
 }
 

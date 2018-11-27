@@ -6,10 +6,10 @@ import (
 )
 
 var _ = Describe("SBAC", func() {
-	var s Service
+	var s ServiceSBAC
 
 	BeforeEach(func() {
-		s = Service{}
+		s = ServiceSBAC{}
 	})
 
 	Describe("checkEvent", func() {

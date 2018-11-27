@@ -11,7 +11,7 @@ import (
 	proto "github.com/gogo/protobuf/proto"
 )
 
-func (s *Service) inputObjectsForShard(
+func (s *ServiceSBAC) inputObjectsForShard(
 	shardID uint64, tx *Transaction) (objects [][]byte, allInShard bool) {
 	// get all objects part of this current shard state
 	allInShard = true
@@ -36,14 +36,14 @@ func (s *Service) inputObjectsForShard(
 }
 
 // FIXME(): need to find a more reliable way to do this
-func (s *Service) isNodeInitiatingBroadcast(txID uint32) bool {
+func (s *ServiceSBAC) isNodeInitiatingBroadcast(txID uint32) bool {
 	nodesInShard := s.top.NodesInShard(s.shardID)
 	n := nodesInShard[txID%(uint32(len(nodesInShard)))]
 	log.Debug("consensus will be started", log.Uint64("peer", n))
 	return n == s.nodeID
 }
 
-func (s *Service) objectsExists(vids, refvids [][]byte) ([]*Object, bool) {
+func (s *ServiceSBAC) objectsExists(vids, refvids [][]byte) ([]*Object, bool) {
 	ownvids := [][]byte{}
 	for _, v := range append(vids, refvids...) {
 		if s.top.ShardForVersionID(v) == s.shardID {
@@ -58,7 +58,7 @@ func (s *Service) objectsExists(vids, refvids [][]byte) ([]*Object, bool) {
 	return objects, true
 }
 
-func (s *Service) publishObjects(ids *IDs, success bool) {
+func (s *ServiceSBAC) publishObjects(ids *IDs, success bool) {
 	for _, topair := range ids.TraceObjectPairs {
 		for _, outo := range topair.OutputObjects {
 			shard := s.top.ShardForVersionID(outo.GetVersionID())
@@ -69,7 +69,7 @@ func (s *Service) publishObjects(ids *IDs, success bool) {
 	}
 }
 
-func (s *Service) saveLabels(ids *IDs) error {
+func (s *ServiceSBAC) saveLabels(ids *IDs) error {
 	for _, topair := range ids.TraceObjectPairs {
 		for _, outo := range topair.OutputObjects {
 			shard := s.top.ShardForVersionID(outo.GetVersionID())
@@ -84,12 +84,12 @@ func (s *Service) saveLabels(ids *IDs) error {
 	return nil
 }
 
-func (s *Service) sendToAllShardInvolved(st *States, msg *service.Message) error {
+func (s *ServiceSBAC) sendToAllShardInvolved(st *States, msg *service.Message) error {
 	shards := s.shardsInvolvedWithoutSelf(st.detail.Tx)
 	return s.sendToShards(shards, st, msg)
 }
 
-func (s *Service) sendToShards(shards []uint64, st *States, msg *service.Message) error {
+func (s *ServiceSBAC) sendToShards(shards []uint64, st *States, msg *service.Message) error {
 	conns := s.conns.Borrow()
 	for _, shard := range shards {
 		shardid := shard
@@ -113,7 +113,7 @@ func (s *Service) sendToShards(shards []uint64, st *States, msg *service.Message
 
 // shardsInvolved return a list of IDs of all shards involved in the transaction either by
 // holding state for an input object or input reference.
-func (s *Service) shardsInvolved(tx *Transaction) []uint64 {
+func (s *ServiceSBAC) shardsInvolved(tx *Transaction) []uint64 {
 	uniqids := map[uint64]struct{}{}
 	for _, trace := range tx.Traces {
 		for _, obj := range trace.InputObjectVersionIDs {
@@ -130,7 +130,7 @@ func (s *Service) shardsInvolved(tx *Transaction) []uint64 {
 	return ids
 }
 
-func (s *Service) shardsInvolvedWithoutSelf(tx *Transaction) []uint64 {
+func (s *ServiceSBAC) shardsInvolvedWithoutSelf(tx *Transaction) []uint64 {
 	shards := s.shardsInvolved(tx)
 	for i, _ := range shards {
 		if shards[i] == s.shardID {
@@ -141,7 +141,7 @@ func (s *Service) shardsInvolvedWithoutSelf(tx *Transaction) []uint64 {
 	return shards
 }
 
-func (s *Service) signTransaction(tx *Transaction) ([]byte, error) {
+func (s *ServiceSBAC) signTransaction(tx *Transaction) ([]byte, error) {
 	b, err := proto.Marshal(tx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to marshal transaction, %v", err)
@@ -149,11 +149,11 @@ func (s *Service) signTransaction(tx *Transaction) ([]byte, error) {
 	return s.privkey.Sign(b), nil
 }
 
-func (s *Service) signTransactionRaw(tx []byte) ([]byte, error) {
+func (s *ServiceSBAC) signTransactionRaw(tx []byte) ([]byte, error) {
 	return s.privkey.Sign(tx), nil
 }
 
-func (s *Service) verifyEvidenceSignature(txID []byte, evidences map[uint64][]byte) bool {
+func (s *ServiceSBAC) verifyEvidenceSignature(txID []byte, evidences map[uint64][]byte) bool {
 	sig, ok := evidences[s.nodeID]
 	if !ok {
 		log.Error("missing self signature")
@@ -173,14 +173,14 @@ func (s *Service) verifyEvidenceSignature(txID []byte, evidences map[uint64][]by
 	return valid
 }
 
-func (s *Service) verifyTransactionRawSignature(
+func (s *ServiceSBAC) verifyTransactionRawSignature(
 	tx []byte, signature []byte, nodeID uint64) (bool, error) {
 	keys := s.top.SeedPublicKeys()
 	key := keys[nodeID]
 	return key.Verify(tx, signature), nil
 }
 
-func (s *Service) verifyTransactionSignature(
+func (s *ServiceSBAC) verifyTransactionSignature(
 	tx *Transaction, signature []byte, nodeID uint64) (bool, error) {
 	b, err := proto.Marshal(tx)
 	if err != nil {
