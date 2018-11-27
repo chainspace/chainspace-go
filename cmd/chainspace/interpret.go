@@ -111,7 +111,7 @@ func cmdInterpret(args []string, usage string) {
 				log.Fatal("Write to file of encoded interpreted results was not comprehensive")
 			}
 		}
-		mu.Unlock()
+		mu.Unlock() // TODO: Jeremy, there's a lot going on between mutex locks. Should we add `defer` blocks to all the mutexes to ensure they unlock?
 	}
 
 	process.SetExitHandler(func() {
