@@ -3,7 +3,6 @@ package messages
 import "fmt"
 
 const (
-	// UnknownMsg ...
 	UnknownMsg MessageKind = iota
 	PrePrepareMsg
 	PrepareMsg
