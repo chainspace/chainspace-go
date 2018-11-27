@@ -17,12 +17,12 @@ func Replay(dir string, nodeID uint64, g *blockmania.Graph, start uint64, batch 
 	if err != nil {
 		return err
 	}
-	s := &store{
+	datastore := &store{
 		db: db,
 	}
 	var from uint64
 	for {
-		blocks, err := s.getBlockGraphs(nodeID, from, batch)
+		blocks, err := datastore.getBlockGraphs(nodeID, from, batch)
 		if err != nil {
 			return err
 		}

@@ -660,16 +660,16 @@ func (s *store) setInterpreted(data *blockmania.Interpreted) error {
 		copy(enc[idx+2:], key)
 		idx += 2 + len(key)
 	}
-	lkey := []byte{lastInterpretedPrefix}
-	lval := make([]byte, 16)
-	binary.LittleEndian.PutUint64(lval, data.Round)
-	binary.LittleEndian.PutUint64(lval[8:], data.Consumed)
-	rkey := interpretedKey(data.Round)
+	lastKey := []byte{lastInterpretedPrefix}
+	lastVal := make([]byte, 16)
+	binary.LittleEndian.PutUint64(lastVal, data.Round)
+	binary.LittleEndian.PutUint64(lastVal[8:], data.Consumed)
+	roundKey := interpretedKey(data.Round)
 	return s.db.Update(func(txn *badger.Txn) error {
-		if err := txn.Set(rkey, enc); err != nil {
+		if err := txn.Set(roundKey, enc); err != nil {
 			return err
 		}
-		return txn.Set(lkey, lval)
+		return txn.Set(lastKey, lastVal)
 	})
 }
 
@@ -684,18 +684,18 @@ func (s *store) setOwnBlock(block *SignedData, blockRef *SignedData, graph *bloc
 	if err != nil {
 		return err
 	}
-	bkey := blockKey(graph.Block)
-	brkey := []byte{lastBlockRefPrefix}
-	brval, err := proto.Marshal(blockRef)
+	blokKey := blockKey(graph.Block)
+	blockRefKey := []byte{lastBlockRefPrefix}
+	blockRefVal, err := proto.Marshal(blockRef)
 	if err != nil {
 		return err
 	}
-	gkey := blockGraphKey(graph.Block)
-	gval := encodeBlockGraph(graph)
-	hkey := []byte{lastHashPrefix}
-	rkey := []byte{lastRoundPrefix}
-	rval := make([]byte, 8)
-	binary.LittleEndian.PutUint64(rval, graph.Block.Round)
+	graphKey := blockGraphKey(graph.Block)
+	graphVal := encodeBlockGraph(graph)
+	hashKey := []byte{lastHashPrefix}
+	roundKey := []byte{lastRoundPrefix}
+	roundVal := make([]byte, 8)
+	binary.LittleEndian.PutUint64(roundVal, graph.Block.Round)
 	var (
 		delkeys [][]byte
 		refkeys [][]byte
@@ -709,19 +709,19 @@ func (s *store) setOwnBlock(block *SignedData, blockRef *SignedData, graph *bloc
 		}
 	}
 	return s.db.Update(func(txn *badger.Txn) error {
-		if err := txn.Set(bkey, val); err != nil {
+		if err := txn.Set(blokKey, val); err != nil {
 			return err
 		}
-		if err := txn.Set(brkey, brval); err != nil {
+		if err := txn.Set(blockRefKey, blockRefVal); err != nil {
 			return err
 		}
-		if err := txn.Set(gkey, gval); err != nil {
+		if err := txn.Set(graphKey, graphVal); err != nil {
 			return err
 		}
-		if err := txn.Set(hkey, []byte(graph.Block.Hash)); err != nil {
+		if err := txn.Set(hashKey, []byte(graph.Block.Hash)); err != nil {
 			return err
 		}
-		if err := txn.Set(rkey, rval); err != nil {
+		if err := txn.Set(roundKey, roundVal); err != nil {
 			return err
 		}
 		for _, refkey := range refkeys {
