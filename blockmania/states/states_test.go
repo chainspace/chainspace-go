@@ -27,6 +27,11 @@ var _ = Describe("States", func() {
 		vcd = ViewChanged{}
 	})
 
+	// TODO: I think we may be able to dry up these tests, given
+	// that they are mostly re-testing the same interfaces on different types,
+	// and have pretty much the same expected results across State-conforming
+	// types
+
 	Describe("getRound", func() {
 		Context("for final", func() {
 			BeforeEach(func() {
