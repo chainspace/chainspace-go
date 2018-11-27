@@ -3,6 +3,7 @@ package messages
 import "fmt"
 
 const (
+	// UnknownMsg ...
 	UnknownMsg MessageKind = iota
 	PrePrepareMsg
 	PrepareMsg
@@ -18,6 +19,7 @@ type Message interface {
 	String() string
 }
 
+// MessageKind is an integer identifier for message types.
 type MessageKind uint8
 
 func (m MessageKind) String() string {

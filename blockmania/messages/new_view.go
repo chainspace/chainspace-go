@@ -2,6 +2,7 @@ package messages
 
 import "fmt"
 
+// NewView represents a new view message sent between nodes in a consensus round
 type NewView struct {
 	Hash   string
 	Node   uint64
@@ -10,10 +11,13 @@ type NewView struct {
 	View   uint32
 }
 
+// Kind is NewViewMsg
 func (n NewView) Kind() MessageKind {
 	return NewViewMsg
 }
 
+// NodeRound returns the node and round that this message came from.
+// Messages may come from any node participating in consensus.
 func (n NewView) NodeRound() (uint64, uint64) {
 	return n.Node, n.Round
 }
