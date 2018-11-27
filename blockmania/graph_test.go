@@ -35,7 +35,7 @@ var _ = Describe("Graph", func() {
 
 			It("returns a state", func() {
 				actual := graph.findOrCreateState(&e)
-				expected := graph.states[e.prev].clone(graph.round)
+				expected := graph.statess[e.prev].clone(graph.round)
 
 				Expect(actual).To(Equal(expected))
 			})

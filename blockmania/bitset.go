@@ -5,56 +5,56 @@ import (
 )
 
 type bitset struct {
-	cms []uint64
-	prs []uint64
+	commits  []uint64
+	prepares []uint64
 }
 
 func (b *bitset) clone() *bitset {
 	n := &bitset{
-		cms: make([]uint64, len(b.cms)),
-		prs: make([]uint64, len(b.prs)),
+		commits:  make([]uint64, len(b.commits)),
+		prepares: make([]uint64, len(b.prepares)),
 	}
-	copy(n.cms, b.cms)
-	copy(n.prs, b.prs)
+	copy(n.commits, b.commits)
+	copy(n.prepares, b.prepares)
 	return n
 }
 
 func (b *bitset) commitCount() int {
 	c := 0
-	for _, word := range b.cms {
+	for _, word := range b.commits {
 		c += bits.OnesCount64(word)
 	}
 	return c
 }
 
 func (b *bitset) hasCommit(v uint64) bool {
-	return b.cms[int(v>>6)]&(1<<(v&63)) != 0
+	return b.commits[int(v>>6)]&(1<<(v&63)) != 0
 }
 
 func (b *bitset) hasPrepare(v uint64) bool {
-	return b.prs[int(v>>6)]&(1<<(v&63)) != 0
+	return b.prepares[int(v>>6)]&(1<<(v&63)) != 0
 }
 
 func (b *bitset) prepareCount() int {
 	c := 0
-	for _, word := range b.prs {
+	for _, word := range b.prepares {
 		c += bits.OnesCount64(word)
 	}
 	return c
 }
 
 func (b *bitset) setCommit(v uint64) {
-	b.cms[int(v>>6)] |= 1 << (v & 63)
+	b.commits[int(v>>6)] |= 1 << (v & 63)
 }
 
 func (b *bitset) setPrepare(v uint64) {
-	b.prs[int(v>>6)] |= 1 << (v & 63)
+	b.prepares[int(v>>6)] |= 1 << (v & 63)
 }
 
 func newBitset(size int) *bitset {
 	words := (size + 63) >> 6
 	return &bitset{
-		cms: make([]uint64, words),
-		prs: make([]uint64, words),
+		commits:  make([]uint64, words),
+		prepares: make([]uint64, words),
 	}
 }

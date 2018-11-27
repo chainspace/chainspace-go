@@ -6,9 +6,17 @@ import (
 	"sort"
 	"sync"
 
+	"chainspace.io/prototype/blockmania/messages"
+	"chainspace.io/prototype/blockmania/states"
 	"chainspace.io/prototype/internal/log"
 	"chainspace.io/prototype/internal/log/fld"
 )
+
+type entry struct {
+	block BlockID
+	deps  []BlockID
+	prev  BlockID
+}
 
 type blockInfo struct {
 	data *BlockGraph
@@ -40,7 +48,7 @@ type Graph struct {
 	resolved   map[uint64]map[uint64]string
 	round      uint64
 	self       uint64
-	states     map[BlockID]*state
+	statess    map[BlockID]*state
 	totalNodes uint64
 }
 
@@ -99,10 +107,10 @@ func (graph *Graph) deliverRound(round uint64, hashes map[uint64]string) {
 			break
 		}
 		delete(graph.max, info.data.Block)
-		delete(graph.states, info.data.Block)
+		delete(graph.statess, info.data.Block)
 		for _, dep := range info.data.Deps {
 			delete(graph.max, dep.Block)
-			delete(graph.states, dep.Block)
+			delete(graph.statess, dep.Block)
 		}
 		consumed++
 		idx = i + 1
@@ -112,7 +120,7 @@ func (graph *Graph) deliverRound(round uint64, hashes map[uint64]string) {
 	}
 	graph.round++
 	if log.AtDebug() {
-		log.Debug("Mem usage:", log.Int("g.max", len(graph.max)), log.Int("g.states", len(graph.states)),
+		log.Debug("Mem usage:", log.Int("g.max", len(graph.max)), log.Int("g.statess", len(graph.statess)),
 			log.Int("g.blocks", len(graph.blocks)))
 	}
 	graph.mu.Unlock()
@@ -130,7 +138,7 @@ func (graph *Graph) deliverRound(round uint64, hashes map[uint64]string) {
 func (graph *Graph) findOrCreateState(e *entry) *state {
 	var stat *state
 	if e.prev.Valid() {
-		stat = graph.states[e.prev].clone(graph.round)
+		stat = graph.statess[e.prev].clone(graph.round)
 	} else {
 		stat = &state{
 			timeouts: map[uint64][]timeout{},
@@ -148,11 +156,11 @@ func (graph *Graph) process(ntry *entry) {
 	}
 
 	node, round, hash := ntry.block.Node, ntry.block.Round, ntry.block.Hash
-	out := []message{prePrepare{
-		hash:  hash,
-		node:  node,
-		round: round,
-		view:  0,
+	out := []messages.Message{messages.PrePrepare{
+		Hash:  hash,
+		Node:  node,
+		Round: round,
+		View:  0,
 	}}
 
 	if len(ntry.deps) > 0 {
@@ -198,12 +206,12 @@ func (graph *Graph) process(ntry *entry) {
 	}
 
 	for _, tmout := range state.timeouts[round] {
-		if _, exists := state.data[final{node: tmout.node, round: tmout.round}]; exists {
+		if _, exists := state.data[states.Final{Node: tmout.node, Round: tmout.round}]; exists {
 			// We've already reached finality
 			continue
 		}
 		var v uint32
-		skey := view{node: tmout.node, round: tmout.round}
+		skey := states.View{Node: tmout.node, Round: tmout.round}
 		if sval, exists := state.data[skey]; exists {
 			v = sval.(uint32)
 		}
@@ -212,7 +220,7 @@ func (graph *Graph) process(ntry *entry) {
 			continue
 		}
 		hval := ""
-		if pval, exists := state.data[prepared{node: tmout.node, round: tmout.round, view: tmout.view}]; exists {
+		if pval, exists := state.data[states.Prepared{Node: tmout.node, Round: tmout.round, View: tmout.view}]; exists {
 			hval = pval.(string)
 		}
 		if state.data == nil {
@@ -220,33 +228,33 @@ func (graph *Graph) process(ntry *entry) {
 		} else {
 			state.data[skey] = v + 1
 		}
-		out = append(out, viewChange{
-			hash:   hval,
-			node:   tmout.node,
-			round:  tmout.round,
-			sender: node,
-			view:   tmout.view + 1,
+		out = append(out, messages.ViewChange{
+			Hash:   hval,
+			Node:   tmout.node,
+			Round:  tmout.round,
+			Sender: node,
+			View:   tmout.view + 1,
 		})
 	}
 
 	idx := len(out)
-	processed := map[message]bool{}
+	processed := map[messages.Message]bool{}
 	out = append(out, graph.processMessages(state, processed, node, node, ntry.block, out[:idx])...)
 	for _, dep := range ntry.deps {
 		if log.AtDebug() {
 			log.Debug("Processing block dep", fld.BlockID(dep))
 		}
-		out = append(out, graph.processMessages(state, processed, dep.Node, node, ntry.block, graph.states[dep].getOutput())...)
+		out = append(out, graph.processMessages(state, processed, dep.Node, node, ntry.block, graph.statess[dep].getOutput())...)
 	}
 	state.out = out
-	graph.states[ntry.block] = state
+	graph.statess[ntry.block] = state
 
 }
 
-func (graph *Graph) processMessage(s *state, sender uint64, receiver uint64, origin BlockID, msg message) message {
+func (graph *Graph) processMessage(s *state, sender uint64, receiver uint64, origin BlockID, msg messages.Message) messages.Message {
 
-	node, round := msg.nodeRound()
-	if _, exists := s.data[final{node: node, round: round}]; exists {
+	node, round := msg.NodeRound()
+	if _, exists := s.data[states.Final{Node: node, Round: round}]; exists {
 		return nil
 	}
 
@@ -258,12 +266,12 @@ func (graph *Graph) processMessage(s *state, sender uint64, receiver uint64, ori
 
 	switch m := msg.(type) {
 
-	case prePrepare:
+	case messages.PrePrepare:
 		// TODO: and valid view!
-		if v != m.view {
+		if v != m.View {
 			return nil
 		}
-		pp := prePrepared{node: node, round: round, view: m.view}
+		pp := states.PrePrepared{Node: node, Round: round, View: m.View}
 		if _, exists := s.data[pp]; exists {
 			return nil
 		}
@@ -276,21 +284,21 @@ func (graph *Graph) processMessage(s *state, sender uint64, receiver uint64, ori
 		} else {
 			s.data[pp] = m
 		}
-		return prepare{hash: m.hash, node: node, round: round, sender: receiver, view: m.view}
+		return messages.Prepare{Hash: m.Hash, Node: node, Round: round, Sender: receiver, View: m.View}
 
-	case prepare:
-		if v > m.view {
+	case messages.Prepare:
+		if v > m.View {
 			return nil
 		}
-		if v < m.view {
+		if v < m.View {
 			// TODO: should we remember future messages?
-			b := s.getBitset(graph.nodeCount, m.pre())
-			b.setPrepare(m.sender)
+			b := s.getBitset(graph.nodeCount, m.Pre())
+			b.setPrepare(m.Sender)
 			return nil
 		}
 		// assert m.view == 0 || (nid, xround, xv, "HNV") in state
-		b := s.getBitset(graph.nodeCount, m.pre())
-		b.setPrepare(m.sender)
+		b := s.getBitset(graph.nodeCount, m.Pre())
+		b.setPrepare(m.Sender)
 		if log.AtDebug() {
 			log.Debugf("Prepare count == %d", b.prepareCount())
 		}
@@ -301,23 +309,23 @@ func (graph *Graph) processMessage(s *state, sender uint64, receiver uint64, ori
 			return nil
 		}
 		b.setCommit(receiver)
-		p := prepared{node: node, round: round, view: m.view}
+		p := states.Prepared{Node: node, Round: round, View: m.View}
 		if _, exists := s.data[p]; !exists {
 			if s.data == nil {
-				s.data = stateKV{p: m.hash}
+				s.data = stateKV{p: m.Hash}
 			} else {
-				s.data[p] = m.hash
+				s.data[p] = m.Hash
 			}
 		}
 		// assert s.data[p] == m.hash
-		return commit{hash: m.hash, node: node, round: round, sender: receiver, view: m.view}
+		return messages.Commit{Hash: m.Hash, Node: node, Round: round, Sender: receiver, View: m.View}
 
-	case commit:
-		if v < m.view {
+	case messages.Commit:
+		if v < m.View {
 			return nil
 		}
-		b := s.getBitset(graph.nodeCount, m.pre())
-		b.setCommit(m.sender)
+		b := s.getBitset(graph.nodeCount, m.Pre())
+		b.setCommit(m.Sender)
 		if log.AtDebug() {
 			log.Debugf("Commit count == %d", b.commitCount())
 		}
@@ -331,20 +339,20 @@ func (graph *Graph) processMessage(s *state, sender uint64, receiver uint64, ori
 		}
 		if s.final == nil {
 			s.final = map[nodeRound]string{
-				nr: m.hash,
+				nr: m.Hash,
 			}
 		} else {
-			s.final[nr] = m.hash
+			s.final[nr] = m.Hash
 		}
-		graph.deliver(node, round, m.hash)
+		graph.deliver(node, round, m.Hash)
 
-	case viewChange:
-		if v > m.view {
+	case messages.ViewChange:
+		if v > m.View {
 			return nil
 		}
 		var vcs map[uint64]string
 		// TODO: check whether we should store the viewChanged by view number
-		key := viewChanged{node: node, round: round, view: v}
+		key := states.ViewChanged{Node: node, Round: round, View: v}
 		if val, exists := s.data[key]; exists {
 			vcs = val.(map[uint64]string)
 		} else {
@@ -355,12 +363,12 @@ func (graph *Graph) processMessage(s *state, sender uint64, receiver uint64, ori
 				s.data[key] = vcs
 			}
 		}
-		vcs[m.sender] = m.hash
+		vcs[m.Sender] = m.Hash
 		if len(vcs) != graph.quorum2f1 {
 			return nil
 		}
 		// Increase the view number
-		s.data[view{node: node, round: round}] = m.view
+		s.data[states.View{Node: node, Round: round}] = m.View
 		var hash string
 		for _, hval := range vcs {
 			if hval != "" {
@@ -372,38 +380,38 @@ func (graph *Graph) processMessage(s *state, sender uint64, receiver uint64, ori
 				hash = hval
 			}
 		}
-		return newView{
-			hash: hash, node: node, round: round, sender: receiver, view: m.view,
+		return messages.NewView{
+			Hash: hash, Node: node, Round: round, Sender: receiver, View: m.View,
 		}
 
-	case newView:
-		if v > m.view {
+	case messages.NewView:
+		if v > m.View {
 			return nil
 		}
-		key := hnv{node: node, round: round, view: m.view}
+		key := states.HNV{Node: node, Round: round, View: m.View}
 		if _, exists := s.data[key]; exists {
 			return nil
 		}
 		if s.data == nil {
 			s.data = stateKV{}
 		}
-		s.data[view{node: node, round: round}] = m.view
+		s.data[states.View{Node: node, Round: round}] = m.View
 		// TODO: timeout value could overflow uint64 if m.view is over 63 if using `1 << m.view`
 		tval := origin.Round + s.timeout + 5 // uint64(10*m.view)
-		s.timeouts[tval] = append(s.timeouts[tval], timeout{node: node, round: round, view: m.view})
+		s.timeouts[tval] = append(s.timeouts[tval], timeout{node: node, round: round, view: m.View})
 		s.data[key] = true
-		return prePrepare{hash: m.hash, node: node, round: round, view: m.view}
+		return messages.PrePrepare{Hash: m.Hash, Node: node, Round: round, View: m.View}
 
 	default:
-		panic(fmt.Errorf("blockmania: unknown message kind to process: %s", msg.kind()))
+		panic(fmt.Errorf("blockmania: unknown message kind to process: %s", msg.Kind()))
 
 	}
 
 	return nil
 }
 
-func (graph *Graph) processMessages(s *state, processed map[message]bool, sender uint64, receiver uint64, origin BlockID, msgs []message) []message {
-	var out []message
+func (graph *Graph) processMessages(s *state, processed map[messages.Message]bool, sender uint64, receiver uint64, origin BlockID, msgs []messages.Message) []messages.Message {
+	var out []messages.Message
 	for _, msg := range msgs {
 		if processed[msg] {
 			continue
@@ -538,7 +546,7 @@ func New(ctx context.Context, cfg *Config, cb func(*Interpreted)) *Graph {
 		resolved:   map[uint64]map[uint64]string{},
 		round:      cfg.LastInterpreted + 1,
 		self:       cfg.SelfID,
-		states:     map[BlockID]*state{},
+		statess:    map[BlockID]*state{},
 		totalNodes: cfg.TotalNodes,
 	}
 	go g.run()

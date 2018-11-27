@@ -16,21 +16,21 @@ var _ = Describe("Bitset", func() {
 		var cloned *bitset
 
 		BeforeEach(func() {
-			b.cms = []uint64{1, 2, 3}
-			b.prs = []uint64{4, 5}
+			b.commits = []uint64{1, 2, 3}
+			b.prepares = []uint64{4, 5}
 
 			cloned = b.clone()
 		})
 
 		It("should clone the original bitset", func() {
-			Expect(cloned.cms).To(Equal(b.cms))
-			Expect(cloned.prs).To(Equal(b.prs))
+			Expect(cloned.commits).To(Equal(b.commits))
+			Expect(cloned.prepares).To(Equal(b.prepares))
 		})
 	})
 
 	Describe("commitCount", func() {
 		BeforeEach(func() {
-			b.cms = []uint64{1, 2}
+			b.commits = []uint64{1, 2}
 		})
 
 		It("should return the right count", func() {
@@ -42,7 +42,7 @@ var _ = Describe("Bitset", func() {
 
 	Describe("hasCommit", func() {
 		BeforeEach(func() {
-			b.cms = []uint64{1, 2, 3, 4}
+			b.commits = []uint64{1, 2, 3, 4}
 		})
 
 		Context("when the commit exists", func() {
@@ -64,7 +64,7 @@ var _ = Describe("Bitset", func() {
 
 	Describe("hasPrepare", func() {
 		BeforeEach(func() {
-			b.prs = []uint64{1, 2, 3, 4}
+			b.prepares = []uint64{1, 2, 3, 4}
 		})
 
 		Context("when the prepare exists", func() {
@@ -86,7 +86,7 @@ var _ = Describe("Bitset", func() {
 
 	Describe("prepareCount", func() {
 		BeforeEach(func() {
-			b.prs = []uint64{1, 2}
+			b.prepares = []uint64{1, 2}
 		})
 
 		It("should return the right count", func() {
@@ -98,12 +98,12 @@ var _ = Describe("Bitset", func() {
 
 	Describe("setCommit", func() {
 		BeforeEach(func() {
-			b.cms = []uint64{1}
+			b.commits = []uint64{1}
 			b.setCommit(1)
 		})
 
 		It("should set the commit", func() {
-			actual := b.cms
+			actual := b.commits
 			expected := []uint64{3}
 			Expect(actual).To(Equal(expected))
 		})
@@ -111,12 +111,12 @@ var _ = Describe("Bitset", func() {
 
 	Describe("setPrepare", func() {
 		BeforeEach(func() {
-			b.prs = []uint64{1}
+			b.prepares = []uint64{1}
 			b.setPrepare(1)
 		})
 
 		It("should set the prepare", func() {
-			actual := b.prs
+			actual := b.prepares
 			expected := []uint64{3}
 			Expect(actual).To(Equal(expected))
 		})
@@ -130,8 +130,8 @@ var _ = Describe("Bitset", func() {
 		})
 
 		It("should create a new bitset", func() {
-			Expect(newed.cms).To(Equal([]uint64{0, 0, 0, 0, 0, 0, 0}))
-			Expect(newed.prs).To(Equal([]uint64{0, 0, 0, 0, 0, 0, 0}))
+			Expect(newed.commits).To(Equal([]uint64{0, 0, 0, 0, 0, 0, 0}))
+			Expect(newed.prepares).To(Equal([]uint64{0, 0, 0, 0, 0, 0, 0}))
 		})
 	})
 })
