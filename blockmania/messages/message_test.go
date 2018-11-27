@@ -43,6 +43,11 @@ var _ = Describe("Messages", func() {
 		})
 	})
 
+	// TODO: I think we may be able to dry up these tests, given
+	// that they are mostly re-testing the same interfaces on different types,
+	// and have pretty much the same expected results across Message-conforming
+	// types
+
 	Describe("kind", func() {
 		Context("for commit", func() {
 			It("should return the right msg kind", func() {
