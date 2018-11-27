@@ -302,7 +302,7 @@ func Run(cfg *Config) (*Server, error) {
 
 		// ensure all the contracts are working
 		if err := cts.EnsureUp(); err != nil {
-			log.Fatal("some contracts are unavailable", fld.Err(err))
+			log.Fatal("some contracts are unavailable, run `chainspace contracts <yournetworkname> create`", fld.Err(err))
 		}
 	}
 
