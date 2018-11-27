@@ -1,37 +1,39 @@
 package blockmania
 
 import (
+	"chainspace.io/prototype/blockmania/messages"
+	"chainspace.io/prototype/blockmania/states"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("State", func() {
 	var (
-		c   commit
-		f   final
-		h   hnv
-		nv  newView
-		p   prepare
-		pd  prepared
-		pp  prePrepare
-		ppd prePrepared
-		v   view
-		vc  viewChange
-		vcd viewChanged
+		c   messages.Commit
+		f   states.Final
+		h   states.HNV
+		nv  messages.NewView
+		p   messages.Prepare
+		pd  states.Prepared
+		pp  messages.PrePrepare
+		ppd states.PrePrepared
+		v   states.View
+		vc  messages.ViewChange
+		vcd states.ViewChanged
 	)
 
 	BeforeEach(func() {
-		c = commit{}
-		f = final{}
-		h = hnv{}
-		nv = newView{}
-		p = prepare{}
-		pd = prepared{}
-		pp = prePrepare{}
-		ppd = prePrepared{}
-		v = view{}
-		vc = viewChange{}
-		vcd = viewChanged{}
+		c = messages.Commit{}
+		f = states.Final{}
+		h = states.HNV{}
+		nv = messages.NewView{}
+		p = messages.Prepare{}
+		pd = states.Prepared{}
+		pp = messages.PrePrepare{}
+		ppd = states.PrePrepared{}
+		v = states.View{}
+		vc = messages.ViewChange{}
+		vcd = states.ViewChanged{}
 	})
 
 	Describe("clone", func() {
@@ -89,26 +91,6 @@ var _ = Describe("State", func() {
 		})
 	})
 
-	Describe("fmtHash", func() {
-		Context("with a blank string", func() {
-			It("should return a blank string", func() {
-				actual := fmtHash("")
-				expected := ""
-
-				Expect(actual).To(Equal(expected))
-			})
-		})
-
-		Context("with a string", func() {
-			It("should return a formatted string", func() {
-				actual := fmtHash("lotsoffoobar")
-				expected := "666F6F626172"
-
-				Expect(actual).To(Equal(expected))
-			})
-		})
-	})
-
 	Describe("getBitset", func() {
 		Context("for state", func() {
 			It("should clone the state", func() {
@@ -128,12 +110,12 @@ var _ = Describe("State", func() {
 	Describe("getRound", func() {
 		Context("for final", func() {
 			BeforeEach(func() {
-				f.round = 1
+				f.Round = 1
 			})
 
 			It("should return the round value", func() {
-				actual := f.getRound()
-				expected := f.round
+				actual := f.GetRound()
+				expected := f.Round
 
 				Expect(actual).To(Equal(expected))
 			})
@@ -141,12 +123,12 @@ var _ = Describe("State", func() {
 
 		Context("for hnv", func() {
 			BeforeEach(func() {
-				h.round = 1
+				h.Round = 1
 			})
 
 			It("should return the round value", func() {
-				actual := h.getRound()
-				expected := h.round
+				actual := h.GetRound()
+				expected := h.Round
 
 				Expect(actual).To(Equal(expected))
 			})
@@ -154,12 +136,12 @@ var _ = Describe("State", func() {
 
 		Context("for prepared", func() {
 			BeforeEach(func() {
-				pd.round = 1
+				pd.Round = 1
 			})
 
 			It("should return the round value", func() {
-				actual := pd.getRound()
-				expected := pd.round
+				actual := pd.GetRound()
+				expected := pd.Round
 
 				Expect(actual).To(Equal(expected))
 			})
@@ -167,12 +149,12 @@ var _ = Describe("State", func() {
 
 		Context("for prePrepared", func() {
 			BeforeEach(func() {
-				ppd.round = 1
+				ppd.Round = 1
 			})
 
 			It("should return the round value", func() {
-				actual := ppd.getRound()
-				expected := ppd.round
+				actual := ppd.GetRound()
+				expected := ppd.Round
 
 				Expect(actual).To(Equal(expected))
 			})
@@ -180,12 +162,12 @@ var _ = Describe("State", func() {
 
 		Context("for view", func() {
 			BeforeEach(func() {
-				v.round = 1
+				v.Round = 1
 			})
 
 			It("should return the round value", func() {
-				actual := v.getRound()
-				expected := v.round
+				actual := v.GetRound()
+				expected := v.Round
 
 				Expect(actual).To(Equal(expected))
 			})
@@ -193,12 +175,12 @@ var _ = Describe("State", func() {
 
 		Context("for viewChanged", func() {
 			BeforeEach(func() {
-				vcd.round = 1
+				vcd.Round = 1
 			})
 
 			It("should return the round value", func() {
-				actual := vcd.getRound()
-				expected := vcd.round
+				actual := vcd.GetRound()
+				expected := vcd.Round
 
 				Expect(actual).To(Equal(expected))
 			})
@@ -216,8 +198,8 @@ var _ = Describe("State", func() {
 	Describe("kind", func() {
 		Context("for commit", func() {
 			It("should return the right msg kind", func() {
-				actual := c.kind()
-				expected := commitMsg
+				actual := c.Kind()
+				expected := messages.CommitMsg
 
 				Expect(actual).To(Equal(expected))
 			})
@@ -225,8 +207,8 @@ var _ = Describe("State", func() {
 
 		Context("for newView", func() {
 			It("should return the right msg kind", func() {
-				actual := nv.kind()
-				expected := newViewMsg
+				actual := nv.Kind()
+				expected := messages.NewViewMsg
 
 				Expect(actual).To(Equal(expected))
 			})
@@ -234,8 +216,8 @@ var _ = Describe("State", func() {
 
 		Context("for prepare", func() {
 			It("should return the right msg kind", func() {
-				actual := p.kind()
-				expected := prepareMsg
+				actual := p.Kind()
+				expected := messages.PrepareMsg
 
 				Expect(actual).To(Equal(expected))
 			})
@@ -243,8 +225,8 @@ var _ = Describe("State", func() {
 
 		Context("for prePrepare", func() {
 			It("should return the right msg kind", func() {
-				actual := pp.kind()
-				expected := prePrepareMsg
+				actual := pp.Kind()
+				expected := messages.PrePrepareMsg
 
 				Expect(actual).To(Equal(expected))
 			})
@@ -252,82 +234,82 @@ var _ = Describe("State", func() {
 
 		Context("for viewChange", func() {
 			It("should return the right msg kind", func() {
-				actual := vc.kind()
-				expected := viewChangedMsg
+				actual := vc.Kind()
+				expected := messages.ViewChangedMsg
 
 				Expect(actual).To(Equal(expected))
 			})
 		})
 	})
 
-	Describe("nodeRound", func() {
-		Context("for commit", func() {
+	Describe("NodeRound", func() {
+		Context("for Commit", func() {
 			BeforeEach(func() {
-				c.node = 2
-				c.round = 1
+				c.Node = 2
+				c.Round = 1
 			})
 
 			It("should return the node and round values", func() {
-				node, round := c.nodeRound()
+				node, round := c.NodeRound()
 
-				Expect(node).To(Equal(c.node))
-				Expect(round).To(Equal(c.round))
+				Expect(node).To(Equal(c.Node))
+				Expect(round).To(Equal(c.Round))
 			})
 		})
 
-		Context("for newView", func() {
+		Context("for NewView", func() {
 			BeforeEach(func() {
-				nv.node = 2
-				nv.round = 1
+				nv.Node = 2
+				nv.Round = 1
 			})
 
 			It("should return the node and round values", func() {
-				node, round := nv.nodeRound()
+				node, round := nv.NodeRound()
 
-				Expect(node).To(Equal(nv.node))
-				Expect(round).To(Equal(nv.round))
+				Expect(node).To(Equal(nv.Node))
+				Expect(round).To(Equal(nv.Round))
 			})
 		})
 
 		Context("for prepare", func() {
 			BeforeEach(func() {
-				p.node = 2
-				p.round = 1
+				p.Node = 2
+				p.Round = 1
 			})
 
 			It("should return the node and round values", func() {
-				node, round := p.nodeRound()
+				node, round := p.NodeRound()
 
-				Expect(node).To(Equal(p.node))
-				Expect(round).To(Equal(p.round))
+				Expect(node).To(Equal(p.Node))
+				Expect(round).To(Equal(p.Round))
 			})
 		})
 
 		Context("for prePrepare", func() {
 			BeforeEach(func() {
-				pp.node = 2
-				pp.round = 1
+				pp.Node = 2
+				pp.Round = 1
 			})
 
 			It("should return the node and round values", func() {
-				node, round := pp.nodeRound()
+				node, round := pp.NodeRound()
 
-				Expect(node).To(Equal(pp.node))
-				Expect(round).To(Equal(pp.round))
+				Expect(node).To(Equal(pp.Node))
+				Expect(round).To(Equal(pp.Round))
 			})
 		})
 
 		Context("for viewChange", func() {
 			BeforeEach(func() {
-				vc.node = 2
-				vc.round = 1
+				vc.Node = 2
+				vc.Round = 1
 			})
 
 			It("should return the node and round values", func() {
-				node, round := vc.nodeRound()
+				node, round := vc.NodeRound()
 
-				Expect(node).To(Equal(vc.node))
-				Expect(round).To(Equal(vc.round))
+				Expect(node).To(Equal(vc.Node))
+				Expect(round).To(Equal(vc.Round))
 			})
 		})
 	})
@@ -335,15 +317,15 @@ var _ = Describe("State", func() {
 	Describe("pre", func() {
 		Context("for commit", func() {
 			BeforeEach(func() {
-				c.hash = "foofoofoofoo" // minimum 12 char hash :)
-				c.node = 2
-				c.round = 1
-				c.view = 1
+				c.Hash = "foofoofoofoo" // minimum 12 char hash :)
+				c.Node = 2
+				c.Round = 1
+				c.View = 1
 			})
 
 			It("should return a prePrepare", func() {
-				actual := c.pre()
-				expected := prePrepare{hash: c.hash, node: c.node, round: c.round, view: c.view}
+				actual := c.Pre()
+				expected := messages.PrePrepare{Hash: c.Hash, Node: c.Node, Round: c.Round, View: c.View}
 
 				Expect(actual).To(Equal(expected))
 			})
@@ -351,15 +333,15 @@ var _ = Describe("State", func() {
 
 		Context("for prepare", func() {
 			BeforeEach(func() {
-				p.hash = "foofoofoofoo" // minimum 12 char hash :)
-				p.node = 2
-				p.round = 1
-				p.view = 1
+				p.Hash = "foofoofoofoo" // minimum 12 char hash :)
+				p.Node = 2
+				p.Round = 1
+				p.View = 1
 			})
 
 			It("should return a prePrepare", func() {
-				actual := p.pre()
-				expected := prePrepare{hash: p.hash, node: p.node, round: p.round, view: p.view}
+				actual := p.Pre()
+				expected := messages.PrePrepare{Hash: p.Hash, Node: p.Node, Round: p.Round, View: p.View}
 
 				Expect(actual).To(Equal(expected))
 			})
@@ -369,8 +351,8 @@ var _ = Describe("State", func() {
 	Describe("sdKind", func() {
 		Context("for final", func() {
 			It("should return the correct stateDataKind", func() {
-				actual := f.sdKind()
-				expected := finalState
+				actual := f.SdKind()
+				expected := states.FinalState
 
 				Expect(actual).To(Equal(expected))
 			})
@@ -378,8 +360,8 @@ var _ = Describe("State", func() {
 
 		Context("for hnv", func() {
 			It("should return the correct stateDataKind", func() {
-				actual := h.sdKind()
-				expected := hnvState
+				actual := h.SdKind()
+				expected := states.HNVState
 
 				Expect(actual).To(Equal(expected))
 			})
@@ -387,8 +369,8 @@ var _ = Describe("State", func() {
 
 		Context("for prepared", func() {
 			It("should return the correct stateDataKind", func() {
-				actual := pd.sdKind()
-				expected := preparedState
+				actual := pd.SdKind()
+				expected := states.PreparedState
 
 				Expect(actual).To(Equal(expected))
 			})
@@ -396,8 +378,8 @@ var _ = Describe("State", func() {
 
 		Context("for prePrepared", func() {
 			It("should return the correct stateDataKind", func() {
-				actual := ppd.sdKind()
-				expected := prePreparedState
+				actual := ppd.SdKind()
+				expected := states.PrePreparedState
 
 				Expect(actual).To(Equal(expected))
 			})
@@ -405,8 +387,8 @@ var _ = Describe("State", func() {
 
 		Context("for view", func() {
 			It("should return the correct stateDataKind", func() {
-				actual := v.sdKind()
-				expected := viewState
+				actual := v.SdKind()
+				expected := states.ViewState
 
 				Expect(actual).To(Equal(expected))
 			})
@@ -414,8 +396,8 @@ var _ = Describe("State", func() {
 
 		Context("for viewChanged", func() {
 			It("should return the correct stateDataKind", func() {
-				actual := vcd.sdKind()
-				expected := viewChangedState
+				actual := vcd.SdKind()
+				expected := states.ViewChangedState
 
 				Expect(actual).To(Equal(expected))
 			})
@@ -425,10 +407,10 @@ var _ = Describe("State", func() {
 	Describe("String", func() {
 		Context("for commit", func() {
 			BeforeEach(func() {
-				c.hash = "foofoofoofoo" // minimum 12 char hash :)
-				c.node = 2
-				c.round = 1
-				c.sender = 3
+				c.Hash = "foofoofoofoo" // minimum 12 char hash :)
+				c.Node = 2
+				c.Round = 1
+				c.Sender = 3
 			})
 
 			It("should return a formatted string", func() {
@@ -441,17 +423,17 @@ var _ = Describe("State", func() {
 
 		Context("for messageKind", func() {
 			type messageKindStringTest struct {
-				msgKind  messageKind
+				msgKind  messages.MessageKind
 				expected string
 			}
 
 			var messageKindStringTests = []messageKindStringTest{
-				{commitMsg, "commit"},
-				{newViewMsg, "new-view"},
-				{prepareMsg, "prepare"},
-				{prePrepareMsg, "pre-prepare"},
-				{unknownMsg, "unknown"},
-				{viewChangedMsg, "view-change"},
+				{messages.CommitMsg, "commit"},
+				{messages.NewViewMsg, "new-view"},
+				{messages.PrepareMsg, "prepare"},
+				{messages.PrePrepareMsg, "pre-prepare"},
+				{messages.UnknownMsg, "unknown"},
+				{messages.ViewChangedMsg, "view-change"},
 			}
 
 			for _, mkt := range messageKindStringTests {
@@ -468,18 +450,17 @@ var _ = Describe("State", func() {
 			Context("with an incorrect messageKind", func() {
 				It("should panic by default", func() {
 					var mkt = messageKindStringTest{msgKind: 99}
-					actual := func() { mkt.msgKind.String() }
-					Expect(actual).To(Panic())
+					Expect(func() { mkt.msgKind.String() }).To(Panic())
 				})
 			})
 		})
 
 		Context("for newView", func() {
 			BeforeEach(func() {
-				nv.hash = "foofoofoofoo" // minimum 12 char hash :)
-				nv.node = 2
-				nv.round = 1
-				nv.sender = 3
+				nv.Hash = "foofoofoofoo" // minimum 12 char hash :)
+				nv.Node = 2
+				nv.Round = 1
+				nv.Sender = 3
 			})
 
 			It("should return a formatted string", func() {
@@ -492,10 +473,10 @@ var _ = Describe("State", func() {
 
 		Context("for prepare", func() {
 			BeforeEach(func() {
-				p.hash = "foofoofoofoo" // minimum 12 char hash :)
-				p.node = 2
-				p.round = 1
-				p.sender = 3
+				p.Hash = "foofoofoofoo" // minimum 12 char hash :)
+				p.Node = 2
+				p.Round = 1
+				p.Sender = 3
 			})
 
 			It("should return a formatted string", func() {
@@ -508,9 +489,9 @@ var _ = Describe("State", func() {
 
 		Context("for prePrepare", func() {
 			BeforeEach(func() {
-				pp.hash = "foofoofoofoo" // minimum 12 char hash :)
-				pp.node = 2
-				pp.round = 1
+				pp.Hash = "foofoofoofoo" // minimum 12 char hash :)
+				pp.Node = 2
+				pp.Round = 1
 			})
 
 			It("should return a formatted string", func() {
@@ -523,18 +504,18 @@ var _ = Describe("State", func() {
 
 		Context("for stateDataKind", func() {
 			type stateDataKindStringTest struct {
-				sdKind   stateDataKind
+				sdKind   states.StateDataKind
 				expected string
 			}
 
 			var stateDataKindStringTests = []stateDataKindStringTest{
-				{finalState, "final"},
-				{hnvState, "hnv"},
-				{preparedState, "prepared"},
-				{prePreparedState, "preprepared"},
-				{unknownState, "unknown"},
-				{viewState, "viewState"},
-				{viewChangedState, "viewchanged"},
+				{states.FinalState, "final"},
+				{states.HNVState, "hnv"},
+				{states.PreparedState, "prepared"},
+				{states.PrePreparedState, "preprepared"},
+				{states.UnknownState, "unknown"},
+				{states.ViewState, "viewState"},
+				{states.ViewChangedState, "viewchanged"},
 			}
 
 			for _, sdt := range stateDataKindStringTests {
@@ -551,10 +532,10 @@ var _ = Describe("State", func() {
 
 		Context("for viewChange", func() {
 			BeforeEach(func() {
-				vc.hash = "foofoofoofoo" // minimum 12 char hash :)
-				vc.node = 2
-				vc.round = 1
-				vc.sender = 5
+				vc.Hash = "foofoofoofoo" // minimum 12 char hash :)
+				vc.Node = 2
+				vc.Round = 1
+				vc.Sender = 5
 			})
 
 			It("should return a formatted string", func() {
