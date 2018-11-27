@@ -3,7 +3,7 @@ kvstore
 
 TODO: Add a description of what the Key Value store is and does, how it relates to SBAC, contracts, etc.
 
-How to test the key value storage.
+How to use the key value storage.
 
 Prerequisites
 -------------
