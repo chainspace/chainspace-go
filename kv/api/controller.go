@@ -19,13 +19,13 @@ type Controller interface {
 	RegisterRoutes(router *gin.Engine)
 }
 
-// NewControllerWithService returns a new kv.Controller
-func NewControllerWithService(service Service) Controller {
+// NewWithService returns a new kv.Controller
+func NewWithService(service Service) Controller {
 	return &controller{service}
 }
 
-// NewController returns a new kv.Controller
-func NewController(kvService kv.Service, sbacService sbac.Service) Controller {
+// New returns a new kv.Controller
+func New(kvService kv.Service, sbacService sbac.Service) Controller {
 	return &controller{NewService(kvService, sbacService)}
 }
 

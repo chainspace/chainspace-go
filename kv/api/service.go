@@ -9,8 +9,8 @@ import (
 	"chainspace.io/prototype/sbac"
 )
 
-// ServiceImp is the Key-Value srv
-type ServiceImp struct {
+// service is the Key-Value srv
+type service struct {
 	kvStore kv.Service
 	sbac    sbac.Service
 }
@@ -24,15 +24,15 @@ type Service interface {
 }
 
 // NewService ...
-func NewService(kvStore kv.Service, sbac sbac.Service) *ServiceImp {
-	return &ServiceImp{
+func NewService(kvStore kv.Service, sbac sbac.Service) Service {
+	return &service{
 		kvStore: kvStore,
 		sbac:    sbac,
 	}
 }
 
 // GetByLabel grabs a value from the store based on its label
-func (srv *ServiceImp) GetByLabel(label string) (interface{}, int, error) {
+func (srv *service) GetByLabel(label string) (interface{}, int, error) {
 	versionID, err := srv.kvStore.Get([]byte(label))
 	if err != nil {
 		return nil, http.StatusNotFound, err
@@ -52,7 +52,7 @@ func (srv *ServiceImp) GetByLabel(label string) (interface{}, int, error) {
 }
 
 // GetByPrefix grabs a values based on the prefix string
-func (srv *ServiceImp) GetByPrefix(prefix string) ([]LabelObject, int, error) {
+func (srv *service) GetByPrefix(prefix string) ([]LabelObject, int, error) {
 	objs, err := srv.kvStore.GetByPrefix([]byte(prefix))
 	if err != nil {
 		return nil, http.StatusNotFound, err
@@ -81,7 +81,7 @@ func (srv *ServiceImp) GetByPrefix(prefix string) ([]LabelObject, int, error) {
 }
 
 // GetVersionID ...
-func (srv *ServiceImp) GetVersionID(label string) (string, int, error) {
+func (srv *service) GetVersionID(label string) (string, int, error) {
 	objectID, err := srv.kvStore.Get([]byte(label))
 	if err != nil {
 		return "", http.StatusNotFound, err
@@ -91,7 +91,7 @@ func (srv *ServiceImp) GetVersionID(label string) (string, int, error) {
 }
 
 // GetVersionIDByPrefix ...
-func (srv *ServiceImp) GetVersionIDByPrefix(prefix string) ([]LabelVersionID, int, error) {
+func (srv *service) GetVersionIDByPrefix(prefix string) ([]LabelVersionID, int, error) {
 	objs, err := srv.kvStore.GetByPrefix([]byte(prefix))
 	if err != nil {
 		return nil, http.StatusNotFound, err

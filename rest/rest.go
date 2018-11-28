@@ -82,12 +82,12 @@ func New(cfg *Config) *Service {
 			ShardID:    0,
 			Top:        cfg.Top,
 		}
-		controllers = append(controllers, kvApi.NewController(cfg.Store, cfg.SBAC))
-		controllers = append(controllers, sbacApi.NewController(&sbacCfg))
+		controllers = append(controllers, kvApi.New(cfg.Store, cfg.SBAC))
+		controllers = append(controllers, sbacApi.New(&sbacCfg))
 	}
 
 	if !cfg.SBACOnly {
-		controllers = append(controllers, checkerApi.NewController(cfg.Checker, cfg.SelfID))
+		controllers = append(controllers, checkerApi.New(cfg.Checker, cfg.SelfID))
 	}
 
 	s := &Service{

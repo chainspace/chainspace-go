@@ -25,7 +25,7 @@ var _ = Describe("Controller", func() {
 		gin.SetMode("test")
 
 		srvMock = &serviceMocks.Service{}
-		ctrl = api.NewControllerWithService(srvMock)
+		ctrl = api.NewWithService(srvMock)
 
 		router := gin.Default()
 		ctrl.RegisterRoutes(router)

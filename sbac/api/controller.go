@@ -34,8 +34,8 @@ type Controller interface {
 	RegisterRoutes(router *gin.Engine)
 }
 
-// NewController returns a new kv.Controller
-func NewController(config *Config) Controller {
+// New returns a new kv.Controller
+func New(config *Config) Controller {
 	return &controller{newService(config)}
 }
 
