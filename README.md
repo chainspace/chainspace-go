@@ -16,6 +16,7 @@ Eventually, it's likely that we will split these two components. A project wanti
 * Install Go 1.11. Earlier versions won't work.
 * `git clone` the code into the source dir of your `$GOPATH`, typically `~/go/src`
 * `make install`
+* `make contract`
 
 ## Setting Up and Running Nodes
 
