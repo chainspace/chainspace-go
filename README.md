@@ -11,6 +11,12 @@ At present, our running code has two main components:
 
 Eventually, it's likely that we will split these two components. A project wanting only fast consensus, but no sharding, should be able use Blockmania by itself. For projects that need the added horizontal scalability of sharding, the S-BAC component would be added. But for the moment, the two components co-exist in the same codebase.
 
+## Quickstart
+
+* Install Go 1.11. Earlier versions won't work.
+* `git clone` the code into the source dir of your `$GOPATH`, typically `~/go/src`
+* `make install`
+
 ## Setting Up and Running Nodes
 
 The `chainspace init <networkname>` command, by default, creates a network consisting of 12 nodes grouped into 3 shards of 4 nodes each.
