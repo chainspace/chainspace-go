@@ -240,7 +240,7 @@ func (w *worker) run(ctx context.Context, wg *sync.WaitGroup) {
 	data := res.Object.([]interface{})
 	w.objsdata = []interface{}{}
 	for i, v := range data {
-		w.seed[i] = v.(map[string]interface{})["version_id"].(string)
+		w.seed[i] = v.(map[string]interface{})["versionId"].(string)
 		w.pendingIDs[w.seed[i]] = struct{}{}
 		subscribr.Subscribe(w.seed[i], w.cb)
 		w.objsdata = append(

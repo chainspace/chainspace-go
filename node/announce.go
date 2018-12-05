@@ -37,7 +37,7 @@ func announceMDNS(networkID string, nodeID uint64, port int) error {
 func announceRegistry(registries []config.Registry, networkID string, nodeID uint64, port int) error {
 	for _, v := range registries {
 		endpoint := v.URL() + contactsSetPath
-		s := fmt.Sprintf(`{"auth": {"network_id": "%v", "token": "%v"}, "config": {"node_id": %v, "port": %v}}`, networkID, v.Token, nodeID, port)
+		s := fmt.Sprintf(`{"auth": {"networkId": "%v", "token": "%v"}, "config": {"nodeId": %v, "port": %v}}`, networkID, v.Token, nodeID, port)
 		payload := bytes.NewBufferString(s)
 		// log.Error("announce to registry", log.String("lol", s))
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

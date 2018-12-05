@@ -9,10 +9,10 @@ import (
 )
 
 type Payload struct {
-	ObjectID string   `json:"object_id"`
-	Success  bool     `json:"success"`
-	NodeID   uint64   `json:"node_id"`
 	Labels   []string `json:"labels"`
+	NodeID   uint64   `json:"nodeId"`
+	ObjectID string   `json:"objectId"`
+	Success  bool     `json:"success"`
 }
 
 type Conn struct {

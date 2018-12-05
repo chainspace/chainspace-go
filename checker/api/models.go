@@ -9,7 +9,7 @@ import (
 
 // CheckTransactionResponse ...
 type CheckTransactionResponse struct {
-	NodeID    uint64 `json:"node_id"`
+	NodeID    uint64 `json:"nodeId"`
 	OK        bool   `json:"ok"`
 	Signature string `json:"signature"`
 }
@@ -49,12 +49,12 @@ type Dependency Trace
 
 // Trace ...
 type Trace struct {
-	ContractID               string        `json:"contract_id"`
+	ContractID               string        `json:"contractId"`
 	Dependencies             []Dependency  `json:"dependencies"`
-	InputObjectVersionIDs    []string      `json:"input_object_version_ids"`
-	InputReferenceVersionIDs []string      `json:"input_reference_version_ids"`
+	InputObjectVersionIDs    []string      `json:"inputObjectVersionIds"`
+	InputReferenceVersionIDs []string      `json:"inputReferenceVersionIds"`
 	Labels                   [][]string    `json:"labels"`
-	OutputObjects            []interface{} `json:"output_objects"`
+	OutputObjects            []interface{} `json:"outputObjects"`
 	Parameters               []interface{} `json:"parameters"`
 	Procedure                string        `json:"procedure"`
 	Returns                  []interface{} `json:"returns"`

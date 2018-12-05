@@ -145,9 +145,9 @@ func (t *Topology) bootstrapRegistries(ctx context.Context, endpoint string, pay
 	}
 	resp.Body.Close()
 	res := []struct {
-		NodeID uint64 `json:"node_id"`
-		Port   int    `json:"port"`
 		Addr   string `json:"addr"`
+		NodeID uint64 `json:"nodeId"`
+		Port   int    `json:"port"`
 	}{}
 	err = json.Unmarshal(b, &res)
 	if err != nil {
@@ -197,7 +197,7 @@ func (t *Topology) BootstrapRegistries(registries []config.Registry) {
 	log.Debug("Bootstrapping network via registry", fld.NetworkName(t.name))
 	for _, v := range registries {
 		go func(registry config.Registry) {
-			auth := fmt.Sprintf(`{"auth": {"network_id": "%v", "token": "%v"}}`, t.id, registry.Token)
+			auth := fmt.Sprintf(`{"auth": {"networkId": "%v", "token": "%v"}}`, t.id, registry.Token)
 			endpoint := registry.URL() + contactsListPath
 			for {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

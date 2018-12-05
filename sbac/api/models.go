@@ -29,32 +29,37 @@ type Error struct {
 	Error string `json:"error"`
 }
 
+// Object ...
 type Object struct {
-	VersionID string      `json:"version_id"`
-	Value     interface{} `json:"value"`
 	Status    string      `json:"status"`
+	Value     interface{} `json:"value"`
+	VersionID string      `json:"versionId"`
 }
 
+// StateReport ...
 type StateReport struct {
-	HashID          uint32          `json:"hash_id"`
-	CommitDecisions map[uint64]bool `json:"commit_decisions"`
-	Phase1Decisions map[uint64]bool `json:"phase1_decisions"`
-	Phase2Decisions map[uint64]bool `json:"phase2_decisions"`
+	CommitDecisions map[uint64]bool `json:"commitDecisions"`
+	HashID          uint32          `json:"hashId"`
+	PendingEvents   int32           `json:"pendingEvents"`
+	Phase1Decisions map[uint64]bool `json:"phase1Decisions"`
+	Phase2Decisions map[uint64]bool `json:"phase2Decisions"`
 	State           string          `json:"state"`
-	PendingEvents   int32           `json:"pending_events"`
 }
 
+// StateReportResponse ...
 type StateReportResponse struct {
+	PendingEvents int32         `json:"pendingEvents"`
 	States        []StateReport `json:"states"`
-	PendingEvents int32         `json:"pending_events"`
 }
 
+// Transaction ...
 type Transaction struct {
-	Traces     []Trace                `json:"traces"`
 	Mappings   map[string]interface{} `json:"mappings"`
 	Signatures map[uint64]string      `json:"signatures"` //base64 encoded
+	Traces     []Trace                `json:"traces"`
 }
 
+// ToSBAC ...
 func (ct *Transaction) ToSBAC() (*sbac.Transaction, error) {
 	traces := make([]*sbac.Trace, 0, len(ct.Traces))
 	for _, t := range ct.Traces {
@@ -69,20 +74,23 @@ func (ct *Transaction) ToSBAC() (*sbac.Transaction, error) {
 	}, nil
 }
 
+// Dependency ...
 type Dependency Trace
 
+// Trace ...
 type Trace struct {
-	ContractID               string        `json:"contract_id"`
-	Procedure                string        `json:"procedure"`
-	InputObjectVersionIDs    []string      `json:"input_object_version_ids"`
-	InputReferenceVersionIDs []string      `json:"input_reference_version_ids"`
-	OutputObjects            []interface{} `json:"output_objects"`
-	Parameters               []interface{} `json:"parameters"`
-	Returns                  []interface{} `json:"returns"`
-	Labels                   [][]string    `json:"labels"`
+	ContractID               string        `json:"contractId"`
 	Dependencies             []Dependency  `json:"dependencies"`
+	InputObjectVersionIDs    []string      `json:"inputObjectVersionIds"`
+	InputReferenceVersionIDs []string      `json:"inputReferenceVersionIds"`
+	Labels                   [][]string    `json:"labels"`
+	OutputObjects            []interface{} `json:"outputObjects"`
+	Parameters               []interface{} `json:"parameters"`
+	Procedure                string        `json:"procedure"`
+	Returns                  []interface{} `json:"returns"`
 }
 
+// ToSBAC ...
 func (ct *Trace) ToSBAC(mappings map[string]interface{}) (*sbac.Trace, error) {
 	fromB64String := func(s []string) [][]byte {
 		out := make([][]byte, 0, len(s))
@@ -92,7 +100,7 @@ func (ct *Trace) ToSBAC(mappings map[string]interface{}) (*sbac.Trace, error) {
 		}
 		return out
 	}
-	toJsonList := func(s []interface{}) [][]byte {
+	toJSONList := func(s []interface{}) [][]byte {
 		out := make([][]byte, 0, len(s))
 		for _, v := range s {
 			bytes, _ := json.Marshal(v)
@@ -124,7 +132,7 @@ func (ct *Trace) ToSBAC(mappings map[string]interface{}) (*sbac.Trace, error) {
 	for _, v := range ct.InputReferenceVersionIDs {
 		object, ok := mappings[v]
 		if !ok {
-			return nil, fmt.Errorf("missing object mapping for key [%v]", v)
+			return nil, fmt.Errorf("missing reference mapping for key [%v]", v)
 		}
 		bobject, _ := json.Marshal(object)
 		inputReferences = append(inputReferences, bobject)
@@ -132,19 +140,20 @@ func (ct *Trace) ToSBAC(mappings map[string]interface{}) (*sbac.Trace, error) {
 	}
 	return &sbac.Trace{
 		ContractID:               ct.ContractID,
-		Procedure:                ct.Procedure,
-		InputObjectVersionIDs:    fromB64String(ct.InputObjectVersionIDs),
-		InputReferenceVersionIDs: fromB64String(ct.InputReferenceVersionIDs),
-		InputObjects:             inputObjects,
-		InputReferences:          inputReferences,
-		OutputObjects:            toJsonList(ct.OutputObjects),
-		Parameters:               toJsonList(ct.Parameters),
-		Returns:                  toJsonList(ct.Returns),
-		Labels:                   sbac.StringsSlice{}.FromSlice(ct.Labels),
 		Dependencies:             deps,
+		InputObjects:             inputObjects,
+		InputObjectVersionIDs:    fromB64String(ct.InputObjectVersionIDs),
+		InputReferences:          inputReferences,
+		InputReferenceVersionIDs: fromB64String(ct.InputReferenceVersionIDs),
+		Labels:                   sbac.StringsSlice{}.FromSlice(ct.Labels),
+		OutputObjects:            toJSONList(ct.OutputObjects),
+		Parameters:               toJSONList(ct.Parameters),
+		Procedure:                ct.Procedure,
+		Returns:                  toJSONList(ct.Returns),
 	}, nil
 }
 
+// BuildObjectResponse ...
 func BuildObjectResponse(objects []*sbac.Object) (Object, error) {
 	if len(objects) <= 0 {
 		return Object{}, errors.New("object already inactive")

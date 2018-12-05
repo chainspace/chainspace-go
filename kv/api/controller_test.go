@@ -93,7 +93,7 @@ var _ = Describe("Controller", func() {
 				Expect(res.StatusCode).To(Equal(http.StatusOK))
 
 				actualJSON, _ := ioutil.ReadAll(res.Body)
-				expectedJSON := []uint8(`{"version_id":"bar"}`)
+				expectedJSON := []uint8(`{"versionId":"bar"}`)
 				Expect(actualJSON).To(Equal(expectedJSON))
 				res.Body.Close()
 			})
@@ -185,7 +185,7 @@ var _ = Describe("Controller", func() {
 				Expect(res.StatusCode).To(Equal(http.StatusOK))
 
 				actualJSON, _ := ioutil.ReadAll(res.Body)
-				expectedJSON := []uint8(`{"pairs":[{"label":"foo","version_id":"bar"}]}`)
+				expectedJSON := []uint8(`{"pairs":[{"label":"foo","versionId":"bar"}]}`)
 				Expect(actualJSON).To(Equal(expectedJSON))
 				res.Body.Close()
 			})

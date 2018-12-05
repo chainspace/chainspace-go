@@ -74,7 +74,7 @@ func (t *txTimeTracker) handleTxTime(
 		}
 		it := block.Iter()
 		for it.Valid() {
-			t.txc += 1
+			t.txc++
 			it.Next()
 			wsize := binary.LittleEndian.Uint32(it.TxData[usize : usize+usize])
 			ti, err := time.Parse(time.RFC3339Nano, string(it.TxData[usize+usize:uint32(usize)+uint32(usize)+wsize]))
@@ -151,7 +151,7 @@ func (tr *testrunner) calcTxPerSecs(ctx context.Context, wg *sync.WaitGroup) {
 		}
 		<-tick.C
 		total += uint64(tr.readCounter())
-		count += 1
+		count++
 		if total != 0 {
 			tr.avgTxs = total / count
 		}
@@ -159,8 +159,8 @@ func (tr *testrunner) calcTxPerSecs(ctx context.Context, wg *sync.WaitGroup) {
 }
 
 type testresults struct {
-	AvgLatency float64 `json:"avg_latency"`
-	AvgTxs     uint64  `json:"avg_txs"`
+	AvgLatency float64 `json:"avgLatency"`
+	AvgTxs     uint64  `json:"avgTxs"`
 }
 
 func (tr *testrunner) writeResults() {
@@ -178,7 +178,6 @@ func (tr *testrunner) writeResults() {
 		fmt.Printf("unable to write test results to file: %v\n", err)
 		os.Exit(1)
 	}
-
 }
 
 func genLoad(

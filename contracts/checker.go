@@ -25,13 +25,13 @@ type Checker struct {
 }
 
 type trace struct {
-	Inputs          []interface{} `json:"inputs"`
-	ReferenceInputs []interface{} `json:"referenceInputs"`
-	Parameters      []interface{} `json:"parameters"`
-	Outputs         []interface{} `json:"outputs"`
-	Returns         []interface{} `json:"returns"`
-	Labels          [][]string    `json:"labels"`
 	Dependencies    []trace       `json:"dependencies"`
+	Inputs          []interface{} `json:"inputs"`
+	Labels          [][]string    `json:"labels"`
+	Outputs         []interface{} `json:"outputs"`
+	Parameters      []interface{} `json:"parameters"`
+	ReferenceInputs []interface{} `json:"referenceInputs"`
+	Returns         []interface{} `json:"returns"`
 }
 
 func encodeToStrings(ls [][]byte) []string {

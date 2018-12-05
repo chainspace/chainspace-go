@@ -14,7 +14,7 @@ type LabelObject struct {
 // LabelVersionID ...
 type LabelVersionID struct {
 	Label     string `json:"label"`
-	VersionID string `json:"version_id"`
+	VersionID string `json:"versionId"`
 }
 
 // ListObjectsResponse contains a full json graph
@@ -34,5 +34,5 @@ type ObjectResponse struct {
 
 // VersionIDResponse contains only a version id
 type VersionIDResponse struct {
-	VersionID string `json:"version_id"`
+	VersionID string `json:"versionId"`
 }
