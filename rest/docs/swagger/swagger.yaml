@@ -1,15 +1,15 @@
+basePath: '{{.BasePath}}'
 definitions:
   api.CheckTransactionResponse:
     properties:
-      node_id:
+      nodeId:
         type: integer
       ok:
         type: boolean
       signature:
         type: string
     type: object
-  api.Dependency:
-    type: object
+  api.Dependency: {}
   api.Error:
     properties:
       error:
@@ -26,8 +26,22 @@ definitions:
     properties:
       label:
         type: string
-      version_id:
+      versionId:
         type: string
+    type: object
+  api.ListObjectsResponse:
+    properties:
+      pairs:
+        items:
+          $ref: '#/definitions/api.LabelObject'
+        type: array
+    type: object
+  api.ListVersionIDsResponse:
+    properties:
+      pairs:
+        items:
+          $ref: '#/definitions/api.LabelVersionID'
+        type: array
     type: object
   api.Object:
     properties:
@@ -35,20 +49,13 @@ definitions:
         type: string
       value:
         type: object
-      version_id:
+      versionId:
         type: string
     type: object
   api.ObjectIDResponse:
     properties:
       id:
         type: string
-    type: object
-  api.ObjectListResponse:
-    properties:
-      pairs:
-        items:
-          $ref: '#/definitions/api.LabelObject'
-        type: array
     type: object
   api.ObjectRequest:
     properties:
@@ -62,37 +69,37 @@ definitions:
     type: object
   api.Trace:
     properties:
-      contract_id:
+      contractId:
         type: string
       dependencies:
         items:
           $ref: '#/definitions/api.Dependency'
         type: array
-      input_object_version_ids:
+      inputObjectVersionIds:
         items:
           type: string
         type: array
-      input_reference_version_ids:
+      inputReferenceVersionIds:
         items:
           type: string
         type: array
       labels:
         items:
-          type: '&{%!s(token.Pos=2188) <nil> string}'
+          type: '&{%!s(token.Pos=1320) <nil> string}'
         type: array
-      output_objects:
+      outputObjects:
         items:
-          type: '&{%!s(token.Pos=2007) %!s(*ast.FieldList=&{2016 [] 2017}) %!s(bool=false)}'
+          type: '&{%!s(token.Pos=1376) %!s(*ast.FieldList=&{1385 [] 1386}) %!s(bool=false)}'
         type: array
       parameters:
         items:
-          type: '&{%!s(token.Pos=2071) %!s(*ast.FieldList=&{2080 [] 2081}) %!s(bool=false)}'
+          type: '&{%!s(token.Pos=1439) %!s(*ast.FieldList=&{1448 [] 1449}) %!s(bool=false)}'
         type: array
       procedure:
         type: string
       returns:
         items:
-          type: '&{%!s(token.Pos=2131) %!s(*ast.FieldList=&{2140 [] 2141}) %!s(bool=false)}'
+          type: '&{%!s(token.Pos=1558) %!s(*ast.FieldList=&{1567 [] 1568}) %!s(bool=false)}'
         type: array
     type: object
   api.Transaction:
@@ -106,18 +113,12 @@ definitions:
           $ref: '#/definitions/api.Trace'
         type: array
     type: object
-  api.VersionIDListResponse:
-    properties:
-      pairs:
-        items:
-          $ref: '#/definitions/api.LabelVersionID'
-        type: array
-    type: object
   api.VersionIDResponse:
     properties:
-      version_id:
+      versionId:
         type: string
     type: object
+host: '{{.Host}}'
 info:
   contact: {}
   description: Chainspace REST API endpoints
@@ -262,7 +263,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/api.ObjectListResponse'
+            $ref: '#/definitions/api.ListObjectsResponse'
             type: object
         "400":
           description: Bad Request
@@ -300,7 +301,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/api.VersionIDListResponse'
+            $ref: '#/definitions/api.ListVersionIDsResponse'
             type: object
         "400":
           description: Bad Request

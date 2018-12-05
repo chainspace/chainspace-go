@@ -11,6 +11,8 @@
         },
         "version": "1.0"
     },
+    "host": "{{.Host}}",
+    "basePath": "{{.BasePath}}",
     "paths": {
         "/api/checker/check": {
             "post": {
@@ -208,7 +210,7 @@
                         "description": "OK",
                         "schema": {
                             "type": "object",
-                            "$ref": "#/definitions/api.ObjectListResponse"
+                            "$ref": "#/definitions/api.ListObjectsResponse"
                         }
                     },
                     "400": {
@@ -263,7 +265,7 @@
                         "description": "OK",
                         "schema": {
                             "type": "object",
-                            "$ref": "#/definitions/api.VersionIDListResponse"
+                            "$ref": "#/definitions/api.ListVersionIDsResponse"
                         }
                     },
                     "400": {
@@ -515,7 +517,7 @@
         "api.CheckTransactionResponse": {
             "type": "object",
             "properties": {
-                "node_id": {
+                "nodeId": {
                     "type": "integer"
                 },
                 "ok": {
@@ -526,9 +528,7 @@
                 }
             }
         },
-        "api.Dependency": {
-            "type": "object"
-        },
+        "api.Dependency": {},
         "api.Error": {
             "type": "object",
             "properties": {
@@ -554,8 +554,30 @@
                 "label": {
                     "type": "string"
                 },
-                "version_id": {
+                "versionId": {
                     "type": "string"
+                }
+            }
+        },
+        "api.ListObjectsResponse": {
+            "type": "object",
+            "properties": {
+                "pairs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.LabelObject"
+                    }
+                }
+            }
+        },
+        "api.ListVersionIDsResponse": {
+            "type": "object",
+            "properties": {
+                "pairs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.LabelVersionID"
+                    }
                 }
             }
         },
@@ -568,7 +590,7 @@
                 "value": {
                     "type": "object"
                 },
-                "version_id": {
+                "versionId": {
                     "type": "string"
                 }
             }
@@ -578,17 +600,6 @@
             "properties": {
                 "id": {
                     "type": "string"
-                }
-            }
-        },
-        "api.ObjectListResponse": {
-            "type": "object",
-            "properties": {
-                "pairs": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/api.LabelObject"
-                    }
                 }
             }
         },
@@ -611,7 +622,7 @@
         "api.Trace": {
             "type": "object",
             "properties": {
-                "contract_id": {
+                "contractId": {
                     "type": "string"
                 },
                 "dependencies": {
@@ -620,13 +631,13 @@
                         "$ref": "#/definitions/api.Dependency"
                     }
                 },
-                "input_object_version_ids": {
+                "inputObjectVersionIds": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
                 },
-                "input_reference_version_ids": {
+                "inputReferenceVersionIds": {
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -635,19 +646,19 @@
                 "labels": {
                     "type": "array",
                     "items": {
-                        "type": "\u0026{%!s(token.Pos=2188) \u003cnil\u003e string}"
+                        "type": "\u0026{%!s(token.Pos=1320) \u003cnil\u003e string}"
                     }
                 },
-                "output_objects": {
+                "outputObjects": {
                     "type": "array",
                     "items": {
-                        "type": "\u0026{%!s(token.Pos=2007) %!s(*ast.FieldList=\u0026{2016 [] 2017}) %!s(bool=false)}"
+                        "type": "\u0026{%!s(token.Pos=1376) %!s(*ast.FieldList=\u0026{1385 [] 1386}) %!s(bool=false)}"
                     }
                 },
                 "parameters": {
                     "type": "array",
                     "items": {
-                        "type": "\u0026{%!s(token.Pos=2071) %!s(*ast.FieldList=\u0026{2080 [] 2081}) %!s(bool=false)}"
+                        "type": "\u0026{%!s(token.Pos=1439) %!s(*ast.FieldList=\u0026{1448 [] 1449}) %!s(bool=false)}"
                     }
                 },
                 "procedure": {
@@ -656,7 +667,7 @@
                 "returns": {
                     "type": "array",
                     "items": {
-                        "type": "\u0026{%!s(token.Pos=2131) %!s(*ast.FieldList=\u0026{2140 [] 2141}) %!s(bool=false)}"
+                        "type": "\u0026{%!s(token.Pos=1558) %!s(*ast.FieldList=\u0026{1567 [] 1568}) %!s(bool=false)}"
                     }
                 }
             }
@@ -678,21 +689,10 @@
                 }
             }
         },
-        "api.VersionIDListResponse": {
-            "type": "object",
-            "properties": {
-                "pairs": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/api.LabelVersionID"
-                    }
-                }
-            }
-        },
         "api.VersionIDResponse": {
             "type": "object",
             "properties": {
-                "version_id": {
+                "versionId": {
                     "type": "string"
                 }
             }
