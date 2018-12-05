@@ -65,7 +65,7 @@ type Config struct {
 type Server struct {
 	Broadcast       *broadcast.Service
 	cancel          context.CancelFunc
-	checker         *checker.Service
+	checker         checker.Service
 	ctx             context.Context
 	id              uint64
 	key             signature.KeyPair
@@ -415,11 +415,11 @@ func Run(cfg *Config) (*Server, error) {
 	}
 
 	var (
+		checkr  checker.Service
 		kvstore kv.Service
+		pbsb    pubsub.Server
 		rst     *rest.Service
 		ssbac   *sbac.ServiceSBAC
-		pbsb    pubsub.Server
-		checkr  *checker.Service
 	)
 
 	kvcfg := &kv.Config{

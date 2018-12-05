@@ -232,13 +232,13 @@ func runCheckerOnly(cfg *node.Config) *rest.Service {
 	}
 	restsrvcfg := &rest.Config{
 		Addr:        "",
-		Key:         key,
-		Port:        rport,
-		SelfID:      cfg.NodeID,
-		MaxPayload:  config.ByteSize(maxPayload),
 		Checker:     checkr,
-		SBACOnly:    cfg.SBACOnly,
 		CheckerOnly: cfg.CheckerOnly,
+		Key:         key,
+		MaxPayload:  config.ByteSize(maxPayload),
+		Port:        rport,
+		SBACOnly:    cfg.SBACOnly,
+		SelfID:      cfg.NodeID,
 	}
 	rstsrv := rest.New(restsrvcfg)
 	return rstsrv

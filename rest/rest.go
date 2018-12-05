@@ -23,7 +23,7 @@ import (
 // Config defines the values passed into the REST Service
 type Config struct {
 	Addr        string
-	Checker     *checker.Service
+	Checker     checker.Service
 	CheckerOnly bool
 	Key         signature.KeyPair
 	MaxPayload  config.ByteSize

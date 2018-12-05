@@ -21,15 +21,21 @@ type Config struct {
 	Checkers   []Checker
 }
 
-type Service struct {
+type checkerService struct {
 	checkers checkersMap
 	privkey  signature.PrivateKey
+}
+
+type Service interface {
+	service.Handler
+	Check(ctx context.Context, tx *sbac.Transaction) (bool, error)
+	CheckAndSign(ctx context.Context, tx *sbac.Transaction) (bool, []byte, error)
 }
 
 // checkersMap map contractID to map check procedure name to checker
 type checkersMap map[string]map[string]Checker
 
-func (s *Service) check(
+func (s *checkerService) check(
 	ctx context.Context, payload []byte, msgID uint64) (*service.Message, error) {
 	req := &CheckRequest{}
 	err := proto.Unmarshal(payload, req)
@@ -67,7 +73,7 @@ func (s *Service) check(
 	return msg, nil
 }
 
-func (s *Service) Check(ctx context.Context, tx *sbac.Transaction) (bool, error) {
+func (s *checkerService) Check(ctx context.Context, tx *sbac.Transaction) (bool, error) {
 	if err := typeCheck(idmap{}, tx.Traces); err != nil {
 		return false, err
 	}
@@ -78,8 +84,7 @@ func (s *Service) Check(ctx context.Context, tx *sbac.Transaction) (bool, error)
 	return ok, nil
 }
 
-func (s *Service) CheckAndSign(
-	ctx context.Context, tx *sbac.Transaction) (bool, []byte, error) {
+func (s *checkerService) CheckAndSign(ctx context.Context, tx *sbac.Transaction) (bool, []byte, error) {
 	ok, err := s.Check(ctx, tx)
 	if err != nil {
 		return false, nil, err
@@ -94,7 +99,7 @@ func (s *Service) CheckAndSign(
 	return ok, s.privkey.Sign(txbytes), nil
 }
 
-func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, error) {
+func (s *checkerService) Handle(peerID uint64, m *service.Message) (*service.Message, error) {
 	ctx := context.TODO()
 	switch Opcode(m.Opcode) {
 	case Opcode_CHECK:
@@ -107,11 +112,11 @@ func (s *Service) Handle(peerID uint64, m *service.Message) (*service.Message, e
 	}
 }
 
-func (s *Service) Name() string {
+func (s *checkerService) Name() string {
 	return "checker"
 }
 
-func New(cfg *Config) (*Service, error) {
+func New(cfg *Config) (*checkerService, error) {
 	checkers := map[string]map[string]Checker{}
 	for _, c := range cfg.Checkers {
 		if m, ok := checkers[c.ContractID()]; ok {
@@ -134,7 +139,7 @@ func New(cfg *Config) (*Service, error) {
 		return nil, err
 	}
 
-	return &Service{
+	return &checkerService{
 		checkers: checkers,
 		privkey:  privkey,
 	}, nil

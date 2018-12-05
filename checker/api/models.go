@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 
 	"chainspace.io/prototype/sbac"
 )
@@ -20,98 +19,99 @@ type Error struct {
 	Error string `json:"error"`
 }
 
+// Transaction ...
 type Transaction struct {
-	Traces     []Trace                `json:"traces"`
 	Mappings   map[string]interface{} `json:"mappings"`
 	Signatures map[uint64]string      `json:"signatures"` //base64 encoded
+	Traces     []Trace                `json:"traces"`
 }
 
-func (ct *Transaction) ToSBAC() (*sbac.Transaction, error) {
-	traces := make([]*sbac.Trace, 0, len(ct.Traces))
-	for _, t := range ct.Traces {
-		ttrace, err := t.ToSBAC(ct.Mappings)
-		if err != nil {
-			return nil, err
-		}
-		traces = append(traces, ttrace)
+// ToSBAC ...
+func (tx *Transaction) ToSBAC(validator TransactionValidator) (*sbac.Transaction, error) {
+	err := validator.Validate(tx)
+	if err != nil {
+		return nil, err
 	}
+
+	traces := make([]*sbac.Trace, 0, len(tx.Traces))
+	for _, tc := range tx.Traces {
+		sbacTrace := tc.ToSBAC(tx.Mappings)
+		traces = append(traces, sbacTrace)
+	}
+
 	return &sbac.Transaction{
 		Traces: traces,
 	}, nil
 }
 
+// Dependency ...
 type Dependency Trace
 
+// Trace ...
 type Trace struct {
 	ContractID               string        `json:"contract_id"`
-	Procedure                string        `json:"procedure"`
+	Dependencies             []Dependency  `json:"dependencies"`
 	InputObjectVersionIDs    []string      `json:"input_object_version_ids"`
 	InputReferenceVersionIDs []string      `json:"input_reference_version_ids"`
+	Labels                   [][]string    `json:"labels"`
 	OutputObjects            []interface{} `json:"output_objects"`
 	Parameters               []interface{} `json:"parameters"`
+	Procedure                string        `json:"procedure"`
 	Returns                  []interface{} `json:"returns"`
-	Labels                   [][]string    `json:"labels"`
-	Dependencies             []Dependency  `json:"dependencies"`
 }
 
-func (ct *Trace) ToSBAC(mappings map[string]interface{}) (*sbac.Trace, error) {
-	fromB64String := func(s []string) [][]byte {
-		out := make([][]byte, 0, len(s))
-		for _, v := range s {
-			bytes, _ := base64.StdEncoding.DecodeString(v)
-			out = append(out, []byte(bytes))
-		}
-		return out
+func b64DecodeStrings(s []string) [][]byte {
+	out := make([][]byte, 0, len(s))
+	for _, v := range s {
+		bytes, _ := base64.StdEncoding.DecodeString(v)
+		out = append(out, []byte(bytes))
 	}
-	toJsonList := func(s []interface{}) [][]byte {
-		out := make([][]byte, 0, len(s))
-		for _, v := range s {
-			bytes, _ := json.Marshal(v)
-			out = append(out, bytes)
-		}
-		return out
+	return out
+}
+
+func jsonMarshalList(s []interface{}) [][]byte {
+	out := make([][]byte, 0, len(s))
+	for _, v := range s {
+		bytes, _ := json.Marshal(v)
+		out = append(out, bytes)
 	}
-	deps := make([]*sbac.Trace, 0, len(ct.Dependencies))
-	for _, d := range ct.Dependencies {
+	return out
+}
+
+// ToSBAC ...
+func (tc *Trace) ToSBAC(mappings map[string]interface{}) *sbac.Trace {
+	deps := make([]*sbac.Trace, 0, len(tc.Dependencies))
+	for _, d := range tc.Dependencies {
 		t := Trace(d)
-		ttrace, err := t.ToSBAC(mappings)
-		if err != nil {
-			return nil, err
-		}
+		ttrace := t.ToSBAC(mappings)
 		deps = append(deps, ttrace)
 	}
 
-	inputObjects := make([][]byte, 0, len(ct.InputObjectVersionIDs))
-	for _, v := range ct.InputObjectVersionIDs {
-		object, ok := mappings[v]
-		if !ok {
-			return nil, fmt.Errorf("missing object mapping for key [%v]", v)
-		}
+	inputObjects := make([][]byte, 0, len(tc.InputObjectVersionIDs))
+	for _, v := range tc.InputObjectVersionIDs {
+		object := mappings[v]
 		bobject, _ := json.Marshal(object)
 		inputObjects = append(inputObjects, bobject)
-
 	}
-	inputReferences := make([][]byte, 0, len(ct.InputReferenceVersionIDs))
-	for _, v := range ct.InputReferenceVersionIDs {
-		object, ok := mappings[v]
-		if !ok {
-			return nil, fmt.Errorf("missing object mapping for key [%v]", v)
-		}
+
+	inputReferences := make([][]byte, 0, len(tc.InputReferenceVersionIDs))
+	for _, v := range tc.InputReferenceVersionIDs {
+		object := mappings[v]
 		bobject, _ := json.Marshal(object)
 		inputReferences = append(inputReferences, bobject)
-
 	}
+
 	return &sbac.Trace{
-		ContractID:               ct.ContractID,
-		Procedure:                ct.Procedure,
-		InputObjectVersionIDs:    fromB64String(ct.InputObjectVersionIDs),
-		InputReferenceVersionIDs: fromB64String(ct.InputReferenceVersionIDs),
-		InputObjects:             inputObjects,
-		InputReferences:          inputReferences,
-		OutputObjects:            toJsonList(ct.OutputObjects),
-		Parameters:               toJsonList(ct.Parameters),
-		Returns:                  toJsonList(ct.Returns),
-		Labels:                   sbac.StringsSlice{}.FromSlice(ct.Labels),
+		ContractID:               tc.ContractID,
 		Dependencies:             deps,
-	}, nil
+		InputObjects:             inputObjects,
+		InputObjectVersionIDs:    b64DecodeStrings(tc.InputObjectVersionIDs),
+		InputReferences:          inputReferences,
+		InputReferenceVersionIDs: b64DecodeStrings(tc.InputReferenceVersionIDs),
+		Labels:                   sbac.StringsSlice{}.FromSlice(tc.Labels),
+		OutputObjects:            jsonMarshalList(tc.OutputObjects),
+		Parameters:               jsonMarshalList(tc.Parameters),
+		Procedure:                tc.Procedure,
+		Returns:                  jsonMarshalList(tc.Returns),
+	}
 }

@@ -1,35 +1,27 @@
-package checker
+package checker_test
 
 import (
+	"chainspace.io/prototype/checker"
+	"chainspace.io/prototype/config"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
 
+var signingKey = &config.Key{
+	Type:    "ed25519",
+	Public:  "7EEAMDHFJQJKQE2N6GWWG7DETU5ZPEDDUQCFFHR74PECIF4FHVCQ",
+	Private: "DCUCO7RJVZK33IXR3EMQELOQNQNJJTCOSY4MYR6IEM4BBWVL5SL7SCAGBTSUYEVICNG7DLLDPRSJ2O4XSBR2IBCSTY76HSBEC6CT2RI",
+}
+
 var _ = Describe("Checker", func() {
-	var srv = Service{}
+	var srv checker.Service
 
-	Describe("check", func() {
-		It("should do something", func() {
-			Skip("Write test(s) for this...")
-		})
-	})
-
-	Describe("Check", func() {
-		It("should do something", func() {
-			Skip("Write test(s) for this...")
-		})
-	})
-
-	Describe("CheckAndSign", func() {
-		It("should do something", func() {
-			Skip("Write test(s) for this...")
-		})
-	})
-
-	Describe("Handle", func() {
-		It("should do something", func() {
-			Skip("Write test(s) for this...")
-		})
+	BeforeEach(func() {
+		cfg := &checker.Config{
+			Checkers:   []checker.Checker{},
+			SigningKey: signingKey,
+		}
+		srv, _ = checker.New(cfg)
 	})
 
 	Describe("Name", func() {
@@ -38,12 +30,6 @@ var _ = Describe("Checker", func() {
 			expected := "checker"
 
 			Expect(actual).To(Equal(expected))
-		})
-	})
-
-	Describe("New", func() {
-		It("should do something", func() {
-			Skip("Write test(s) for this...")
 		})
 	})
 })

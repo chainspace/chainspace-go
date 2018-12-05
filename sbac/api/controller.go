@@ -19,7 +19,7 @@ type Config struct {
 	Sbacclt    sbacclient.Client
 	ShardID    uint64
 	NodeID     uint64
-	Checker    *checker.Service
+	Checker    checker.Service
 	Top        *network.Topology
 }
 

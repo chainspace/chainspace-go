@@ -1,8 +1,8 @@
 package api_test
 
 import (
-	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +20,7 @@ var _ = Describe("Controller", func() {
 	var errorMsg string = "boom"
 	var srvMock *serviceMocks.Service
 	var srvr *httptest.Server
+	var url string
 
 	BeforeEach(func() {
 		gin.SetMode("test")
@@ -37,209 +38,173 @@ var _ = Describe("Controller", func() {
 	})
 
 	Describe("/api/kv/label/:label", func() {
-		When("something with the label exists", func() {
-			data := "bar"
-			apiResponse := api.ObjectResponse{}
+		BeforeEach(func() {
+			url = fmt.Sprintf("%v/api/kv/label/foo", srvr.URL)
+		})
 
+		When("something with the label exists", func() {
 			BeforeEach(func() {
-				srvMock.On("GetByLabel", "foo").Return(data, http.StatusOK, nil)
+				srvMock.On("GetByLabel", "foo").Return("bar", http.StatusOK, nil)
 			})
 
 			It("should return some data", func() {
-				res, resErr := http.Get(srvr.URL + "/api/kv/label/foo")
+				res, resErr := http.Get(url)
 				Expect(resErr).To(BeNil())
 				Expect(res.StatusCode).To(Equal(http.StatusOK))
 
-				body, bodyErr := ioutil.ReadAll(res.Body)
-				Expect(body).ToNot(Equal(""))
-				Expect(bodyErr).To(BeNil())
+				actualJSON, _ := ioutil.ReadAll(res.Body)
+				expectedJSON := []uint8(`{"object":"bar"}`)
+				Expect(actualJSON).To(Equal(expectedJSON))
 				res.Body.Close()
-
-				jsonErr := json.Unmarshal(body, &apiResponse)
-				Expect(jsonErr).To(BeNil())
-				Expect(apiResponse.Object).To(Equal(data))
 			})
 		})
 
 		When("nothing with the label exists", func() {
-			data := ""
-			apiResponse := api.Error{}
-
 			BeforeEach(func() {
-				srvMock.On("GetByLabel", "foo").Return(data, http.StatusBadRequest, errors.New(errorMsg))
+				srvMock.On("GetByLabel", "foo").Return("", http.StatusBadRequest, errors.New(errorMsg))
 			})
 
 			It("should return an error", func() {
-				res, resErr := http.Get(srvr.URL + "/api/kv/label/foo")
+				res, resErr := http.Get(url)
 				Expect(resErr).To(BeNil())
 				Expect(res.StatusCode).To(Equal(http.StatusBadRequest))
 
-				body, bodyErr := ioutil.ReadAll(res.Body)
-				Expect(body).ToNot(Equal(""))
-				Expect(bodyErr).To(BeNil())
+				actualJSON, _ := ioutil.ReadAll(res.Body)
+				expectedJSON := []uint8(`{"error":"boom"}`)
+				Expect(actualJSON).To(Equal(expectedJSON))
 				res.Body.Close()
-
-				jsonErr := json.Unmarshal(body, &apiResponse)
-				Expect(jsonErr).To(BeNil())
-				Expect(apiResponse.Error).To(Equal(errorMsg))
 			})
 		})
 	})
 
 	Describe("/api/kv/label/:label/version-id", func() {
-		When("something with the label exists", func() {
-			data := "bar"
-			apiResponse := api.VersionIDResponse{}
+		BeforeEach(func() {
+			url = fmt.Sprintf("%v/api/kv/label/foo/version-id", srvr.URL)
+		})
 
+		When("something with the label exists", func() {
 			BeforeEach(func() {
-				srvMock.On("GetVersionID", "foo").Return(data, http.StatusOK, nil)
+				srvMock.On("GetVersionID", "foo").Return("bar", http.StatusOK, nil)
 			})
 
 			It("should return some data", func() {
-				res, resErr := http.Get(srvr.URL + "/api/kv/label/foo/version-id")
+				res, resErr := http.Get(url)
 				Expect(resErr).To(BeNil())
 				Expect(res.StatusCode).To(Equal(http.StatusOK))
 
-				body, bodyErr := ioutil.ReadAll(res.Body)
-				Expect(body).ToNot(Equal(""))
-				Expect(bodyErr).To(BeNil())
+				actualJSON, _ := ioutil.ReadAll(res.Body)
+				expectedJSON := []uint8(`{"version_id":"bar"}`)
+				Expect(actualJSON).To(Equal(expectedJSON))
 				res.Body.Close()
-
-				jsonErr := json.Unmarshal(body, &apiResponse)
-				Expect(jsonErr).To(BeNil())
-				Expect(apiResponse.VersionID).To(Equal(data))
 			})
 		})
 
 		When("nothing with the label exists", func() {
-			data := ""
-			apiResponse := api.Error{}
-
 			BeforeEach(func() {
-				srvMock.On("GetVersionID", "foo").Return(data, http.StatusBadRequest, errors.New(errorMsg))
+				srvMock.On("GetVersionID", "foo").Return("", http.StatusBadRequest, errors.New(errorMsg))
 			})
 
 			It("should return an error", func() {
-				res, resErr := http.Get(srvr.URL + "/api/kv/label/foo/version-id")
+				res, resErr := http.Get(url)
 				Expect(resErr).To(BeNil())
 				Expect(res.StatusCode).To(Equal(http.StatusBadRequest))
 
-				body, bodyErr := ioutil.ReadAll(res.Body)
-				Expect(body).ToNot(Equal(""))
-				Expect(bodyErr).To(BeNil())
+				actualJSON, _ := ioutil.ReadAll(res.Body)
+				expectedJSON := []uint8(`{"error":"boom"}`)
+				Expect(actualJSON).To(Equal(expectedJSON))
 				res.Body.Close()
-
-				jsonErr := json.Unmarshal(body, &apiResponse)
-				Expect(jsonErr).To(BeNil())
-				Expect(apiResponse.Error).To(Equal(errorMsg))
 			})
 		})
 	})
 
 	Describe("/api/kv/prefix/:prefix", func() {
-		When("something with the prefix exists", func() {
-			data := []api.LabelObject{}
-			apiResponse := api.ListObjectsResponse{}
+		BeforeEach(func() {
+			url = fmt.Sprintf("%v/api/kv/prefix/foo", srvr.URL)
+		})
 
+		When("something with the prefix exists", func() {
 			BeforeEach(func() {
 				obj := api.LabelObject{
 					Label:  "foo",
 					Object: "bar",
 				}
+				data := []api.LabelObject{}
 				data = append(data, obj)
 				srvMock.On("GetByPrefix", "foo").Return(data, http.StatusOK, nil)
 			})
 
 			It("should return some data", func() {
-				res, resErr := http.Get(srvr.URL + "/api/kv/prefix/foo")
+				res, resErr := http.Get(url)
 				Expect(resErr).To(BeNil())
 				Expect(res.StatusCode).To(Equal(http.StatusOK))
 
-				body, bodyErr := ioutil.ReadAll(res.Body)
-				Expect(body).ToNot(Equal(""))
-				Expect(bodyErr).To(BeNil())
+				actualJSON, _ := ioutil.ReadAll(res.Body)
+				expectedJSON := []uint8(`{"pairs":[{"label":"foo","object":"bar"}]}`)
+				Expect(actualJSON).To(Equal(expectedJSON))
 				res.Body.Close()
-
-				jsonErr := json.Unmarshal(body, &apiResponse)
-				Expect(jsonErr).To(BeNil())
-				Expect(apiResponse.Pairs).To(Equal(data))
 			})
 		})
 
 		When("nothing with the prefix exists", func() {
-			apiResponse := api.Error{}
-
 			BeforeEach(func() {
 				srvMock.On("GetByPrefix", "foo").Return(nil, http.StatusBadRequest, errors.New(errorMsg))
 			})
 
 			It("should return an error", func() {
-				res, resErr := http.Get(srvr.URL + "/api/kv/prefix/foo")
+				res, resErr := http.Get(url)
 				Expect(resErr).To(BeNil())
 				Expect(res.StatusCode).To(Equal(http.StatusBadRequest))
 
-				body, bodyErr := ioutil.ReadAll(res.Body)
-				Expect(body).ToNot(Equal(""))
-				Expect(bodyErr).To(BeNil())
+				actualJSON, _ := ioutil.ReadAll(res.Body)
+				expectedJSON := []uint8(`{"error":"boom"}`)
+				Expect(actualJSON).To(Equal(expectedJSON))
 				res.Body.Close()
-
-				jsonErr := json.Unmarshal(body, &apiResponse)
-				Expect(jsonErr).To(BeNil())
-				Expect(apiResponse.Error).To(Equal(errorMsg))
 			})
 		})
 	})
 
 	Describe("/api/kv/prefix/:prefix/version-id", func() {
-		When("something with the prefix exists", func() {
-			data := []api.LabelVersionID{}
-			apiResponse := api.ListVersionIDsResponse{}
+		BeforeEach(func() {
+			url = fmt.Sprintf("%v/api/kv/prefix/foo/version-id", srvr.URL)
+		})
 
+		When("something with the prefix exists", func() {
 			BeforeEach(func() {
 				obj := api.LabelVersionID{
 					Label:     "foo",
 					VersionID: "bar",
 				}
+				data := []api.LabelVersionID{}
 				data = append(data, obj)
 				srvMock.On("GetVersionIDByPrefix", "foo").Return(data, http.StatusOK, nil)
 			})
 
 			It("should return some data", func() {
-				res, resErr := http.Get(srvr.URL + "/api/kv/prefix/foo/version-id")
+				res, resErr := http.Get(url)
 				Expect(resErr).To(BeNil())
 				Expect(res.StatusCode).To(Equal(http.StatusOK))
 
-				body, bodyErr := ioutil.ReadAll(res.Body)
-				Expect(body).ToNot(Equal(""))
-				Expect(bodyErr).To(BeNil())
+				actualJSON, _ := ioutil.ReadAll(res.Body)
+				expectedJSON := []uint8(`{"pairs":[{"label":"foo","version_id":"bar"}]}`)
+				Expect(actualJSON).To(Equal(expectedJSON))
 				res.Body.Close()
-
-				jsonErr := json.Unmarshal(body, &apiResponse)
-				Expect(jsonErr).To(BeNil())
-				Expect(apiResponse.Pairs).To(Equal(data))
 			})
 		})
 
 		When("nothing with the prefix exists", func() {
-			apiResponse := api.Error{}
-
 			BeforeEach(func() {
 				srvMock.On("GetVersionIDByPrefix", "foo").Return(nil, http.StatusBadRequest, errors.New(errorMsg))
 			})
 
 			It("should return an error", func() {
-				res, resErr := http.Get(srvr.URL + "/api/kv/prefix/foo/version-id")
+				res, resErr := http.Get(url)
 				Expect(resErr).To(BeNil())
 				Expect(res.StatusCode).To(Equal(http.StatusBadRequest))
 
-				body, bodyErr := ioutil.ReadAll(res.Body)
-				Expect(body).ToNot(Equal(""))
-				Expect(bodyErr).To(BeNil())
+				actualJSON, _ := ioutil.ReadAll(res.Body)
+				expectedJSON := []uint8(`{"error":"boom"}`)
+				Expect(actualJSON).To(Equal(expectedJSON))
 				res.Body.Close()
-
-				jsonErr := json.Unmarshal(body, &apiResponse)
-				Expect(jsonErr).To(BeNil())
-				Expect(apiResponse.Error).To(Equal(errorMsg))
 			})
 		})
 	})

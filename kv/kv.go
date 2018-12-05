@@ -25,7 +25,7 @@ type Service interface {
 	Set(key, value []byte) error
 }
 
-type kvservice struct {
+type kvService struct {
 	store *badger.DB
 }
 
@@ -34,7 +34,7 @@ type ObjectEntry struct {
 	VersionID []byte
 }
 
-func (s *kvservice) handleGet(m *service.Message) (*service.Message, error) {
+func (s *kvService) handleGet(m *service.Message) (*service.Message, error) {
 	req := &GetRequest{}
 	err := proto.Unmarshal(m.Payload, req)
 	if err != nil {
@@ -65,7 +65,7 @@ func (s *kvservice) handleGet(m *service.Message) (*service.Message, error) {
 	}, nil
 }
 
-func (s *kvservice) Get(key []byte) ([]byte, error) {
+func (s *kvService) Get(key []byte) ([]byte, error) {
 	var valueout []byte
 	err := s.store.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(key)
@@ -91,7 +91,7 @@ func (s *kvservice) Get(key []byte) ([]byte, error) {
 	return valueout, nil
 }
 
-func (s *kvservice) GetByPrefix(prefix []byte) ([]ObjectEntry, error) {
+func (s *kvService) GetByPrefix(prefix []byte) ([]ObjectEntry, error) {
 	entries := []ObjectEntry{}
 	err := s.store.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
@@ -124,7 +124,7 @@ func (s *kvservice) GetByPrefix(prefix []byte) ([]ObjectEntry, error) {
 	return entries, nil
 }
 
-func (s *kvservice) Handle(peerID uint64, m *service.Message) (*service.Message, error) {
+func (s *kvService) Handle(peerID uint64, m *service.Message) (*service.Message, error) {
 	switch Opcode(m.Opcode) {
 	case Opcode_GET:
 		return s.handleGet(m)
@@ -135,14 +135,14 @@ func (s *kvservice) Handle(peerID uint64, m *service.Message) (*service.Message,
 	}
 }
 
-func (s *kvservice) Set(key, value []byte) error {
+func (s *kvService) Set(key, value []byte) error {
 	return s.store.Update(func(txn *badger.Txn) error {
 		log.Error("adding new value for key", log.String("key", string(key)))
 		return txn.Set(key, value)
 	})
 }
 
-func New(cfg *Config) (*kvservice, error) {
+func New(cfg *Config) (*kvService, error) {
 	p := path.Join(cfg.RuntimeDir, badgerStorePath)
 	opts := badger.DefaultOptions
 	opts.Dir, opts.ValueDir = p, p
@@ -151,7 +151,7 @@ func New(cfg *Config) (*kvservice, error) {
 		return nil, err
 	}
 
-	return &kvservice{
+	return &kvService{
 		store: store,
 	}, nil
 }

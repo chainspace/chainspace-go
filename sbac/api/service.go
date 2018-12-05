@@ -16,7 +16,7 @@ import (
 )
 
 type service struct {
-	checker    *checker.Service
+	checker    checker.Service
 	checkerclt *checkerclient.Client
 	nodeID     uint64
 	sbac       *sbac.ServiceSBAC

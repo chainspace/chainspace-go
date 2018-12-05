@@ -10,18 +10,23 @@ import (
 
 // Controller is the Key-Value controller
 type controller struct {
-	service *service
+	service Service
 }
 
 // Controller is the Key-Value controller
 type Controller interface {
-	Check(c *gin.Context)
+	// Check(c *gin.Context)
 	RegisterRoutes(router *gin.Engine)
 }
 
+// NewWithService returns a new api.Controller using given service
+func NewWithService(service Service) Controller {
+	return &controller{service}
+}
+
 // New returns a new kv.Controller
-func New(checkr *checker.Service, nodeID uint64) Controller {
-	return &controller{newService(checkr, nodeID)}
+func New(checkr checker.Service, nodeID uint64) Controller {
+	return &controller{NewService(checkr, nodeID, Validator{})}
 }
 
 func (controller *controller) RegisterRoutes(router *gin.Engine) {
@@ -53,5 +58,6 @@ func (controller *controller) Check(c *gin.Context) {
 		c.JSON(status, Error{err.Error()})
 		return
 	}
+
 	c.JSON(http.StatusOK, checkedRes)
 }
