@@ -133,9 +133,15 @@ func (w *worker) checkTransaction(ctx context.Context, tx []byte) map[uint64]str
 
 func (w *worker) makeTransactionPayload(
 	ctx context.Context, seed []string, labels [][]string, objsdata []interface{}) []byte {
-	outputs := []interface{}{}
+	outputs := []sbacapi.OutputObject{}
 	for i := 0; i < objects; i += 1 {
-		outputs = append(outputs, outputty{labels[i], randSeq(30)})
+		obj := outputty{labels[i], randSeq(30)}
+		b, _ := json.Marshal(&obj)
+		out := sbacapi.OutputObject{
+			Labels: labels[i],
+			Object: string(b),
+		}
+		outputs = append(outputs, out)
 	}
 	mappings := map[string]interface{}{}
 	for i, _ := range objsdata {
@@ -148,7 +154,6 @@ func (w *worker) makeTransactionPayload(
 				Procedure:             procedure,
 				InputObjectVersionIDs: seed,
 				OutputObjects:         outputs,
-				Labels:                labels,
 			},
 		},
 		Mappings: mappings,

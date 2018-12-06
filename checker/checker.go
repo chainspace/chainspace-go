@@ -57,7 +57,7 @@ func (s *checkerService) check(
 		log.Error("checker: marshal error", fld.Err(err))
 		return nil, fmt.Errorf("marshal error [err=%v]", err)
 	}
-	res := &CheckResponse{ok, s.privkey.Sign(txbytes)}
+	res := &CheckResponse{Ok: ok, Signature: s.privkey.Sign(txbytes)}
 	resbytes, err := proto.Marshal(res)
 	if err != nil {
 		log.Error("checker: marshal error", fld.Err(err))

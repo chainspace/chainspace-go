@@ -47,17 +47,21 @@ func (tx *Transaction) ToSBAC(validator TransactionValidator) (*sbac.Transaction
 // Dependency ...
 type Dependency Trace
 
+type OutputObject struct {
+	Labels []string `json:"labels"`
+	Object string   `json:"object"`
+}
+
 // Trace ...
 type Trace struct {
-	ContractID               string        `json:"contractId"`
-	Dependencies             []Dependency  `json:"dependencies"`
-	InputObjectVersionIDs    []string      `json:"inputObjectVersionIds"`
-	InputReferenceVersionIDs []string      `json:"inputReferenceVersionIds"`
-	Labels                   [][]string    `json:"labels"`
-	OutputObjects            []interface{} `json:"outputObjects"`
-	Parameters               []interface{} `json:"parameters"`
-	Procedure                string        `json:"procedure"`
-	Returns                  []interface{} `json:"returns"`
+	ContractID               string         `json:"contractId"`
+	Dependencies             []Dependency   `json:"dependencies"`
+	InputObjectVersionIDs    []string       `json:"inputObjectVersionIds"`
+	InputReferenceVersionIDs []string       `json:"inputReferenceVersionIds"`
+	OutputObjects            []OutputObject `json:"outputObjects"`
+	Parameters               []string       `json:"parameters"`
+	Procedure                string         `json:"procedure"`
+	Returns                  []string       `json:"returns"`
 }
 
 func b64DecodeStrings(s []string) [][]byte {
@@ -69,11 +73,10 @@ func b64DecodeStrings(s []string) [][]byte {
 	return out
 }
 
-func jsonMarshalList(s []interface{}) [][]byte {
+func toByteSlice(s []string) [][]byte {
 	out := make([][]byte, 0, len(s))
 	for _, v := range s {
-		bytes, _ := json.Marshal(v)
-		out = append(out, bytes)
+		out = append(out, []byte(v))
 	}
 	return out
 }
@@ -101,6 +104,13 @@ func (tc *Trace) ToSBAC(mappings map[string]interface{}) *sbac.Trace {
 		inputReferences = append(inputReferences, bobject)
 	}
 
+	outputObjects := make([]*sbac.OutputObject, 0, len(tc.OutputObjects))
+	for _, v := range tc.OutputObjects {
+		obj := &sbac.OutputObject{Labels: v.Labels, Object: []byte(v.Object)}
+		outputObjects = append(outputObjects, obj)
+
+	}
+
 	return &sbac.Trace{
 		ContractID:               tc.ContractID,
 		Dependencies:             deps,
@@ -108,10 +118,9 @@ func (tc *Trace) ToSBAC(mappings map[string]interface{}) *sbac.Trace {
 		InputObjectVersionIDs:    b64DecodeStrings(tc.InputObjectVersionIDs),
 		InputReferences:          inputReferences,
 		InputReferenceVersionIDs: b64DecodeStrings(tc.InputReferenceVersionIDs),
-		Labels:                   sbac.StringsSlice{}.FromSlice(tc.Labels),
-		OutputObjects:            jsonMarshalList(tc.OutputObjects),
-		Parameters:               jsonMarshalList(tc.Parameters),
+		OutputObjects:            outputObjects,
+		Parameters:               toByteSlice(tc.Parameters),
 		Procedure:                tc.Procedure,
-		Returns:                  jsonMarshalList(tc.Returns),
+		Returns:                  toByteSlice(tc.Returns),
 	}
 }

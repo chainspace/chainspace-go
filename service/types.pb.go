@@ -51,19 +51,43 @@ var CONNECTION_value = map[string]int32{
 func (x CONNECTION) String() string {
 	return proto.EnumName(CONNECTION_name, int32(x))
 }
-func (CONNECTION) EnumDescriptor() ([]byte, []int) { return fileDescriptorTypes, []int{0} }
-
-type Hello struct {
-	Agent     string     `protobuf:"bytes,1,opt,name=agent,proto3" json:"agent,omitempty"`
-	Payload   []byte     `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
-	Signature []byte     `protobuf:"bytes,3,opt,name=signature,proto3" json:"signature,omitempty"`
-	Type      CONNECTION `protobuf:"varint,4,opt,name=type,proto3,enum=service.CONNECTION" json:"type,omitempty"`
+func (CONNECTION) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_types_f74aa066621a3aa1, []int{0}
 }
 
-func (m *Hello) Reset()                    { *m = Hello{} }
-func (m *Hello) String() string            { return proto.CompactTextString(m) }
-func (*Hello) ProtoMessage()               {}
-func (*Hello) Descriptor() ([]byte, []int) { return fileDescriptorTypes, []int{0} }
+type Hello struct {
+	Agent                string     `protobuf:"bytes,1,opt,name=agent,proto3" json:"agent,omitempty"`
+	Payload              []byte     `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
+	Signature            []byte     `protobuf:"bytes,3,opt,name=signature,proto3" json:"signature,omitempty"`
+	Type                 CONNECTION `protobuf:"varint,4,opt,name=type,proto3,enum=service.CONNECTION" json:"type,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}   `json:"-"`
+	XXX_unrecognized     []byte     `json:"-"`
+	XXX_sizecache        int32      `json:"-"`
+}
+
+func (m *Hello) Reset()         { *m = Hello{} }
+func (m *Hello) String() string { return proto.CompactTextString(m) }
+func (*Hello) ProtoMessage()    {}
+func (*Hello) Descriptor() ([]byte, []int) {
+	return fileDescriptor_types_f74aa066621a3aa1, []int{0}
+}
+func (m *Hello) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_Hello.Unmarshal(m, b)
+}
+func (m *Hello) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_Hello.Marshal(b, m, deterministic)
+}
+func (dst *Hello) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Hello.Merge(dst, src)
+}
+func (m *Hello) XXX_Size() int {
+	return xxx_messageInfo_Hello.Size(m)
+}
+func (m *Hello) XXX_DiscardUnknown() {
+	xxx_messageInfo_Hello.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Hello proto.InternalMessageInfo
 
 func (m *Hello) GetAgent() string {
 	if m != nil {
@@ -94,16 +118,38 @@ func (m *Hello) GetType() CONNECTION {
 }
 
 type HelloInfo struct {
-	Client    uint64    `protobuf:"varint,1,opt,name=client,proto3" json:"client,omitempty"`
-	Nonce     []byte    `protobuf:"bytes,2,opt,name=nonce,proto3" json:"nonce,omitempty"`
-	Server    uint64    `protobuf:"varint,3,opt,name=server,proto3" json:"server,omitempty"`
-	Timestamp time.Time `protobuf:"bytes,4,opt,name=timestamp,stdtime" json:"timestamp"`
+	Client               uint64    `protobuf:"varint,1,opt,name=client,proto3" json:"client,omitempty"`
+	Nonce                []byte    `protobuf:"bytes,2,opt,name=nonce,proto3" json:"nonce,omitempty"`
+	Server               uint64    `protobuf:"varint,3,opt,name=server,proto3" json:"server,omitempty"`
+	Timestamp            time.Time `protobuf:"bytes,4,opt,name=timestamp,stdtime" json:"timestamp"`
+	XXX_NoUnkeyedLiteral struct{}  `json:"-"`
+	XXX_unrecognized     []byte    `json:"-"`
+	XXX_sizecache        int32     `json:"-"`
 }
 
-func (m *HelloInfo) Reset()                    { *m = HelloInfo{} }
-func (m *HelloInfo) String() string            { return proto.CompactTextString(m) }
-func (*HelloInfo) ProtoMessage()               {}
-func (*HelloInfo) Descriptor() ([]byte, []int) { return fileDescriptorTypes, []int{1} }
+func (m *HelloInfo) Reset()         { *m = HelloInfo{} }
+func (m *HelloInfo) String() string { return proto.CompactTextString(m) }
+func (*HelloInfo) ProtoMessage()    {}
+func (*HelloInfo) Descriptor() ([]byte, []int) {
+	return fileDescriptor_types_f74aa066621a3aa1, []int{1}
+}
+func (m *HelloInfo) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_HelloInfo.Unmarshal(m, b)
+}
+func (m *HelloInfo) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_HelloInfo.Marshal(b, m, deterministic)
+}
+func (dst *HelloInfo) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_HelloInfo.Merge(dst, src)
+}
+func (m *HelloInfo) XXX_Size() int {
+	return xxx_messageInfo_HelloInfo.Size(m)
+}
+func (m *HelloInfo) XXX_DiscardUnknown() {
+	xxx_messageInfo_HelloInfo.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_HelloInfo proto.InternalMessageInfo
 
 func (m *HelloInfo) GetClient() uint64 {
 	if m != nil {
@@ -134,16 +180,38 @@ func (m *HelloInfo) GetTimestamp() time.Time {
 }
 
 type Message struct {
-	ID      uint64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Error   string `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
-	Opcode  int32  `protobuf:"varint,3,opt,name=opcode,proto3" json:"opcode,omitempty"`
-	Payload []byte `protobuf:"bytes,4,opt,name=payload,proto3" json:"payload,omitempty"`
+	ID                   uint64   `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Error                string   `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	Opcode               int32    `protobuf:"varint,3,opt,name=opcode,proto3" json:"opcode,omitempty"`
+	Payload              []byte   `protobuf:"bytes,4,opt,name=payload,proto3" json:"payload,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *Message) Reset()                    { *m = Message{} }
-func (m *Message) String() string            { return proto.CompactTextString(m) }
-func (*Message) ProtoMessage()               {}
-func (*Message) Descriptor() ([]byte, []int) { return fileDescriptorTypes, []int{2} }
+func (m *Message) Reset()         { *m = Message{} }
+func (m *Message) String() string { return proto.CompactTextString(m) }
+func (*Message) ProtoMessage()    {}
+func (*Message) Descriptor() ([]byte, []int) {
+	return fileDescriptor_types_f74aa066621a3aa1, []int{2}
+}
+func (m *Message) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_Message.Unmarshal(m, b)
+}
+func (m *Message) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_Message.Marshal(b, m, deterministic)
+}
+func (dst *Message) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Message.Merge(dst, src)
+}
+func (m *Message) XXX_Size() int {
+	return xxx_messageInfo_Message.Size(m)
+}
+func (m *Message) XXX_DiscardUnknown() {
+	xxx_messageInfo_Message.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Message proto.InternalMessageInfo
 
 func (m *Message) GetID() uint64 {
 	if m != nil {
@@ -180,9 +248,9 @@ func init() {
 	proto.RegisterEnum("service.CONNECTION", CONNECTION_name, CONNECTION_value)
 }
 
-func init() { proto.RegisterFile("service/types.proto", fileDescriptorTypes) }
+func init() { proto.RegisterFile("service/types.proto", fileDescriptor_types_f74aa066621a3aa1) }
 
-var fileDescriptorTypes = []byte{
+var fileDescriptor_types_f74aa066621a3aa1 = []byte{
 	// 388 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x54, 0x90, 0xd1, 0xca, 0x9b, 0x30,
 	0x18, 0x86, 0x7f, 0xfd, 0xad, 0xd6, 0xaf, 0xdb, 0x90, 0x74, 0x0c, 0x29, 0x03, 0x4b, 0x4f, 0x56,

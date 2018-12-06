@@ -24,14 +24,18 @@ type Checker struct {
 	addr          string
 }
 
+type outputObject struct {
+	Labels []string `json:"labels"`
+	Object string   `json:"object"`
+}
+
 type trace struct {
-	Dependencies    []trace       `json:"dependencies"`
-	Inputs          []interface{} `json:"inputs"`
-	Labels          [][]string    `json:"labels"`
-	Outputs         []interface{} `json:"outputs"`
-	Parameters      []interface{} `json:"parameters"`
-	ReferenceInputs []interface{} `json:"referenceInputs"`
-	Returns         []interface{} `json:"returns"`
+	Dependencies    []trace        `json:"dependencies"`
+	Inputs          []string       `json:"inputs"`
+	Outputs         []outputObject `json:"outputs"`
+	Parameters      []string       `json:"parameters"`
+	ReferenceInputs []string       `json:"referenceInputs"`
+	Returns         []string       `json:"returns"`
 }
 
 func encodeToStrings(ls [][]byte) []string {
@@ -43,7 +47,15 @@ func encodeToStrings(ls [][]byte) []string {
 	return out
 }
 
-func makeTrace(inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string, traces []*sbac.Trace) trace {
+func toStringSlice(s [][]byte) []string {
+	out := make([]string, 0, len(s))
+	for _, v := range s {
+		out = append(out, string(v))
+	}
+	return out
+}
+
+func makeTrace(inputs, refInputs, parameters [][]byte, outputs []*sbac.OutputObject, returns [][]byte, traces []*sbac.Trace) trace {
 	deps := []trace{}
 	for _, t := range traces {
 		t := t
@@ -53,18 +65,22 @@ func makeTrace(inputs, refInputs, parameters, outputs, returns [][]byte, labels 
 			t.Parameters,
 			t.OutputObjects,
 			t.Returns,
-			sbac.StringsSlice(t.Labels).AsSlice(),
 			t.Dependencies)
 		deps = append(deps, trace)
 	}
 
+	outputObjects := make([]outputObject, 0, len(outputs))
+	for _, v := range outputs {
+		outputObjects = append(outputObjects,
+			outputObject{v.Labels, string(v.Object)})
+	}
+
 	return trace{
-		Inputs:          unmarshalIfaceSlice(inputs),
-		ReferenceInputs: unmarshalIfaceSlice(refInputs),
-		Parameters:      unmarshalIfaceSlice(parameters),
-		Outputs:         unmarshalIfaceSlice(outputs),
-		Returns:         unmarshalIfaceSlice(returns),
-		Labels:          labels,
+		Inputs:          toStringSlice(inputs),
+		ReferenceInputs: toStringSlice(refInputs),
+		Parameters:      toStringSlice(parameters),
+		Outputs:         outputObjects,
+		Returns:         toStringSlice(returns),
 		Dependencies:    deps,
 	}
 }
@@ -83,8 +99,9 @@ func unmarshalIfaceSlice(ls [][]byte) []interface{} {
 }
 
 func (c Checker) Check(
-	inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string, dependencies []*sbac.Trace) bool {
-	body := makeTrace(inputs, refInputs, parameters, outputs, returns, labels, dependencies)
+	inputs, refInputs, parameters [][]byte, outputs []*sbac.OutputObject,
+	returns [][]byte, dependencies []*sbac.Trace) bool {
+	body := makeTrace(inputs, refInputs, parameters, outputs, returns, dependencies)
 	bbody, _ := json.Marshal(body)
 	payload := bytes.NewBuffer(bbody)
 

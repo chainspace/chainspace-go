@@ -23,8 +23,9 @@ message Transaction {
   repeated Trace traces = 1;
 }
 
-message strings {
-  repeated string strs = 1;
+message OutputObject {
+  repeated string labels = 1;
+  bytes object = 2;
 }
 
 message Trace {
@@ -32,10 +33,9 @@ message Trace {
   string procedure = 2;
   repeated bytes inputObjectVersionIDs = 3 [(gogoproto.customname) = "InputObjectVersionIDs"];
   repeated bytes inputReferenceVersionIDs = 4 [(gogoproto.customname) = "InputReferenceVersionIDs"];
-  repeated bytes outputObjects = 5;
+  repeated OutputObject outputObjects = 5;
   repeated bytes parameters = 6;
   repeated bytes returns = 7;
-  repeated strings labels = 8;
   repeated Trace dependencies = 9;
   repeated bytes inputObjects = 10;
   repeated bytes inputReferences = 11;
