@@ -10,6 +10,7 @@ import (
 
 	"chainspace.io/prototype/checker/api"
 	"chainspace.io/prototype/checker/api/mocks"
+	sbacapi "chainspace.io/prototype/sbac/api"
 
 	"github.com/gin-gonic/gin"
 	. "github.com/onsi/ginkgo"
@@ -23,7 +24,7 @@ var _ = Describe("Controller", func() {
 	var jsonContentType = "application/json"
 	var srvMock *mocks.Service
 	var srvr *httptest.Server
-	var tx api.Transaction
+	var tx sbacapi.Transaction
 	var url string
 
 	BeforeEach(func() {
@@ -43,7 +44,7 @@ var _ = Describe("Controller", func() {
 
 	Describe("/api/checker/check", func() {
 		BeforeEach(func() {
-			tx = api.Transaction{}
+			tx = sbacapi.Transaction{}
 			url = fmt.Sprintf("%v/api/checker/check", srvr.URL)
 		})
 
@@ -79,7 +80,7 @@ var _ = Describe("Controller", func() {
 
 		When("everything just works", func() {
 			BeforeEach(func() {
-				someting := api.Transaction{}
+				someting := sbacapi.Transaction{}
 				srvMock.On("Check", mock.AnythingOfType("*context.cancelCtx"), &tx).Return(someting, http.StatusBadRequest, nil)
 			})
 

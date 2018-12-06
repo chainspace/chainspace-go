@@ -2,7 +2,8 @@
 
 package mocks
 
-import api "chainspace.io/prototype/checker/api"
+import api "chainspace.io/prototype/sbac/api"
+
 import context "context"
 import mock "github.com/stretchr/testify/mock"
 

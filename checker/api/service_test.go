@@ -6,8 +6,9 @@ import (
 	"net/http"
 
 	"chainspace.io/prototype/checker/api"
-	apiMocks "chainspace.io/prototype/checker/api/mocks"
 	checkerMocks "chainspace.io/prototype/checker/mocks"
+	sbacapi "chainspace.io/prototype/sbac/api"
+	sbacapiMocks "chainspace.io/prototype/sbac/api/mocks"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
@@ -16,18 +17,18 @@ import (
 var _ = Describe("Service", func() {
 	var checkerServiceMock *checkerMocks.Service
 	var nodeID uint64
-	var validatorMock *apiMocks.TransactionValidator
+	var validatorMock *sbacapiMocks.TransactionValidator
 	var srv api.Service
-	var tc api.Trace
-	var tx api.Transaction
+	var tc sbacapi.Trace
+	var tx sbacapi.Transaction
 
 	BeforeEach(func() {
 		checkerServiceMock = &checkerMocks.Service{}
 		nodeID = uint64(2)
-		validatorMock = &apiMocks.TransactionValidator{}
+		validatorMock = &sbacapiMocks.TransactionValidator{}
 		srv = api.NewService(checkerServiceMock, nodeID, validatorMock)
-		tc = api.Trace{}
-		tx = api.Transaction{}
+		tc = sbacapi.Trace{}
+		tx = sbacapi.Transaction{}
 	})
 
 	Describe("Check", func() {

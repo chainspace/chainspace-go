@@ -104,7 +104,7 @@ func cmdSBAC(args []string, usage string) {
 			log.Fatal("Invalid payload format for transaction", fld.Err(err))
 		}
 
-		ttx, _ := tx.ToSBAC()
+		ttx, _ := tx.ToSBAC(sbacapi.Validator{})
 		_ = ttx
 		// objects, err := sbacclt.SendTransaction(ttx, map[uint64][]byte{})
 		if err != nil {

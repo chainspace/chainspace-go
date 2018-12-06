@@ -59,7 +59,7 @@ func cmdCheck(args []string, usage string) {
 }
 
 func typeCheckOnly(tx *sbacapi.Transaction) bool {
-	t, err := tx.ToSBAC()
+	t, err := tx.ToSBAC(sbacapi.Validator{})
 	if err != nil {
 		log.Fatal("invalid transaction", fld.Err(err))
 	}

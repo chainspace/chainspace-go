@@ -60,15 +60,18 @@ type Transaction struct {
 }
 
 // ToSBAC ...
-func (ct *Transaction) ToSBAC() (*sbac.Transaction, error) {
-	traces := make([]*sbac.Trace, 0, len(ct.Traces))
-	for _, t := range ct.Traces {
-		ttrace, err := t.ToSBAC(ct.Mappings)
-		if err != nil {
-			return nil, err
-		}
-		traces = append(traces, ttrace)
+func (tx *Transaction) ToSBAC(validator TransactionValidator) (*sbac.Transaction, error) {
+	err := validator.Validate(tx)
+	if err != nil {
+		return nil, err
 	}
+
+	traces := make([]*sbac.Trace, 0, len(tx.Traces))
+	for _, tc := range tx.Traces {
+		sbacTrace := tc.ToSBAC(tx.Mappings)
+		traces = append(traces, sbacTrace)
+	}
+
 	return &sbac.Transaction{
 		Traces: traces,
 	}, nil
@@ -88,7 +91,6 @@ type Trace struct {
 	Dependencies             []Dependency   `json:"dependencies"`
 	InputObjectVersionIDs    []string       `json:"inputObjectVersionIds"`
 	InputReferenceVersionIDs []string       `json:"inputReferenceVersionIds"`
-	Labels                   [][]string     `json:"labels"`
 	OutputObjects            []OutputObject `json:"outputObjects"`
 	Parameters               []string       `json:"parameters"`
 	Procedure                string         `json:"procedure"`
@@ -113,57 +115,47 @@ func toByteSlice(s []string) [][]byte {
 }
 
 // ToSBAC ...
-func (ct *Trace) ToSBAC(mappings map[string]interface{}) (*sbac.Trace, error) {
-	deps := make([]*sbac.Trace, 0, len(ct.Dependencies))
-	for _, d := range ct.Dependencies {
+func (tc *Trace) ToSBAC(mappings map[string]interface{}) *sbac.Trace {
+	deps := make([]*sbac.Trace, 0, len(tc.Dependencies))
+	for _, d := range tc.Dependencies {
 		t := Trace(d)
-		ttrace, err := t.ToSBAC(mappings)
-		if err != nil {
-			return nil, err
-		}
+		ttrace := t.ToSBAC(mappings)
 		deps = append(deps, ttrace)
 	}
 
-	inputObjects := make([][]byte, 0, len(ct.InputObjectVersionIDs))
-	for _, v := range ct.InputObjectVersionIDs {
-		object, ok := mappings[v]
-		if !ok {
-			return nil, fmt.Errorf("missing object mapping for key [%v]", v)
-		}
+	inputObjects := make([][]byte, 0, len(tc.InputObjectVersionIDs))
+	for _, v := range tc.InputObjectVersionIDs {
+		object := mappings[v]
 		bobject, _ := json.Marshal(object)
 		inputObjects = append(inputObjects, bobject)
-
 	}
-	inputReferences := make([][]byte, 0, len(ct.InputReferenceVersionIDs))
-	for _, v := range ct.InputReferenceVersionIDs {
-		object, ok := mappings[v]
-		if !ok {
-			return nil, fmt.Errorf("missing reference mapping for key [%v]", v)
-		}
+
+	inputReferences := make([][]byte, 0, len(tc.InputReferenceVersionIDs))
+	for _, v := range tc.InputReferenceVersionIDs {
+		object := mappings[v]
 		bobject, _ := json.Marshal(object)
 		inputReferences = append(inputReferences, bobject)
-
 	}
 
-	outputObjects := make([]*sbac.OutputObject, 0, len(ct.OutputObjects))
-	for _, v := range ct.OutputObjects {
+	outputObjects := make([]*sbac.OutputObject, 0, len(tc.OutputObjects))
+	for _, v := range tc.OutputObjects {
 		obj := &sbac.OutputObject{Labels: v.Labels, Object: []byte(v.Object)}
 		outputObjects = append(outputObjects, obj)
 
 	}
 
 	return &sbac.Trace{
-		ContractID:               ct.ContractID,
+		ContractID:               tc.ContractID,
 		Dependencies:             deps,
 		InputObjects:             inputObjects,
-		InputObjectVersionIDs:    b64DecodeStrings(ct.InputObjectVersionIDs),
+		InputObjectVersionIDs:    b64DecodeStrings(tc.InputObjectVersionIDs),
 		InputReferences:          inputReferences,
-		InputReferenceVersionIDs: b64DecodeStrings(ct.InputReferenceVersionIDs),
+		InputReferenceVersionIDs: b64DecodeStrings(tc.InputReferenceVersionIDs),
 		OutputObjects:            outputObjects,
-		Parameters:               toByteSlice(ct.Parameters),
-		Procedure:                ct.Procedure,
-		Returns:                  toByteSlice(ct.Returns),
-	}, nil
+		Parameters:               toByteSlice(tc.Parameters),
+		Procedure:                tc.Procedure,
+		Returns:                  toByteSlice(tc.Returns),
+	}
 }
 
 // BuildObjectResponse ...

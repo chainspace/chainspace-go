@@ -23,6 +23,7 @@ type service struct {
 	sbacclt    sbacclient.Client
 	shardID    uint64
 	top        *network.Topology
+	validator  TransactionValidator
 }
 
 // newService ...
@@ -119,7 +120,7 @@ func (srv *service) Add(ctx context.Context, tx *Transaction) (interface{}, int,
 		}
 	}
 
-	sbactx, err := tx.ToSBAC()
+	sbactx, err := tx.ToSBAC(srv.validator)
 	if err != nil {
 		return nil, http.StatusBadRequest, err
 	}
@@ -145,7 +146,7 @@ func (srv *service) AddChecked(ctx context.Context, tx *Transaction) (interface{
 		}
 	}
 
-	sbactx, err := tx.ToSBAC()
+	sbactx, err := tx.ToSBAC(srv.validator)
 	if err != nil {
 		return nil, http.StatusBadRequest, err
 	}

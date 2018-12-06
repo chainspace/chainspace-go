@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"chainspace.io/prototype/checker"
+	sbacapi "chainspace.io/prototype/sbac/api"
 
 	"github.com/gin-gonic/gin"
 )
@@ -26,7 +27,7 @@ func NewWithService(service Service) Controller {
 
 // New returns a new kv.Controller
 func New(checkr checker.Service, nodeID uint64) Controller {
-	return &controller{NewService(checkr, nodeID, Validator{})}
+	return &controller{NewService(checkr, nodeID, sbacapi.Validator{})}
 }
 
 func (controller *controller) RegisterRoutes(router *gin.Engine) {
@@ -47,7 +48,7 @@ func (controller *controller) RegisterRoutes(router *gin.Engine) {
 // @Failure 500 {object} api.Error
 // @Router /api/checker/check [post]
 func (controller *controller) Check(c *gin.Context) {
-	tx := Transaction{}
+	tx := sbacapi.Transaction{}
 	if err := c.BindJSON(&tx); err != nil {
 		c.JSON(http.StatusBadRequest, Error{err.Error()})
 		return

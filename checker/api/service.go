@@ -7,22 +7,23 @@ import (
 	"net/http"
 
 	"chainspace.io/prototype/checker"
+	sbacapi "chainspace.io/prototype/sbac/api"
 )
 
 // Service is the Key-Value srv
 type service struct {
 	checkr    checker.Service
 	nodeID    uint64
-	validator TransactionValidator
+	validator sbacapi.TransactionValidator
 }
 
 // Service interface
 type Service interface {
-	Check(ctx context.Context, tx *Transaction) (interface{}, int, error)
+	Check(ctx context.Context, tx *sbacapi.Transaction) (interface{}, int, error)
 }
 
 // NewService ...
-func NewService(checkr checker.Service, nodeID uint64, validator TransactionValidator) Service {
+func NewService(checkr checker.Service, nodeID uint64, validator sbacapi.TransactionValidator) Service {
 	return &service{
 		checkr:    checkr,
 		nodeID:    nodeID,
@@ -31,7 +32,7 @@ func NewService(checkr checker.Service, nodeID uint64, validator TransactionVali
 }
 
 // Check grabs a value from the store based on its label
-func (srv *service) Check(ctx context.Context, tx *Transaction) (interface{}, int, error) {
+func (srv *service) Check(ctx context.Context, tx *sbacapi.Transaction) (interface{}, int, error) {
 	if len(tx.Traces) <= 0 {
 		return nil, http.StatusBadRequest, errors.New("Transaction should have at least one trace")
 	}

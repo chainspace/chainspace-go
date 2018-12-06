@@ -1,20 +1,22 @@
 package api_test
 
-import "chainspace.io/prototype/checker/api"
+import (
+	sbacapi "chainspace.io/prototype/sbac/api"
+)
 
-var transactionFixture = api.Transaction{
+var transactionFixture = sbacapi.Transaction{
 	Mappings: map[string]interface{}{
 		"4S8G4OhhLcXFgzXvnFoGPdEC/QtjbX6zQHJmeevOPhE=": "foobar",
 	},
 	Signatures: nil,
-	Traces: []api.Trace{{
+	Traces: []sbacapi.Trace{{
 		ContractID: "dummy",
-		Dependencies: []api.Dependency{{
+		Dependencies: []sbacapi.Dependency{{
 			ContractID:               "dummy",
 			Dependencies:             nil,
 			InputObjectVersionIDs:    []string{"4S8G4OhhLcXFgzXvnFoGPdEC/QtjbX6zQHJmeevOPhE="},
 			InputReferenceVersionIDs: []string{"4S8G4OhhLcXFgzXvnFoGPdEC/QtjbX6zQHJmeevOPhE="},
-			OutputObjects: []api.OutputObject{
+			OutputObjects: []sbacapi.OutputObject{
 				{
 					Labels: []string{"foo"},
 					Object: "thisissomethingmagical!",
@@ -26,7 +28,7 @@ var transactionFixture = api.Transaction{
 		}},
 		InputObjectVersionIDs:    []string{"4S8G4OhhLcXFgzXvnFoGPdEC/QtjbX6zQHJmeevOPhE="},
 		InputReferenceVersionIDs: []string{"4S8G4OhhLcXFgzXvnFoGPdEC/QtjbX6zQHJmeevOPhE="},
-		OutputObjects: []api.OutputObject{
+		OutputObjects: []sbacapi.OutputObject{
 			{
 				Labels: []string{"foo"},
 				Object: "thisissomethingmagical!",
