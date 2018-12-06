@@ -1,3 +1,4 @@
+basePath: '{{.BasePath}}'
 definitions:
   api.CheckTransactionResponse:
     properties:
@@ -8,8 +9,7 @@ definitions:
       signature:
         type: string
     type: object
-  api.Dependency:
-    type: object
+  api.Dependency: {}
   api.Error:
     properties:
       error:
@@ -123,6 +123,7 @@ definitions:
       versionId:
         type: string
     type: object
+host: '{{.Host}}'
 info:
   contact: {}
   description: Chainspace REST API endpoints

@@ -11,6 +11,8 @@
         },
         "version": "1.0"
     },
+    "host": "{{.Host}}",
+    "basePath": "{{.BasePath}}",
     "paths": {
         "/api/checker/check": {
             "post": {
@@ -526,9 +528,7 @@
                 }
             }
         },
-        "api.Dependency": {
-            "type": "object"
-        },
+        "api.Dependency": {},
         "api.Error": {
             "type": "object",
             "properties": {
