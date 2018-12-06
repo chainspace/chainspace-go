@@ -1,4 +1,3 @@
-basePath: '{{.BasePath}}'
 definitions:
   api.CheckTransactionResponse:
     properties:
@@ -9,7 +8,8 @@ definitions:
       signature:
         type: string
     type: object
-  api.Dependency: {}
+  api.Dependency:
+    type: object
   api.Error:
     properties:
       error:
@@ -67,6 +67,15 @@ definitions:
       object:
         type: object
     type: object
+  api.OutputObject:
+    properties:
+      labels:
+        items:
+          type: string
+        type: array
+      object:
+        type: string
+    type: object
   api.Trace:
     properties:
       contractId:
@@ -83,23 +92,19 @@ definitions:
         items:
           type: string
         type: array
-      labels:
-        items:
-          type: '&{%!s(token.Pos=1320) <nil> string}'
-        type: array
       outputObjects:
         items:
-          type: '&{%!s(token.Pos=1376) %!s(*ast.FieldList=&{1385 [] 1386}) %!s(bool=false)}'
+          $ref: '#/definitions/api.OutputObject'
         type: array
       parameters:
         items:
-          type: '&{%!s(token.Pos=1439) %!s(*ast.FieldList=&{1448 [] 1449}) %!s(bool=false)}'
+          type: string
         type: array
       procedure:
         type: string
       returns:
         items:
-          type: '&{%!s(token.Pos=1558) %!s(*ast.FieldList=&{1567 [] 1568}) %!s(bool=false)}'
+          type: string
         type: array
     type: object
   api.Transaction:
@@ -118,7 +123,6 @@ definitions:
       versionId:
         type: string
     type: object
-host: '{{.Host}}'
 info:
   contact: {}
   description: Chainspace REST API endpoints

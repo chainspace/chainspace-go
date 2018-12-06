@@ -11,8 +11,6 @@
         },
         "version": "1.0"
     },
-    "host": "{{.Host}}",
-    "basePath": "{{.BasePath}}",
     "paths": {
         "/api/checker/check": {
             "post": {
@@ -528,7 +526,9 @@
                 }
             }
         },
-        "api.Dependency": {},
+        "api.Dependency": {
+            "type": "object"
+        },
         "api.Error": {
             "type": "object",
             "properties": {
@@ -619,6 +619,20 @@
                 }
             }
         },
+        "api.OutputObject": {
+            "type": "object",
+            "properties": {
+                "labels": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "object": {
+                    "type": "string"
+                }
+            }
+        },
         "api.Trace": {
             "type": "object",
             "properties": {
@@ -643,22 +657,16 @@
                         "type": "string"
                     }
                 },
-                "labels": {
-                    "type": "array",
-                    "items": {
-                        "type": "\u0026{%!s(token.Pos=1320) \u003cnil\u003e string}"
-                    }
-                },
                 "outputObjects": {
                     "type": "array",
                     "items": {
-                        "type": "\u0026{%!s(token.Pos=1376) %!s(*ast.FieldList=\u0026{1385 [] 1386}) %!s(bool=false)}"
+                        "$ref": "#/definitions/api.OutputObject"
                     }
                 },
                 "parameters": {
                     "type": "array",
                     "items": {
-                        "type": "\u0026{%!s(token.Pos=1439) %!s(*ast.FieldList=\u0026{1448 [] 1449}) %!s(bool=false)}"
+                        "type": "string"
                     }
                 },
                 "procedure": {
@@ -667,7 +675,7 @@
                 "returns": {
                     "type": "array",
                     "items": {
-                        "type": "\u0026{%!s(token.Pos=1558) %!s(*ast.FieldList=\u0026{1567 [] 1568}) %!s(bool=false)}"
+                        "type": "string"
                     }
                 }
             }

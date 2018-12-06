@@ -38,16 +38,40 @@ var Opcode_value = map[string]int32{
 func (x Opcode) String() string {
 	return proto.EnumName(Opcode_name, int32(x))
 }
-func (Opcode) EnumDescriptor() ([]byte, []int) { return fileDescriptorTypes, []int{0} }
-
-type GetRequest struct {
-	Key []byte `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+func (Opcode) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_types_b816aa571dd858c4, []int{0}
 }
 
-func (m *GetRequest) Reset()                    { *m = GetRequest{} }
-func (m *GetRequest) String() string            { return proto.CompactTextString(m) }
-func (*GetRequest) ProtoMessage()               {}
-func (*GetRequest) Descriptor() ([]byte, []int) { return fileDescriptorTypes, []int{0} }
+type GetRequest struct {
+	Key                  []byte   `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *GetRequest) Reset()         { *m = GetRequest{} }
+func (m *GetRequest) String() string { return proto.CompactTextString(m) }
+func (*GetRequest) ProtoMessage()    {}
+func (*GetRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_types_b816aa571dd858c4, []int{0}
+}
+func (m *GetRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_GetRequest.Unmarshal(m, b)
+}
+func (m *GetRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_GetRequest.Marshal(b, m, deterministic)
+}
+func (dst *GetRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GetRequest.Merge(dst, src)
+}
+func (m *GetRequest) XXX_Size() int {
+	return xxx_messageInfo_GetRequest.Size(m)
+}
+func (m *GetRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_GetRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_GetRequest proto.InternalMessageInfo
 
 func (m *GetRequest) GetKey() []byte {
 	if m != nil {
@@ -57,13 +81,35 @@ func (m *GetRequest) GetKey() []byte {
 }
 
 type GetResponse struct {
-	ObjectID []byte `protobuf:"bytes,1,opt,name=objectID,proto3" json:"objectID,omitempty"`
+	ObjectID             []byte   `protobuf:"bytes,1,opt,name=objectID,proto3" json:"objectID,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *GetResponse) Reset()                    { *m = GetResponse{} }
-func (m *GetResponse) String() string            { return proto.CompactTextString(m) }
-func (*GetResponse) ProtoMessage()               {}
-func (*GetResponse) Descriptor() ([]byte, []int) { return fileDescriptorTypes, []int{1} }
+func (m *GetResponse) Reset()         { *m = GetResponse{} }
+func (m *GetResponse) String() string { return proto.CompactTextString(m) }
+func (*GetResponse) ProtoMessage()    {}
+func (*GetResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_types_b816aa571dd858c4, []int{1}
+}
+func (m *GetResponse) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_GetResponse.Unmarshal(m, b)
+}
+func (m *GetResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_GetResponse.Marshal(b, m, deterministic)
+}
+func (dst *GetResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GetResponse.Merge(dst, src)
+}
+func (m *GetResponse) XXX_Size() int {
+	return xxx_messageInfo_GetResponse.Size(m)
+}
+func (m *GetResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_GetResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_GetResponse proto.InternalMessageInfo
 
 func (m *GetResponse) GetObjectID() []byte {
 	if m != nil {
@@ -78,9 +124,9 @@ func init() {
 	proto.RegisterEnum("kv.Opcode", Opcode_name, Opcode_value)
 }
 
-func init() { proto.RegisterFile("kv/types.proto", fileDescriptorTypes) }
+func init() { proto.RegisterFile("kv/types.proto", fileDescriptor_types_b816aa571dd858c4) }
 
-var fileDescriptorTypes = []byte{
+var fileDescriptor_types_b816aa571dd858c4 = []byte{
 	// 179 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0xcb, 0x2e, 0xd3, 0x2f,
 	0xa9, 0x2c, 0x48, 0x2d, 0xd6, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0xca, 0x2e, 0x93, 0xd2,
