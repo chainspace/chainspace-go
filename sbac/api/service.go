@@ -36,6 +36,7 @@ func newService(cfg *Config) *service {
 		sbacclt:    cfg.Sbacclt,
 		shardID:    cfg.ShardID,
 		top:        cfg.Top,
+		validator:  Validator{},
 	}
 }
 
