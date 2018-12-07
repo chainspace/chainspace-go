@@ -188,14 +188,9 @@ func (srv *service) buildObject(objects []*sbac.Object) (interface{}, int, error
 	data := []Object{}
 	for _, v := range objects {
 		v := v
-		var val interface{}
-		err := json.Unmarshal(v.Value, &val)
-		if err != nil {
-			return nil, http.StatusInternalServerError, err
-		}
 		o := Object{
 			VersionID: base64.StdEncoding.EncodeToString(v.VersionID),
-			Value:     val,
+			Value:     string(v.Value),
 			Status:    v.Status.String(),
 		}
 		data = append(data, o)

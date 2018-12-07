@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"net/http"
 
 	"chainspace.io/prototype/kv"
@@ -43,12 +42,7 @@ func (srv *service) GetByLabel(label string) (interface{}, int, error) {
 		return nil, http.StatusBadRequest, err
 	}
 
-	var object interface{}
-	if err = json.Unmarshal(rawObject, &object); err != nil {
-		return nil, http.StatusInternalServerError, err
-	}
-
-	return object, http.StatusOK, nil
+	return string(rawObject), http.StatusOK, nil
 }
 
 // GetByPrefix grabs a values based on the prefix string
@@ -65,14 +59,9 @@ func (srv *service) GetByPrefix(prefix string) ([]LabelObject, int, error) {
 			return nil, http.StatusBadRequest, err
 		}
 
-		var object interface{}
-		if err = json.Unmarshal(rawObject, &object); err != nil {
-			return nil, http.StatusInternalServerError, err
-		}
-
 		lObj := LabelObject{
 			Label:  string(v.Label),
-			Object: object,
+			Object: string(rawObject),
 		}
 		out = append(out, lObj)
 	}
