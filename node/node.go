@@ -502,6 +502,7 @@ func Run(cfg *Config) (*Server, error) {
 			SBACOnly:    cfg.SBACOnly,
 			Store:       kvstore,
 			Top:         top,
+			PS:          pbsb,
 		}
 		rst = rest.New(restcfg)
 	}

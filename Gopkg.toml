@@ -126,3 +126,7 @@
 [[constraint]]
   name = "github.com/getlantern/deepcopy"
   version = "1.0.0"
+
+[[constraint]]
+  name = "github.com/gorilla/websocket"
+  version = "1.4.0"

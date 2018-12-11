@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"context"
 	"fmt"
 
 	"chainspace.io/prototype/checker"
@@ -13,6 +14,8 @@ import (
 	"chainspace.io/prototype/kv"
 	kvApi "chainspace.io/prototype/kv/api"
 	"chainspace.io/prototype/network"
+	"chainspace.io/prototype/pubsub"
+	pubsubApi "chainspace.io/prototype/pubsub/api"
 	"chainspace.io/prototype/sbac"
 	sbacApi "chainspace.io/prototype/sbac/api"
 	sbacClient "chainspace.io/prototype/sbac/client"
@@ -33,6 +36,7 @@ type Config struct {
 	SelfID      uint64
 	Store       kv.Service
 	Top         *network.Topology
+	PS          pubsub.Server
 }
 
 // Service gives us a place to store values for our REST API
@@ -48,6 +52,7 @@ type Service struct {
 	sbacOnly    bool
 	store       kv.Service
 	top         *network.Topology
+	ps          pubsub.Server
 }
 
 // New returns a new REST API
@@ -84,6 +89,12 @@ func New(cfg *Config) *Service {
 		}
 		controllers = append(controllers, kvApi.New(cfg.Store, cfg.SBAC))
 		controllers = append(controllers, sbacApi.New(&sbacCfg))
+
+		// if pubsub is enabled add the pubsub api
+		if cfg.PS != nil {
+			controllers = append(controllers,
+				pubsubApi.New(context.Background(), cfg.PS))
+		}
 	}
 
 	if !cfg.SBACOnly {

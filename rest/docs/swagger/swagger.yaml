@@ -326,6 +326,21 @@ paths:
       summary: See before
       tags:
       - kv
+  /api/pubsub/ws:
+    get:
+      description: Iniate a websocket connection
+      operationId: websocket
+      responses:
+        "204": {}
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+      summary: Initiate a websocket connection in order to subscribed to object saved
+        in chainspace by the current node
+      tags:
+      - pubsub
   /api/sbac/object:
     post:
       consumes:

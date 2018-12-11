@@ -258,6 +258,14 @@
   version = "v1.2.0"
 
 [[projects]]
+  digest = "1:7b5c6e2eeaa9ae5907c391a91c132abfd5c9e8a784a341b5625e750c67e6825d"
+  name = "github.com/gorilla/websocket"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "66b9c49e59c6c48f0ffce28c2d8b8a5678502c6d"
+  version = "v1.4.0"
+
+[[projects]]
   branch = "master"
   digest = "1:e6bdc80a160df45f566b4f0ba4b0c9ab57fd7272613eb969eff959ad0c5eff6a"
   name = "github.com/grandcat/zeroconf"
@@ -697,6 +705,7 @@
     "github.com/gogo/protobuf/gogoproto",
     "github.com/gogo/protobuf/proto",
     "github.com/golang/protobuf/ptypes/timestamp",
+    "github.com/gorilla/websocket",
     "github.com/grandcat/zeroconf",
     "github.com/minio/highwayhash",
     "github.com/onsi/ginkgo",

@@ -292,6 +292,26 @@
                 }
             }
         },
+        "/api/pubsub/ws": {
+            "get": {
+                "description": "Iniate a websocket connection",
+                "tags": [
+                    "pubsub"
+                ],
+                "summary": "Initiate a websocket connection in order to subscribed to object saved in chainspace by the current node",
+                "operationId": "websocket",
+                "responses": {
+                    "204": {},
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "$ref": "#/definitions/api.Error"
+                        }
+                    }
+                }
+            }
+        },
         "/api/sbac/object": {
             "post": {
                 "description": "TODO",

@@ -25,14 +25,22 @@ type Config struct {
 type Server interface {
 	Close()
 	Publish(objectID []byte, labels []string, success bool)
+	RegisterNotifier(n Notifier)
 }
+
+type Notifier func(internal.Payload)
 
 type server struct {
 	port      int
 	networkID string
 	nodeID    uint64
 	conns     map[string]*internal.Conn
+	notifiers []Notifier
 	mu        sync.Mutex
+}
+
+func (s *server) RegisterNotifier(n Notifier) {
+	s.notifiers = append(s.notifiers, n)
 }
 
 func (s *server) handleConnection(conn net.Conn) {
@@ -66,6 +74,11 @@ func (s *server) Publish(objectID []byte, labels []string, success bool) {
 		NodeID:   s.nodeID,
 		Labels:   labels,
 	}
+	// send to customs notifiers
+	for _, notify := range s.notifiers {
+		notify(payload)
+	}
+
 	b, _ := json.Marshal(&payload)
 	badconns := []string{}
 	for addr, c := range s.conns {
