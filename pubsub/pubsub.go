@@ -95,7 +95,7 @@ func (s *server) Publish(objectID []byte, labels []string, success bool) {
 }
 
 func announceMDNS(networkID string, nodeID uint64, port int) error {
-	log.Error("ANNOUNCE MDNS PUBSUB")
+	log.Info("ANNOUNCE MDNS PUBSUB")
 	instance := fmt.Sprintf("_%d", nodeID)
 	service := fmt.Sprintf("_%s_pubsub._chainspace", strings.ToLower(networkID))
 	_, err := zeroconf.Register(instance, service, "local.", port, nil, nil)
