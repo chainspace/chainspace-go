@@ -25,7 +25,7 @@ type worker struct {
 	pendingIDs map[string]struct{}
 	ready      bool
 	mu         sync.Mutex
-	objsdata   []interface{}
+	objsdata   []string
 }
 
 func NewWorker(seed []string, labels [][]string, id int) *worker {
@@ -45,9 +45,9 @@ func NewWorker(seed []string, labels [][]string, id int) *worker {
 		}).String()
 	}
 
-	objsdata := []interface{}{}
+	objsdata := []string{}
 	for _, _ = range seed {
-		objsdata = append(objsdata, map[string]interface{}{})
+		objsdata = append(objsdata, "")
 	}
 
 	return &worker{
@@ -132,7 +132,7 @@ func (w *worker) checkTransaction(ctx context.Context, tx []byte) map[uint64]str
 }
 
 func (w *worker) makeTransactionPayload(
-	ctx context.Context, seed []string, labels [][]string, objsdata []interface{}) []byte {
+	ctx context.Context, seed []string, labels [][]string, objsdata []string) []byte {
 	outputs := []sbacapi.OutputObject{}
 	for i := 0; i < objects; i += 1 {
 		obj := outputty{labels[i], randSeq(30)}
@@ -143,7 +143,7 @@ func (w *worker) makeTransactionPayload(
 		}
 		outputs = append(outputs, out)
 	}
-	mappings := map[string]interface{}{}
+	mappings := map[string]string{}
 	for i, _ := range objsdata {
 		mappings[seed[i]] = objsdata[i]
 	}
@@ -243,13 +243,13 @@ func (w *worker) run(ctx context.Context, wg *sync.WaitGroup) {
 	}
 
 	data := res.Object.([]interface{})
-	w.objsdata = []interface{}{}
+	w.objsdata = []string{}
 	for i, v := range data {
 		w.seed[i] = v.(map[string]interface{})["versionId"].(string)
 		w.pendingIDs[w.seed[i]] = struct{}{}
 		subscribr.Subscribe(w.seed[i], w.cb)
 		w.objsdata = append(
-			w.objsdata, v.(map[string]interface{})["value"].(interface{}))
+			w.objsdata, v.(map[string]interface{})["value"].(string))
 	}
 
 	// bock while waiting to get notified
