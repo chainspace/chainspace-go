@@ -99,7 +99,7 @@ func (r *Router) createWallet(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK,
-		Response{Transaction: tx})
+		Response{Transaction: *tx})
 }
 
 // addFunds Add new funds to a user wallet
@@ -144,7 +144,7 @@ func (r *Router) addFunds(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK,
-		Response{Transaction: tx})
+		Response{Transaction: *tx})
 }
 
 // transferFunds Transfer funds
@@ -204,7 +204,7 @@ func (r *Router) transferFunds(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK,
-		Response{Transaction: tx})
+		Response{Transaction: *tx})
 
 }
 

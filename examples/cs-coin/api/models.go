@@ -49,8 +49,8 @@ type TransferFundsRequest struct {
 
 // Response returned by all the methods
 type Response struct {
-	Error       string               `json:"error,omitempty"`
-	Transaction *sbacapi.Transaction `json:"transaction,omitempty"`
+	Error       string              `json:"error,omitempty"`
+	Transaction sbacapi.Transaction `json:"transaction,omitempty"`
 }
 
 // CheckerResponse ...

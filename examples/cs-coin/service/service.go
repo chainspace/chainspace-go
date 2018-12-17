@@ -103,7 +103,7 @@ func (s *Service) AddFunds(
 			{
 				ContractID:            ContractID,
 				Procedure:             "add-funds",
-				InputObjectVersionIDs: []string{walletID, walletID},
+				InputObjectVersionIDs: []string{walletID},
 				OutputObjects: []sbacapi.OutputObject{
 					{
 						Object: string(newWalletBytes),
