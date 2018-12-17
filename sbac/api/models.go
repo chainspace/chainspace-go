@@ -54,9 +54,9 @@ type StateReportResponse struct {
 
 // Transaction ...
 type Transaction struct {
-	Mappings   map[string]interface{} `json:"mappings"`
-	Signatures map[uint64]string      `json:"signatures"` //base64 encoded
-	Traces     []Trace                `json:"traces"`
+	Mappings   map[string]string `json:"mappings"`
+	Signatures map[uint64]string `json:"signatures"` //base64 encoded
+	Traces     []Trace           `json:"traces"`
 }
 
 // ToSBAC ...
@@ -115,7 +115,7 @@ func toByteSlice(s []string) [][]byte {
 }
 
 // ToSBAC ...
-func (tc *Trace) ToSBAC(mappings map[string]interface{}) *sbac.Trace {
+func (tc *Trace) ToSBAC(mappings map[string]string) *sbac.Trace {
 	deps := make([]*sbac.Trace, 0, len(tc.Dependencies))
 	for _, d := range tc.Dependencies {
 		t := Trace(d)

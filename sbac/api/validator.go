@@ -26,7 +26,7 @@ func (v Validator) Validate(tx *Transaction) error {
 }
 
 // ValidateTrace ...
-func (v Validator) ValidateTrace(trace *Trace, mappings map[string]interface{}) error {
+func (v Validator) ValidateTrace(trace *Trace, mappings map[string]string) error {
 	for _, d := range trace.Dependencies {
 		t := Trace(d)
 		err := v.ValidateTrace(&t, mappings)

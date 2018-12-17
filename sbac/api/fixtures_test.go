@@ -5,7 +5,7 @@ import (
 )
 
 var transactionFixture = sbacapi.Transaction{
-	Mappings: map[string]interface{}{
+	Mappings: map[string]string{
 		"4S8G4OhhLcXFgzXvnFoGPdEC/QtjbX6zQHJmeevOPhE=": "foobar",
 	},
 	Signatures: nil,

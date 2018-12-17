@@ -154,6 +154,16 @@ func cmdInit(args []string, usage string) {
 				Port:           "8080",
 				HealthCheckURL: "/healthcheck",
 			},
+			{
+				Name: "cs-coin",
+				Procedures: []string{
+					"create-wallet", "add-funds", "transfer-funds"},
+				Image:          "chainspace.io/cs-coin:latest",
+				Addr:           "http://0.0.0.0",
+				HostPort:       "1492",
+				Port:           "8080",
+				HealthCheckURL: "/healthcheck",
+			},
 		},
 	}
 

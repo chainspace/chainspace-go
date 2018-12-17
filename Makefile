@@ -73,6 +73,9 @@ proto: ## recompile all protobuf definitions
 swaggerdocs:
 	rm -rf rest/docs && swag init -g rest/router.go && mv docs rest/docs
 
+swaggerdocs-cs-coin:
+	rm -rf examples/cs-coin/api/docs && swag init -g examples/cs-coin/api/api.go && mv docs examples/cs-coin/api/docs
+
 test: ## Run unit tests
 	go test -short ${PKG_LIST} -v
 
@@ -83,6 +86,7 @@ gcp: ## build and compress in order to send to gcp
 
 contract: ## build dummy contract docker
 	docker build -t "$(NAMESPACE)/contract-dummy:latest" -t "gcr.io/acoustic-atom-211511/$(NAMESPACE)/contract-dummy:latest" -f ./dummycontract/Dockerfile ./dummycontract
+	docker build -t "chainspace.io/cs-coin:latest" -t "chainspace.io/cs-coin:v0.1.0" -f examples/cs-coin/Dockerfile .
 
 .PHONY: help
 
