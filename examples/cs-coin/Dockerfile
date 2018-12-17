@@ -9,4 +9,4 @@ FROM scratch
 
 COPY --from=build /go/bin/cs-coin /cs-coin
 
-#ENTRYPOINT ["/cs-coin"]
+ENTRYPOINT ["/cs-coin"]

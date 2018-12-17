@@ -161,7 +161,7 @@ func cmdInit(args []string, usage string) {
 				Image:          "chainspace.io/cs-coin:latest",
 				Addr:           "http://0.0.0.0",
 				HostPort:       "1492",
-				Port:           "8080",
+				Port:           "1789",
 				HealthCheckURL: "/healthcheck",
 			},
 		},
