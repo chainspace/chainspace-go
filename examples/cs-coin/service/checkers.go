@@ -6,21 +6,31 @@ import (
 	"fmt"
 	"strconv"
 
-	sbacapi "chainspace.io/prototype/sbac/api"
 	"golang.org/x/crypto/ed25519"
 )
 
-func (s *Service) CreateWalletChecker(tx *sbacapi.Transaction) bool {
-	// check numbers of input / output object in the transaction
-	if len(tx.Traces) != 1 {
-		return false
-	}
-	tr := tx.Traces[0]
-	if len(tr.InputObjectVersionIDs) != len(tr.OutputObjects) {
+// OutputObject ...
+type OutputObject struct {
+	Labels []string `json:"labels"`
+	Object string   `json:"object"`
+}
+
+// CheckerTrace
+type CheckerTrace struct {
+	Dependencies    []CheckerTrace `json:"dependencies"`
+	Inputs          []string       `json:"inputs"`
+	Outputs         []OutputObject `json:"outputs"`
+	Parameters      []string       `json:"parameters"`
+	ReferenceInputs []string       `json:"referenceInputs"`
+	Returns         []string       `json:"returns"`
+}
+
+func (s *Service) CreateWalletChecker(tr *CheckerTrace) bool {
+	if len(tr.Inputs) != len(tr.Outputs) {
 		return false
 	}
 
-	if len(tr.InputObjectVersionIDs) != 1 {
+	if len(tr.Inputs) != 1 {
 		return false
 	}
 
@@ -31,17 +41,12 @@ func (s *Service) CreateWalletChecker(tx *sbacapi.Transaction) bool {
 	return true
 }
 
-func (s *Service) AddFundsChecker(tx *sbacapi.Transaction) bool {
-	// check numbers of input / output object in the transaction
-	if len(tx.Traces) != 1 {
-		return false
-	}
-	tr := tx.Traces[0]
-	if len(tr.InputObjectVersionIDs) != len(tr.OutputObjects) {
+func (s *Service) AddFundsChecker(tr *CheckerTrace) bool {
+	if len(tr.Inputs) != len(tr.Outputs) {
 		return false
 	}
 
-	if len(tr.InputObjectVersionIDs) != 1 {
+	if len(tr.Inputs) != 1 {
 		return false
 	}
 
@@ -51,10 +56,7 @@ func (s *Service) AddFundsChecker(tx *sbacapi.Transaction) bool {
 	}
 
 	// load old wallet
-	oldWalletStr, ok := tx.Mappings[tr.InputObjectVersionIDs[0]]
-	if !ok {
-		return false
-	}
+	oldWalletStr := tr.Inputs[0]
 	oldWallet := Wallet{}
 	err := json.Unmarshal([]byte(oldWalletStr), &oldWallet)
 	if err != nil {
@@ -63,7 +65,7 @@ func (s *Service) AddFundsChecker(tx *sbacapi.Transaction) bool {
 
 	// load new wallet
 	newWallet := Wallet{}
-	err = json.Unmarshal([]byte(tr.OutputObjects[0].Object), &newWallet)
+	err = json.Unmarshal([]byte(tr.Outputs[0].Object), &newWallet)
 	if err != nil {
 		return false
 	}
@@ -95,17 +97,12 @@ func (s *Service) AddFundsChecker(tx *sbacapi.Transaction) bool {
 	return true
 }
 
-func (s *Service) TransferFundsChecker(tx *sbacapi.Transaction) bool {
-	// check numbers of input / output object in the transaction
-	if len(tx.Traces) != 1 {
-		return false
-	}
-	tr := tx.Traces[0]
-	if len(tr.InputObjectVersionIDs) != len(tr.OutputObjects) {
+func (s *Service) TransferFundsChecker(tr *CheckerTrace) bool {
+	if len(tr.Inputs) != len(tr.Outputs) {
 		return false
 	}
 
-	if len(tr.InputObjectVersionIDs) != 2 {
+	if len(tr.Inputs) != 2 {
 		return false
 	}
 
@@ -115,10 +112,7 @@ func (s *Service) TransferFundsChecker(tx *sbacapi.Transaction) bool {
 	}
 
 	// load from wallet
-	fromWalletStr, ok := tx.Mappings[tr.InputObjectVersionIDs[0]]
-	if !ok {
-		return false
-	}
+	fromWalletStr := tr.Inputs[0]
 	fromWallet := Wallet{}
 	err := json.Unmarshal([]byte(fromWalletStr), &fromWallet)
 	if err != nil {
@@ -127,16 +121,13 @@ func (s *Service) TransferFundsChecker(tx *sbacapi.Transaction) bool {
 
 	// load new wallet
 	newFromWallet := Wallet{}
-	err = json.Unmarshal([]byte(tr.OutputObjects[0].Object), &newFromWallet)
+	err = json.Unmarshal([]byte(tr.Outputs[0].Object), &newFromWallet)
 	if err != nil {
 		return false
 	}
 
 	// load to wallet
-	toWalletStr, ok := tx.Mappings[tr.InputObjectVersionIDs[0]]
-	if !ok {
-		return false
-	}
+	toWalletStr := tr.Inputs[1]
 	toWallet := Wallet{}
 	err = json.Unmarshal([]byte(toWalletStr), &toWallet)
 	if err != nil {
@@ -145,7 +136,7 @@ func (s *Service) TransferFundsChecker(tx *sbacapi.Transaction) bool {
 
 	// load new wallet
 	newToWallet := Wallet{}
-	err = json.Unmarshal([]byte(tr.OutputObjects[0].Object), &newToWallet)
+	err = json.Unmarshal([]byte(tr.Outputs[1].Object), &newToWallet)
 	if err != nil {
 		return false
 	}

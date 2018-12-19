@@ -6,7 +6,6 @@ import (
 
 	_ "chainspace.io/prototype/examples/cs-coin/api/docs"
 	"chainspace.io/prototype/examples/cs-coin/service"
-	sbacapi "chainspace.io/prototype/sbac/api"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -209,39 +208,34 @@ func (r *Router) transferFunds(c *gin.Context) {
 }
 
 func (r *Router) createWalletChecker(c *gin.Context) {
-	req := sbacapi.Transaction{}
+	req := service.CheckerTrace{}
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, Response{Error: err.Error()})
 		return
 	}
 
 	ok := r.srv.CreateWalletChecker(&req)
-
 	c.JSON(http.StatusOK, CheckerResponse{Success: ok})
 }
 
 func (r *Router) addFundsChecker(c *gin.Context) {
-	req := sbacapi.Transaction{}
+	req := service.CheckerTrace{}
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, Response{Error: err.Error()})
 		return
 	}
 
 	ok := r.srv.AddFundsChecker(&req)
-
 	c.JSON(http.StatusOK, CheckerResponse{Success: ok})
-
 }
 
 func (r *Router) TransferFundsChecker(c *gin.Context) {
-	req := sbacapi.Transaction{}
+	req := service.CheckerTrace{}
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, Response{Error: err.Error()})
 		return
 	}
 
 	ok := r.srv.TransferFundsChecker(&req)
-
 	c.JSON(http.StatusOK, CheckerResponse{Success: ok})
-
 }
