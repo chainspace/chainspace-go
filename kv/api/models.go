@@ -7,8 +7,9 @@ type Error struct {
 
 // LabelObject ...
 type LabelObject struct {
-	Label  string      `json:"label"`
-	Object interface{} `json:"object"`
+	Label     string      `json:"label"`
+	Object    interface{} `json:"object"`
+	VersionID string      `json:"versionId"`
 }
 
 // LabelVersionID ...

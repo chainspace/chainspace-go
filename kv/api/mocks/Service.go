@@ -11,16 +11,14 @@ type Service struct {
 }
 
 // GetByLabel provides a mock function with given fields: label
-func (_m *Service) GetByLabel(label string) (interface{}, int, error) {
+func (_m *Service) GetByLabel(label string) (api.LabelObject, int, error) {
 	ret := _m.Called(label)
 
-	var r0 interface{}
-	if rf, ok := ret.Get(0).(func(string) interface{}); ok {
+	var r0 api.LabelObject
+	if rf, ok := ret.Get(0).(func(string) api.LabelObject); ok {
 		r0 = rf(label)
 	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(interface{})
-		}
+		r0 = ret.Get(0).(api.LabelObject)
 	}
 
 	var r1 int

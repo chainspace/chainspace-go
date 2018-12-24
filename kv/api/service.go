@@ -16,7 +16,7 @@ type service struct {
 
 // Service interface
 type Service interface {
-	GetByLabel(label string) (interface{}, int, error)
+	GetByLabel(label string) (LabelObject, int, error)
 	GetByPrefix(prefix string) ([]LabelObject, int, error)
 	GetVersionID(label string) (string, int, error)
 	GetVersionIDByPrefix(prefixz string) ([]LabelVersionID, int, error)
@@ -31,18 +31,24 @@ func NewService(kvStore kv.Service, sbac sbac.Service) Service {
 }
 
 // GetByLabel grabs a value from the store based on its label
-func (srv *service) GetByLabel(label string) (interface{}, int, error) {
+func (srv *service) GetByLabel(label string) (LabelObject, int, error) {
 	versionID, err := srv.kvStore.Get([]byte(label))
 	if err != nil {
-		return nil, http.StatusNotFound, err
+		return LabelObject{}, http.StatusNotFound, err
 	}
 
 	rawObject, err := srv.sbac.QueryObjectByVersionID(versionID)
 	if err != nil {
-		return nil, http.StatusBadRequest, err
+		return LabelObject{}, http.StatusBadRequest, err
 	}
 
-	return string(rawObject), http.StatusOK, nil
+	lObj := LabelObject{
+		Label:     string(label),
+		Object:    string(rawObject),
+		VersionID: base64.StdEncoding.EncodeToString(versionID),
+	}
+
+	return lObj, http.StatusOK, nil
 }
 
 // GetByPrefix grabs a values based on the prefix string
@@ -60,8 +66,9 @@ func (srv *service) GetByPrefix(prefix string) ([]LabelObject, int, error) {
 		}
 
 		lObj := LabelObject{
-			Label:  string(v.Label),
-			Object: string(rawObject),
+			Label:     string(v.Label),
+			Object:    string(rawObject),
+			VersionID: base64.StdEncoding.EncodeToString(v.VersionID),
 		}
 		out = append(out, lObj)
 	}
