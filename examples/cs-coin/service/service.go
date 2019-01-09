@@ -19,6 +19,7 @@ var (
 	ErrInsufficientFunds      = errors.New("unsufficient funds in the wallet")
 	ErrInvalidSignature       = errors.New("invalid signature")
 	ErrInvalidSignatureFormat = errors.New("invalid signature format")
+	ErrInvalidPubKeyFormat    = errors.New("invalid public key format")
 )
 
 type Service struct {
@@ -82,9 +83,14 @@ func (s *Service) AddFunds(
 		return nil, ErrInvalidSignatureFormat
 	}
 
+	pubkeybytes, err := base64.StdEncoding.DecodeString(wallet.PubKey)
+	if err != nil {
+		return nil, ErrInvalidPubKeyFormat
+	}
+
 	// check signature
 	data := wallet.Address + fmt.Sprintf("%v", amount)
-	if !ed25519.Verify(ed25519.PublicKey(wallet.PubKey), []byte(data), sigbytes) {
+	if !ed25519.Verify(ed25519.PublicKey(pubkeybytes), []byte(data), sigbytes) {
 		return nil, ErrInvalidSignature
 	}
 
@@ -128,9 +134,14 @@ func (s *Service) TransferFunds(
 		return nil, ErrInvalidSignatureFormat
 	}
 
+	pubkeybytes, err := base64.StdEncoding.DecodeString(fromWallet.PubKey)
+	if err != nil {
+		return nil, ErrInvalidPubKeyFormat
+	}
+
 	// check signature
 	data := fromWallet.Address + toWallet.Address + fmt.Sprintf("%v", amount)
-	if !ed25519.Verify(ed25519.PublicKey(fromWallet.PubKey), []byte(data), sigbytes) {
+	if !ed25519.Verify(ed25519.PublicKey(pubkeybytes), []byte(data), sigbytes) {
 		return nil, ErrInvalidSignature
 	}
 
