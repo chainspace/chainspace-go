@@ -50,6 +50,8 @@ definitions:
         type: string
       object:
         type: object
+      versionId:
+        type: string
     type: object
   api.LabelVersionID:
     properties:

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	_ "chainspace.io/prototype/examples/cs-coin/api/docs"
@@ -87,6 +88,7 @@ func (r *Router) init(c *gin.Context) {
 func (r *Router) createWallet(c *gin.Context) {
 	req := CreateWalletRequest{}
 	if err := c.BindJSON(&req); err != nil {
+		log.Printf("unable to unmarshal json, err=%v", err)
 		c.JSON(http.StatusBadRequest, Response{Error: err.Error()})
 		return
 	}
@@ -116,6 +118,7 @@ func (r *Router) createWallet(c *gin.Context) {
 func (r *Router) addFunds(c *gin.Context) {
 	req := AddFundsRequest{}
 	if err := c.BindJSON(&req); err != nil {
+		log.Printf("unable to unmarshal json, err=%v", err)
 		c.JSON(http.StatusBadRequest, Response{Error: err.Error()})
 		return
 	}
@@ -123,6 +126,7 @@ func (r *Router) addFunds(c *gin.Context) {
 	// unmarshal wallets from mappings
 	walletStr, ok := req.Mappings[req.Wallet]
 	if !ok {
+		log.Printf("unable to get wallet from mappings")
 		c.JSON(http.StatusBadRequest,
 			Response{Error: "missing fromWallet in mappings"})
 		return
@@ -130,6 +134,7 @@ func (r *Router) addFunds(c *gin.Context) {
 	wallet := service.Wallet{}
 	err := json.Unmarshal([]byte(walletStr), &wallet)
 	if err != nil {
+		log.Printf("unable to unmarshal wallet, err=%v", err)
 		c.JSON(http.StatusBadRequest,
 			Response{Error: err.Error()})
 		return
@@ -138,6 +143,7 @@ func (r *Router) addFunds(c *gin.Context) {
 	tx, err := r.srv.AddFunds(wallet, req.Amount, req.Signature, req.Mappings,
 		req.Wallet)
 	if err != nil {
+		log.Printf("unable to add funds, err=%v", err)
 		c.JSON(http.StatusBadRequest, Response{Error: err.Error()})
 		return
 	}

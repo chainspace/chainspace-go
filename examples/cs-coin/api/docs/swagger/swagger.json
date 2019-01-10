@@ -797,6 +797,9 @@
                 },
                 "object": {
                     "type": "object"
+                },
+                "versionId": {
+                    "type": "string"
                 }
             }
         },

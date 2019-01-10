@@ -56,7 +56,7 @@ func (controller *controller) GetByLabel(c *gin.Context) {
 		c.JSON(status, Error{err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, ObjectResponse{Object: obj})
+	c.JSON(http.StatusOK, obj)
 }
 
 // GetByPrefix Retrieves objects matching a key prefix
