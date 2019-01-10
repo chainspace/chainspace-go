@@ -167,6 +167,7 @@ func (r *Router) addFunds(c *gin.Context) {
 func (r *Router) transferFunds(c *gin.Context) {
 	req := TransferFundsRequest{}
 	if err := c.BindJSON(&req); err != nil {
+		log.Printf("unable to unmarshal json, err=%v", err)
 		c.JSON(http.StatusBadRequest, Response{Error: err.Error()})
 		return
 	}
@@ -174,6 +175,7 @@ func (r *Router) transferFunds(c *gin.Context) {
 	// unmarshal wallets from mappings
 	fromWalletStr, ok := req.Mappings[req.FromWallet]
 	if !ok {
+		log.Printf("unable to get fromWallet from the mappings")
 		c.JSON(http.StatusBadRequest,
 			Response{Error: "missing fromWallet in mappings"})
 		return
@@ -181,13 +183,15 @@ func (r *Router) transferFunds(c *gin.Context) {
 	fromWallet := service.Wallet{}
 	err := json.Unmarshal([]byte(fromWalletStr), &fromWallet)
 	if err != nil {
+		log.Printf("unable to unmarshal fromWallet, err=%v", err)
 		c.JSON(http.StatusBadRequest,
 			Response{Error: err.Error()})
 		return
 	}
 
-	toWalletStr, ok := req.Mappings[req.FromWallet]
+	toWalletStr, ok := req.Mappings[req.ToWallet]
 	if !ok {
+		log.Printf("unable to get toWallet from the mapping")
 		c.JSON(http.StatusBadRequest,
 			Response{Error: "missing toWallet in mappings"})
 		return
@@ -195,6 +199,7 @@ func (r *Router) transferFunds(c *gin.Context) {
 	toWallet := service.Wallet{}
 	err = json.Unmarshal([]byte(toWalletStr), &toWallet)
 	if err != nil {
+		log.Printf("unable to unmarshal toWallet, err=%v", err)
 		c.JSON(http.StatusBadRequest,
 			Response{Error: err.Error()})
 		return
@@ -203,6 +208,7 @@ func (r *Router) transferFunds(c *gin.Context) {
 	tx, err := r.srv.TransferFunds(fromWallet, toWallet, req.Amount,
 		req.Signature, req.Mappings, req.FromWallet, req.ToWallet)
 	if err != nil {
+		log.Printf("unable to transfer funds, err=%v", err)
 		c.JSON(http.StatusInternalServerError,
 			Response{Error: err.Error()})
 		return
