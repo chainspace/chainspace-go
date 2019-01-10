@@ -27,7 +27,7 @@ type CreateWalletRequest struct {
 // {"wallet": "...", "value": 42} -> sign this string
 type AddFundsRequest struct {
 	Wallet string  `json:"wallet"`
-	Amount float64 `json:"amount"`
+	Amount float64 `json:"amount,string"`
 
 	Signature string `json:"signature"`
 
@@ -40,7 +40,7 @@ type AddFundsRequest struct {
 type TransferFundsRequest struct {
 	FromWallet string  `json:"fromWallet"`
 	ToWallet   string  `json:"toWallet"`
-	Amount     float64 `json:"amount"`
+	Amount     float64 `json:"amount,string"`
 
 	Signature string `json:"signature"`
 
