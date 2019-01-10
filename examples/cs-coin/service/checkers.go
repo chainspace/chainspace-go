@@ -3,7 +3,6 @@ package service
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"strconv"
 
 	"golang.org/x/crypto/ed25519"
@@ -71,13 +70,13 @@ func (s *Service) AddFundsChecker(tr *CheckerTrace) bool {
 	}
 
 	// load the amount of coin to add to the wallet
-	amount, err := strconv.ParseUint(tr.Parameters[0], 10, 32)
+	amount, err := strconv.ParseFloat(tr.Parameters[0], 64)
 	if err != nil {
 		return false
 	}
 
 	// now ensure that oldWallet.Balance+amount = newWallet.Balance
-	if oldWallet.Balance+uint(amount) != newWallet.Balance {
+	if oldWallet.Balance+float64(amount) != newWallet.Balance {
 		return false
 	}
 
@@ -89,7 +88,7 @@ func (s *Service) AddFundsChecker(tr *CheckerTrace) bool {
 	}
 
 	// check signature
-	data := oldWallet.Address + fmt.Sprintf("%v", amount)
+	data := oldWallet.Address + strconv.FormatFloat(amount, 'f', 6, 64)
 	if !ed25519.Verify(ed25519.PublicKey(oldWallet.PubKey), []byte(data), sigbytes) {
 		return false
 	}
@@ -142,23 +141,23 @@ func (s *Service) TransferFundsChecker(tr *CheckerTrace) bool {
 	}
 
 	// load the amount of coin to add to the wallet
-	amount, err := strconv.ParseUint(tr.Parameters[0], 10, 32)
+	amount, err := strconv.ParseFloat(tr.Parameters[0], 64)
 	if err != nil {
 		return false
 	}
 
 	// ensure from wallet had enought funds
-	if fromWallet.Balance-uint(amount) < 0 {
+	if fromWallet.Balance-float64(amount) < 0 {
 		return false
 	}
 
 	// now ensure that fromWallet.Balance-amount = newFromWallet.Balance
-	if fromWallet.Balance-uint(amount) != newFromWallet.Balance {
+	if fromWallet.Balance-float64(amount) != newFromWallet.Balance {
 		return false
 	}
 
 	// ensure newToWallet.Balance = toWallet.Balance+amount
-	if toWallet.Balance+uint(amount) != newToWallet.Balance {
+	if toWallet.Balance+float64(amount) != newToWallet.Balance {
 		return false
 	}
 
@@ -170,7 +169,7 @@ func (s *Service) TransferFundsChecker(tr *CheckerTrace) bool {
 	}
 
 	// check signature
-	data := fromWallet.Address + toWallet.Address + fmt.Sprintf("%v", amount)
+	data := fromWallet.Address + toWallet.Address + strconv.FormatFloat(amount, 'f', 6, 64)
 	if !ed25519.Verify(ed25519.PublicKey(fromWallet.PubKey), []byte(data), sigbytes) {
 		return false
 	}

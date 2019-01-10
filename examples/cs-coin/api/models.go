@@ -26,8 +26,8 @@ type CreateWalletRequest struct {
 // Signature over the 2 first field of the request as json:
 // {"wallet": "...", "value": 42} -> sign this string
 type AddFundsRequest struct {
-	Wallet string `json:"wallet"`
-	Amount uint   `json:"amount"`
+	Wallet string  `json:"wallet"`
+	Amount float64 `json:"amount"`
 
 	Signature string `json:"signature"`
 
@@ -38,9 +38,9 @@ type AddFundsRequest struct {
 // Signature over the 3 first field of the request as json:
 // {"fromWallet": "...", "toWallet": "..." "value": 42} -> sign this string
 type TransferFundsRequest struct {
-	FromWallet string `json:"fromWallet"`
-	ToWallet   string `json:"toWallet"`
-	Amount     uint   `json:"amount"`
+	FromWallet string  `json:"fromWallet"`
+	ToWallet   string  `json:"toWallet"`
+	Amount     float64 `json:"amount"`
 
 	Signature string `json:"signature"`
 

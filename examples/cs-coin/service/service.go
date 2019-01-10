@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 
 	sbacapi "chainspace.io/prototype/sbac/api"
 	"golang.org/x/crypto/ed25519"
@@ -27,9 +28,9 @@ type Service struct {
 
 // Wallet the format of the wallet object stored in chainspace
 type Wallet struct {
-	Address string `json:"address"`
-	Balance uint   `json:"balance"`
-	PubKey  string `json:"pubKey"`
+	Address string  `json:"address"`
+	Balance float64 `json:"balance"`
+	PubKey  string  `json:"pubKey"`
 }
 
 func New() *Service {
@@ -76,7 +77,7 @@ func (s *Service) CreateWallet(address, pubkey, initobjID string, mappings map[s
 
 // AddFunds add new funds to a given wallet
 func (s *Service) AddFunds(
-	wallet Wallet, amount uint, sig string, mappings map[string]string, walletID string) (*sbacapi.Transaction, error) {
+	wallet Wallet, amount float64, sig string, mappings map[string]string, walletID string) (*sbacapi.Transaction, error) {
 	// sig = base64 encoded
 	sigbytes, err := base64.StdEncoding.DecodeString(sig)
 	if err != nil {
@@ -89,7 +90,7 @@ func (s *Service) AddFunds(
 	}
 
 	// check signature
-	data := wallet.Address + fmt.Sprintf("%v", amount)
+	data := wallet.Address + strconv.FormatFloat(amount, 'f', 6, 64)
 	if !ed25519.Verify(ed25519.PublicKey(pubkeybytes), []byte(data), sigbytes) {
 		return nil, ErrInvalidSignature
 	}
@@ -117,7 +118,7 @@ func (s *Service) AddFunds(
 							fmt.Sprintf(labelFmtString, wallet.Address)},
 					},
 				},
-				Parameters: []string{fmt.Sprintf("%v", amount), sig},
+				Parameters: []string{strconv.FormatFloat(amount, 'f', 6, 64), sig},
 			},
 		},
 	}, nil
@@ -126,7 +127,7 @@ func (s *Service) AddFunds(
 
 //TransferFunds transfer money from a wallet to another
 func (s *Service) TransferFunds(
-	fromWallet, toWallet Wallet, amount uint, sig string, mappings map[string]string, fromWalletID, toWalletID string,
+	fromWallet, toWallet Wallet, amount float64, sig string, mappings map[string]string, fromWalletID, toWalletID string,
 ) (*sbacapi.Transaction, error) {
 	// sig = base64 encoded
 	sigbytes, err := base64.StdEncoding.DecodeString(sig)
@@ -140,7 +141,7 @@ func (s *Service) TransferFunds(
 	}
 
 	// check signature
-	data := fromWallet.Address + toWallet.Address + fmt.Sprintf("%v", amount)
+	data := fromWallet.Address + toWallet.Address + strconv.FormatFloat(amount, 'f', 6, 64)
 	if !ed25519.Verify(ed25519.PublicKey(pubkeybytes), []byte(data), sigbytes) {
 		return nil, ErrInvalidSignature
 	}
@@ -185,7 +186,7 @@ func (s *Service) TransferFunds(
 							fmt.Sprintf(labelFmtString, toWallet.Address)},
 					},
 				},
-				Parameters: []string{fmt.Sprintf("%v", amount), sig},
+				Parameters: []string{strconv.FormatFloat(amount, 'f', 6, 64), sig},
 			},
 		},
 	}, nil
