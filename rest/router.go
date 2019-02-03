@@ -17,8 +17,8 @@ type controller interface {
 // @version 1.0
 // @description Chainspace REST API endpoints
 
-// @license.name Apache 2.0
-// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+// @license.name MIT
+// @license.url https://github.com/chainspace/sbac/license
 
 func (s *Service) makeRouter(controllers ...controller) *gin.Engine {
 	// Set the router as the default one shipped with Gin
