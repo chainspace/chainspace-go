@@ -1,6 +1,6 @@
 // Package broadcast implements the network broadcast and consensus within a
 // shard.
-package broadcast // import "chainspace.io/prototype/broadcast"
+package broadcast // import "chainspace.io/chainspace-go/broadcast"
 
 import (
 	"context"
@@ -13,13 +13,13 @@ import (
 	"sync"
 	"time"
 
-	"chainspace.io/prototype/byzco"
-	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/internal/crypto/signature"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
-	"chainspace.io/prototype/network"
-	"chainspace.io/prototype/service"
+	"chainspace.io/chainspace-go/blockmania"
+	"chainspace.io/chainspace-go/config"
+	"chainspace.io/chainspace-go/internal/crypto/signature"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
+	"chainspace.io/chainspace-go/network"
+	"chainspace.io/chainspace-go/service"
 	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
 	"github.com/tav/golly/process"
@@ -59,7 +59,7 @@ type Service struct {
 	cfg          *Config
 	ctx          context.Context
 	depgraph     *depgraph
-	graph        *byzco.Graph
+	graph        *blockmania.Graph
 	imu          sync.Mutex // protects cb, interpreted, toDeliver
 	interpreted  uint64
 	key          signature.KeyPair
@@ -68,7 +68,7 @@ type Service struct {
 	maxPayload   int
 	mu           sync.RWMutex // protects previous, round, sent, signal, txCountLimit
 	nodeID       uint64
-	ownblocks    *ownblocks
+	ownBlocks    *ownBlocks
 	peers        []uint64
 	prevhash     []byte
 	prevref      *SignedData
@@ -79,7 +79,7 @@ type Service struct {
 	sent         map[uint64]uint64
 	signal       chan struct{}
 	store        *store
-	toDeliver    []*byzco.Interpreted
+	toDeliver    []*blockmania.Interpreted
 	top          *network.Topology
 	txCount      int
 	txCountLimit int
@@ -90,14 +90,17 @@ type Service struct {
 	writeTimeout time.Duration
 }
 
-func (s *Service) byzcoCallback(data *byzco.Interpreted) {
+func (s *Service) blockmaniaCallback(data *blockmania.Interpreted) {
 	if log.AtInfo() {
 		blocks := make([]string, len(data.Blocks))
 		for i, block := range data.Blocks {
 			blocks[i] = block.String()
 		}
-		log.Info("Got interpreted consensus blocks", fld.Round(data.Round),
-			log.Uint64("consumed", data.Consumed), log.Strings("blocks", blocks), log.Int("block.count", len(data.Blocks)))
+		log.Info("Got interpreted consensus blocks",
+			fld.Round(data.Round),
+			log.Uint64("consumed", data.Consumed),
+			log.Strings("blocks", blocks),
+			log.Int("block.count", len(data.Blocks)))
 	}
 	s.store.setInterpreted(data)
 	s.imu.Lock()
@@ -347,23 +350,23 @@ func (s *Service) genBlocks() {
 		}
 		hasher.Reset()
 		signal := s.signal
-		graph := &byzco.BlockGraph{
-			Block: byzco.BlockID{
+		graph := &blockmania.BlockGraph{
+			Block: blockmania.BlockID{
 				Hash:  string(hash),
 				Node:  s.nodeID,
 				Round: round,
 			},
 		}
 		if round != 1 {
-			graph.Prev = byzco.BlockID{
+			graph.Prev = blockmania.BlockID{
 				Hash:  string(s.prevhash),
 				Node:  s.nodeID,
 				Round: round - 1,
 			}
 		}
-		var deps []byzco.Dep
+		var deps []blockmania.Dep
 		for _, ref := range refs {
-			deps = append(deps, byzco.Dep{
+			deps = append(deps, blockmania.Dep{
 				Block: ref.id,
 				Deps:  ref.deps,
 				Prev:  ref.prev,
@@ -391,7 +394,7 @@ func (s *Service) genBlocks() {
 			log.Debug("Created block", fld.Round(block.Round))
 		}
 		if round%50 == 0 {
-			s.ownblocks.prune(50)
+			s.ownBlocks.prune(50)
 		}
 		now := time.Now().Round(0)
 		workDuration = now.Sub(workStart)
@@ -402,7 +405,7 @@ func (s *Service) genBlocks() {
 }
 
 func (s *Service) getBlock(nodeID uint64, round uint64, hash []byte) *SignedData {
-	block, err := s.store.getBlock(byzco.BlockID{
+	block, err := s.store.getBlock(blockmania.BlockID{
 		Hash:  string(hash),
 		Node:  nodeID,
 		Round: round,
@@ -414,7 +417,7 @@ func (s *Service) getBlock(nodeID uint64, round uint64, hash []byte) *SignedData
 	return block
 }
 
-func (s *Service) getBlocks(ids []byzco.BlockID) []*SignedData {
+func (s *Service) getBlocks(ids []blockmania.BlockID) []*SignedData {
 	blocks, err := s.store.getBlocks(ids)
 	if err != nil {
 		log.Fatal("Unable to retrieve blocks", log.Err(err))
@@ -423,7 +426,7 @@ func (s *Service) getBlocks(ids []byzco.BlockID) []*SignedData {
 }
 
 func (s *Service) getOwnBlock(round uint64) (*SignedData, error) {
-	block := s.ownblocks.get(round)
+	block := s.ownBlocks.get(round)
 	if block != nil {
 		return block, nil
 	}
@@ -431,7 +434,7 @@ func (s *Service) getOwnBlock(round uint64) (*SignedData, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.ownblocks.set(round, block)
+	s.ownBlocks.set(round, block)
 	return block, nil
 }
 
@@ -604,24 +607,24 @@ func (s *Service) loadState() {
 	sort.Slice(nodes, func(i, j int) bool {
 		return nodes[i] < nodes[j]
 	})
-	gcfg := &byzco.Config{
+	gcfg := &blockmania.Config{
 		LastInterpreted: interpreted,
 		Nodes:           nodes,
 		SelfID:          s.nodeID,
 		TotalNodes:      s.top.TotalNodes(),
 	}
 	depgraph := &depgraph{
-		await:   map[byzco.BlockID][]byzco.BlockID{},
+		await:   map[blockmania.BlockID][]blockmania.BlockID{},
 		cond:    sync.NewCond(&sync.Mutex{}),
 		ctx:     s.ctx,
-		icache:  map[byzco.BlockID]bool{},
-		pending: map[byzco.BlockID]*blockData{},
+		icache:  map[blockmania.BlockID]bool{},
+		pending: map[blockmania.BlockID]*blockData{},
 		self:    s.nodeID,
 		store:   s.store,
-		tcache:  map[byzco.BlockID]bool{},
+		tcache:  map[blockmania.BlockID]bool{},
 	}
 	s.depgraph = depgraph
-	s.graph = byzco.New(s.ctx, gcfg, s.byzcoCallback)
+	s.graph = blockmania.New(s.ctx, gcfg, s.blockmaniaCallback)
 	s.interpreted = interpreted
 	s.prevhash = prevhash
 	s.prevref = prevref
@@ -754,7 +757,7 @@ func (s *Service) processBlock(signed *SignedData) (uint64, error) {
 	if !key.Verify(enc, signed.Signature) {
 		return 0, fmt.Errorf("broadcast: unable to verify signature for block %d from node %d", block.Round, block.Node)
 	}
-	var prevID byzco.BlockID
+	var prevID blockmania.BlockID
 	prev := &BlockReference{}
 	if block.Round != 1 {
 		if block.Previous == nil {
@@ -772,13 +775,13 @@ func (s *Service) processBlock(signed *SignedData) (uint64, error) {
 		if prev.Round+1 != block.Round {
 			return 0, fmt.Errorf("broadcast: previous block round is invalid on block %d from node %d", block.Round, block.Node)
 		}
-		prevID = byzco.BlockID{
+		prevID = blockmania.BlockID{
 			Hash:  string(prev.Hash),
 			Node:  prev.Node,
 			Round: prev.Round,
 		}
 	}
-	var deps []byzco.BlockID
+	var deps []blockmania.BlockID
 	for i, sref := range block.References {
 		ref := &BlockReference{}
 		if err := proto.Unmarshal(sref.Data, ref); err != nil {
@@ -794,7 +797,7 @@ func (s *Service) processBlock(signed *SignedData) (uint64, error) {
 		if ref.Node == block.Node {
 			return 0, fmt.Errorf("broadcast: block references includes a block from same node in block reference %d for block %d from node %d", i, block.Round, block.Node)
 		}
-		deps = append(deps, byzco.BlockID{
+		deps = append(deps, blockmania.BlockID{
 			Hash:  string(ref.Hash),
 			Node:  ref.Node,
 			Round: ref.Round,
@@ -803,7 +806,7 @@ func (s *Service) processBlock(signed *SignedData) (uint64, error) {
 	if log.AtDebug() {
 		log.Debug("Received block", fld.NodeID(block.Node), fld.Round(block.Round))
 	}
-	id := byzco.BlockID{
+	id := blockmania.BlockID{
 		Hash:  string(hash),
 		Node:  block.Node,
 		Round: block.Round,
@@ -851,12 +854,12 @@ func (s *Service) replayGraphChanges(from uint64) {
 	}
 }
 
-func (s *Service) setBlock(id byzco.BlockID, block *SignedData) error {
+func (s *Service) setBlock(id blockmania.BlockID, block *SignedData) error {
 	return s.store.setBlock(id, block)
 }
 
-func (s *Service) setOwnBlock(block *SignedData, blockRef *SignedData, graph *byzco.BlockGraph) error {
-	s.ownblocks.set(graph.Block.Round, block)
+func (s *Service) setOwnBlock(block *SignedData, blockRef *SignedData, graph *blockmania.BlockGraph) error {
+	s.ownBlocks.set(graph.Block.Round, block)
 	return s.store.setOwnBlock(block, blockRef, graph)
 }
 
@@ -990,7 +993,7 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 	if err != nil {
 		return nil, err
 	}
-	ownblocks := &ownblocks{
+	ownBlocks := &ownBlocks{
 		data: map[uint64]*SignedData{},
 	}
 	store := &store{
@@ -1025,7 +1028,7 @@ func New(ctx context.Context, cfg *Config, top *network.Topology) (*Service, err
 		maxBlocks:    cfg.MaxPayload / (refSizeLimit + txSizeLimit + 100),
 		maxPayload:   cfg.MaxPayload,
 		nodeID:       cfg.NodeID,
-		ownblocks:    ownblocks,
+		ownBlocks:    ownBlocks,
 		peers:        cfg.Peers,
 		readTimeout:  cfg.Connections.ReadTimeout,
 		refSizeLimit: refSizeLimit,

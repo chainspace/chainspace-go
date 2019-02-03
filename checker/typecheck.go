@@ -1,10 +1,10 @@
-package checker // import "chainspace.io/prototype/checker"
+package checker // import "chainspace.io/chainspace-go/checker"
 
 import (
 	"encoding/base64"
 	"fmt"
 
-	"chainspace.io/prototype/sbac"
+	"chainspace.io/chainspace-go/sbac"
 )
 
 type idstate int8
@@ -23,8 +23,8 @@ type statedata struct {
 
 type idmap map[string]statedata
 
-func TypeCheck(tx *sbac.Transaction) error {
-	return typeCheck(idmap{}, tx.Traces)
+func b64(data []byte) string {
+	return base64.StdEncoding.EncodeToString(data)
 }
 
 func typeCheck(ids idmap, traces []*sbac.Trace) error {
@@ -46,10 +46,10 @@ func typeCheck(ids idmap, traces []*sbac.Trace) error {
 			return fmt.Errorf("missing procedure")
 		}
 
-		if len(trace.OutputObjects) != len(trace.InputObjectVersionIDs) {
+		if len(trace.OutputObjects) != len(trace.InputObjects) {
 			return fmt.Errorf("%v.%v() expect %v outputs, have %v",
 				trace.ContractID, trace.Procedure,
-				len(trace.InputObjectVersionIDs), len(trace.OutputObjects))
+				len(trace.InputObjects), len(trace.OutputObjects))
 		}
 
 		for _, v := range trace.InputObjectVersionIDs {
@@ -82,6 +82,6 @@ func typeCheck(ids idmap, traces []*sbac.Trace) error {
 	return nil
 }
 
-func b64(data []byte) string {
-	return base64.StdEncoding.EncodeToString(data)
+func TypeCheck(tx *sbac.Transaction) error {
+	return typeCheck(idmap{}, tx.Traces)
 }

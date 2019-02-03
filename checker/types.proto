@@ -2,7 +2,7 @@ syntax = "proto3";
 package checker;
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
-import "chainspace.io/prototype/sbac/types.proto";
+import "chainspace.io/chainspace-go/sbac/types.proto";
 
 enum Opcode {
   UNKNOWN = 0;

@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
+	"chainspace.io/chainspace-go/config"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
 )
 
 func cmdInit(args []string, usage string) {
@@ -31,6 +31,7 @@ func cmdInit(args []string, usage string) {
 	enablePubsub := opts.Flags("--enable-pubsub").Label("BOOL").Bool("Enable pubsub")
 	pubsubPort := opts.Flags("--pubsub-port").Label("PORT").Int("Port to use for the pubsub server")
 
+	roundInterval := opts.Flags("--round-interval").Label("N").Int("Round interval in milliseconds")
 	params := opts.Parse(args)
 
 	if err := ensureDir(*configRoot); err != nil {
@@ -46,13 +47,17 @@ func cmdInit(args []string, usage string) {
 	netDir := filepath.Join(*configRoot, networkName)
 	createUnlessExists(netDir)
 
+	ri := 1 * time.Second
+	if roundInterval != nil && *roundInterval != 0 {
+		ri = time.Duration(*roundInterval) * time.Millisecond
+	}
 	announce := &config.Announce{}
 	bootstrap := &config.Bootstrap{}
 	consensus := &config.NetConsensus{
 		BlockReferencesSizeLimit:   10 * config.MB,
 		BlockTransactionsSizeLimit: 100 * config.MB,
 		NonceExpiration:            30 * time.Second,
-		RoundInterval:              1 * time.Second,
+		RoundInterval:              ri,
 		ViewTimeout:                15,
 	}
 
@@ -147,6 +152,16 @@ func cmdInit(args []string, usage string) {
 				Addr:           "http://0.0.0.0",
 				HostPort:       "1789",
 				Port:           "8080",
+				HealthCheckURL: "/healthcheck",
+			},
+			{
+				Name: "cs-coin",
+				Procedures: []string{
+					"create-wallet", "add-funds", "transfer-funds"},
+				Image:          "chainspace.io/cs-coin:latest",
+				Addr:           "http://0.0.0.0",
+				HostPort:       "1492",
+				Port:           "1789",
 				HealthCheckURL: "/healthcheck",
 			},
 		},

@@ -3,8 +3,8 @@ package sbac
 import (
 	"fmt"
 
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
 	proto "github.com/gogo/protobuf/proto"
 )
 
@@ -75,7 +75,7 @@ func NewConsensuStateMachine(phase ConsensusOp, action ConsensusEventAction) *Co
 	}
 }
 
-func (s *Service) onConsensusEvent(st *States, e *ConsensusEvent) (StateConsensus, error) {
+func (s *ServiceSBAC) onConsensusEvent(st *States, e *ConsensusEvent) (StateConsensus, error) {
 	if e.data.Op != ConsensusOp_ConsensusCommit {
 		txbytes, _ := proto.Marshal(e.data.Tx)
 		if !s.verifyEvidenceSignature(txbytes, e.data.Evidences) {

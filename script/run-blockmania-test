@@ -1,0 +1,36 @@
+#!/bin/bash
+
+network_name=testnet
+shard_size=4
+shard_count=1
+
+session="blockmaniatest-${network_name}"
+
+command -v tmux >/dev/null 2>&1 || { echo "tmux required, aborting." >&2; exit 1; }
+command -v fuser >/dev/null 2>&1 || { echo "fuser required, aborting." >&2; exit 1; }
+
+echo ">> Building chainspace"
+go install chainspace.io/prototype/cmd/chainspace
+echo ">> Building blockmaniatest"
+go install chainspace.io/prototype/cmd/blockmaniatest
+
+rm -rf ~/.chainspace/${session}
+
+# init the testnet
+chainspace init ${session} --shard-count ${shard_count} --shard-size ${shard_size} --disable-sbac
+
+echo ">> Setting up tmux session ${session}"
+tmux new-session -d -s ${session}
+
+tot_node="$((${shard_count} * ${shard_size}))";
+for i in $(seq 1 ${tot_node})
+do
+    tmux send-keys "blockmaniatest -network ${session} -nodeid ${i}" "C-l" "C-m"
+
+    if (( ${i} != ${tot_node} )); then
+	tmux split-window
+	tmux select-layout tiled
+    fi
+done
+
+tmux attach-session -t ${session}

@@ -1,4 +1,4 @@
-package internal // import "chainspace.io/prototype/pubsub/internal"
+package internal // import "chainspace.io/chainspace-go/pubsub/internal"
 
 import (
 	"encoding/binary"
@@ -9,10 +9,10 @@ import (
 )
 
 type Payload struct {
-	ObjectID string   `json:"object_id"`
-	Success  bool     `json:"success"`
-	NodeID   uint64   `json:"node_id"`
 	Labels   []string `json:"labels"`
+	NodeID   uint64   `json:"nodeId"`
+	ObjectID string   `json:"objectId"`
+	Success  bool     `json:"success"`
 }
 
 type Conn struct {
@@ -22,28 +22,6 @@ type Conn struct {
 
 func (c *Conn) Close() error {
 	return c.conn.Close()
-}
-
-func (c *Conn) Write(payload []byte, timeout time.Duration) error {
-	buf := make([]byte, len(payload)+4)
-	binary.LittleEndian.PutUint32(buf, uint32(len(payload)))
-	copy(buf[4:], payload)
-	need := len(buf)
-	for need > 0 {
-		c.conn.SetWriteDeadline(time.Now().Add(timeout))
-		n, err := c.conn.Write(buf)
-		e, ok := err.(net.Error)
-		if (ok && e.Timeout()) || err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			c.conn.Close()
-			return err
-		}
-		buf = buf[n:]
-		need -= n
-	}
-	return nil
 }
 
 func (c *Conn) Read(timeout time.Duration) (*Payload, error) {
@@ -85,6 +63,28 @@ func (c *Conn) Read(timeout time.Duration) (*Payload, error) {
 
 	var payload Payload
 	return &payload, json.Unmarshal(buf, &payload)
+}
+
+func (c *Conn) Write(payload []byte, timeout time.Duration) error {
+	buf := make([]byte, len(payload)+4)
+	binary.LittleEndian.PutUint32(buf, uint32(len(payload)))
+	copy(buf[4:], payload)
+	need := len(buf)
+	for need > 0 {
+		c.conn.SetWriteDeadline(time.Now().Add(timeout))
+		n, err := c.conn.Write(buf)
+		e, ok := err.(net.Error)
+		if (ok && e.Timeout()) || err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			c.conn.Close()
+			return err
+		}
+		buf = buf[n:]
+		need -= n
+	}
+	return nil
 }
 
 func NewConn(c net.Conn) *Conn {

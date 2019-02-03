@@ -3,13 +3,13 @@ package broadcast
 import (
 	"path/filepath"
 
-	"chainspace.io/prototype/byzco"
+	"chainspace.io/chainspace-go/blockmania"
 	"github.com/dgraph-io/badger"
 )
 
 // Replay loads all blocks from the given start point and replays them onto the
 // graph in the given batch size.
-func Replay(dir string, nodeID uint64, g *byzco.Graph, start uint64, batch int) error {
+func Replay(dir string, nodeID uint64, g *blockmania.Graph, start uint64, batch int) error {
 	opts := badger.DefaultOptions
 	opts.Dir = filepath.Join(dir, "broadcast")
 	opts.ValueDir = opts.Dir
@@ -17,12 +17,12 @@ func Replay(dir string, nodeID uint64, g *byzco.Graph, start uint64, batch int) 
 	if err != nil {
 		return err
 	}
-	s := &store{
+	datastore := &store{
 		db: db,
 	}
 	var from uint64
 	for {
-		blocks, err := s.getBlockGraphs(nodeID, from, batch)
+		blocks, err := datastore.getBlockGraphs(nodeID, from, batch)
 		if err != nil {
 			return err
 		}

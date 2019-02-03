@@ -5,31 +5,36 @@ COVERAGE_FILE=coverage.txt
 COVERHTML_FILE=coverhtml.txt
 COVERAGE_SOURCES=$(shell find * -name '*.go' -not -path "testutil/*" -not -path "*testcases/*" | grep -v 'doc.go')
 
-FILES=	service/types.proto\
-	broadcast/types.proto\
-	sbac/types.proto\
-	checker/types.proto\
-	kv/types.proto
+FILES=service/types.proto\
+			broadcast/types.proto\
+			sbac/types.proto\
+			checker/types.proto\
+			kv/types.proto
 
+NAMESPACE=chainspace.io
 PKG := "./cmd/$(PROJECT_NAME)"
 PKG_LIST := $(shell go list ${PKG}/... | grep -v /vendor/)
-PROJECT_NAME := "chainspace"
+PROJECT_NAME=chainspace
+VERSION := $(shell cat VERSION)
 
-install: chainspace httptest httptest2 ## install the chainspace/httptest binaries
+install: $(PROJECT_NAME) httptest2 blockmaniatest pubsublistener ## install the chainspace/httptest binaries
 
-chainspace: ## build the chainspace binary
-	$(GO_CMD) install chainspace.io/prototype/cmd/chainspace
+generate: ## generte bindata files # TODO: remove this once new gin-swagger stuff is working
+	cd restsrv && go-bindata-assetfs -pkg restsrv -o bindata.go swagger && cd ..
+
+$(PROJECT_NAME): ## build the chainspace binary
+	$(GO_CMD) install $(NAMESPACE)/chainspace-go/cmd/$(PROJECT_NAME)
 
 coverage: $(COVERAGE_FILE)
 
 $(COVERAGE_FILE): $(COVERAGE_SOURCES)
 	@for d in $(PKG_LIST); do \
-	    $(GO_TEST) -coverprofile=profile.out -covermode=atomic $$d || exit 1; \
-	    if [ -f profile.out ]; then \
-	        cat profile.out >> $(COVERAGE_FILE); \
-	        rm profile.out; \
-	    fi \
-		done
+    $(GO_TEST) -coverprofile=profile.out -covermode=atomic $$d || exit 1; \
+    if [ -f profile.out ]; then \
+        cat profile.out >> $(COVERAGE_FILE); \
+        rm profile.out; \
+    fi \
+	done
 
 coverhtml:
 	echo 'mode: set' > $(COVERHTML_FILE)
@@ -45,33 +50,43 @@ coverhtml:
 docker-all: docker docker-push ## build the docker image and push it to the gcp registry
 
 docker: ## build the docker image
-	docker build -t chainspace.io/chainspace:v0.1 -t gcr.io/acoustic-atom-211511/chainspace:latest -t gcr.io/acoustic-atom-211511/chainspace:v0.1 .
+	docker build -t $(NAMESPACE)/$(PROJECT_NAME):v$(VERSION) -t gcr.io/acoustic-atom-211511/$(PROJECT_NAME):latest -t gcr.io/acoustic-atom-211511/$(PROJECT_NAME):v$(VERSION) .
 
 docker-push: ## push the docker image to the gcp registry
-	docker push gcr.io/acoustic-atom-211511/chainspace:latest
-	docker push gcr.io/acoustic-atom-211511/chainspace:v0.1
-
-httptest: ## build the httptest binary
-	go install chainspace.io/prototype/cmd/httptest
+	docker push gcr.io/acoustic-atom-211511/$(PROJECT_NAME):latest
+	docker push gcr.io/acoustic-atom-211511/$(PROJECT_NAME):v$(VERSION)
 
 httptest2: ## build the httptest2 binary
-	go install chainspace.io/prototype/cmd/httptest2
+	go install $(NAMESPACE)/chainspace-go/cmd/httptest2
+
+blockmaniatest: ## build the httptest2 binary
+	go install $(NAMESPACE)/chainspace-go/cmd/blockmaniatest
+
+pubsublistener:
+	go install $(NAMESPACE)/chainspace-go/cmd/pubsublistener
 
 proto: ## recompile all protobuf definitions
 	$(foreach f,$(FILES),\
 		./genproto.sh $(f);\
 	)
 
+swaggerdocs:
+	rm -rf rest/docs && swag init -g rest/router.go && mv docs rest/docs
+
+swaggerdocs-cs-coin:
+	rm -rf examples/cs-coin/api/docs && swag init -g examples/cs-coin/api/api.go && mv docs examples/cs-coin/api/docs
+
 test: ## Run unit tests
 	go test -short ${PKG_LIST} -v
 
 gcp: ## build and compress in order to send to gcp
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w" chainspace.io/prototype/cmd/chainspace
-	rm -rf ./infrastructure/chainspace.upx
-	upx -o ./infrastructure/chainspace.upx chainspace
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w" $(NAMESPACE)/chainspace-go/cmd/$(PROJECT_NAME)
+	rm -rf ./infrastructure/$(PROJECT_NAME).upx
+	upx -o ./infrastructure/$(PROJECT_NAME).upx $(PROJECT_NAME)
 
 contract: ## build dummy contract docker
-	docker build -t "chainspace.io/contract-dummy:latest" -t "gcr.io/acoustic-atom-211511/chainspace.io/contract-dummy:latest" -f ./dummycontract/Dockerfile ./dummycontract
+	docker build -t "$(NAMESPACE)/contract-dummy:latest" -t "gcr.io/acoustic-atom-211511/$(NAMESPACE)/contract-dummy:latest" -f ./dummycontract/Dockerfile ./dummycontract
+	docker build -t "chainspace.io/cs-coin:latest" -t "chainspace.io/cs-coin:v0.1.0" -f examples/cs-coin/Dockerfile .
 
 .PHONY: help
 

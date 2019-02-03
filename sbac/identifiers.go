@@ -1,4 +1,4 @@
-package sbac // import "chainspace.io/prototype/sbac"
+package sbac // import "chainspace.io/chainspace-go/sbac"
 
 import (
 	"crypto/sha512"
@@ -82,7 +82,7 @@ func MakeObjectIDs(pair *TraceIdentifierPair) ([]*Object, error) {
 		hasher.Reset()
 		id := make([]byte, len(pair.ID))
 		copy(id, pair.ID)
-		id = append(id, outobj...)
+		id = append(id, outobj.Object...)
 		index := make([]byte, 4)
 		binary.LittleEndian.PutUint32(index, uint32(i))
 		id = append(id, index...)
@@ -90,14 +90,10 @@ func MakeObjectIDs(pair *TraceIdentifierPair) ([]*Object, error) {
 		if err != nil {
 			return nil, fmt.Errorf("sbac: unable to create hash: %v", err)
 		}
-		var labels []string
-		if len(pair.Trace.Labels) > i {
-			labels = pair.Trace.Labels[i].AsSlice()
-		}
 		o := &Object{
-			Value:     outobj,
+			Value:     outobj.Object,
 			VersionID: hasher.Sum(nil),
-			Labels:    labels,
+			Labels:    outobj.Labels,
 			Status:    ObjectStatus_ACTIVE,
 		}
 

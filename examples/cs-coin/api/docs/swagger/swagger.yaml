@@ -1,0 +1,675 @@
+basePath: '{{.BasePath}}'
+definitions:
+  api.AddFundsRequest:
+    properties:
+      amount:
+        type: integer
+      mappings:
+        type: object
+      signature:
+        type: string
+      wallet:
+        type: string
+    type: object
+  api.CheckTransactionResponse:
+    properties:
+      nodeId:
+        type: integer
+      ok:
+        type: boolean
+      signature:
+        type: string
+    type: object
+  api.CreateWalletRequest:
+    properties:
+      address:
+        type: string
+      initObject:
+        type: string
+      mappings:
+        type: object
+      pubKey:
+        type: string
+    type: object
+  api.Dependency: {}
+  api.Error:
+    properties:
+      error:
+        type: string
+    type: object
+  api.InitResponse:
+    properties:
+      error:
+        type: string
+      initObject:
+        type: string
+    type: object
+  api.LabelObject:
+    properties:
+      label:
+        type: string
+      object:
+        type: object
+      versionId:
+        type: string
+    type: object
+  api.LabelVersionID:
+    properties:
+      label:
+        type: string
+      versionId:
+        type: string
+    type: object
+  api.ListObjectsResponse:
+    properties:
+      pairs:
+        items:
+          $ref: '#/definitions/api.LabelObject'
+        type: array
+    type: object
+  api.ListVersionIDsResponse:
+    properties:
+      pairs:
+        items:
+          $ref: '#/definitions/api.LabelVersionID'
+        type: array
+    type: object
+  api.Object:
+    properties:
+      status:
+        type: string
+      value:
+        type: object
+      versionId:
+        type: string
+    type: object
+  api.ObjectIDResponse:
+    properties:
+      id:
+        type: string
+    type: object
+  api.ObjectRequest:
+    properties:
+      object:
+        type: object
+    type: object
+  api.ObjectResponse:
+    properties:
+      object:
+        type: object
+    type: object
+  api.OutputObject:
+    properties:
+      labels:
+        items:
+          type: string
+        type: array
+      object:
+        type: string
+    type: object
+  api.Response:
+    properties:
+      error:
+        type: string
+      transaction:
+        type: string
+    type: object
+  api.Trace:
+    properties:
+      contractId:
+        type: string
+      dependencies:
+        items:
+          $ref: '#/definitions/api.Dependency'
+        type: array
+      inputObjectVersionIds:
+        items:
+          type: string
+        type: array
+      inputReferenceVersionIds:
+        items:
+          type: string
+        type: array
+      outputObjects:
+        items:
+          $ref: '#/definitions/api.OutputObject'
+        type: array
+      parameters:
+        items:
+          type: string
+        type: array
+      procedure:
+        type: string
+      returns:
+        items:
+          type: string
+        type: array
+    type: object
+  api.Transaction:
+    properties:
+      mappings:
+        type: object
+      signatures:
+        type: object
+      traces:
+        items:
+          $ref: '#/definitions/api.Trace'
+        type: array
+    type: object
+  api.TransferFundsRequest:
+    properties:
+      amount:
+        type: integer
+      fromWallet:
+        type: string
+      mappings:
+        type: object
+      signature:
+        type: string
+      toWallet:
+        type: string
+    type: object
+  api.VersionIDResponse:
+    properties:
+      versionId:
+        type: string
+    type: object
+host: '{{.Host}}'
+info:
+  contact: {}
+  description: Transfer funds from a wallet to another
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: cs-coin API
+  version: "1.0"
+paths:
+  /api/checker/check:
+    post:
+      consumes:
+      - application/json
+      description: Checks something
+      operationId: check
+      parameters:
+      - description: transaction
+        in: body
+        name: transaction
+        required: true
+        schema:
+          $ref: '#/definitions/api.Transaction'
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.CheckTransactionResponse'
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+      summary: Checks something
+      tags:
+      - checker
+  /api/cs-coin/wallet:
+    post:
+      consumes:
+      - application/json
+      description: Create a new Wallet from address generated by the user
+      operationId: createWallet
+      parameters:
+      - description: wallet
+        in: body
+        name: wallet
+        required: true
+        schema:
+          $ref: '#/definitions/api.CreateWalletRequest'
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.Response'
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.Response'
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.Response'
+            type: object
+      summary: Create a new Wallet from address generated by the user
+      tags:
+      - cs-coin-methods
+  /api/cs-coin/wallet/add-funds:
+    post:
+      consumes:
+      - application/json
+      description: Add new funds to user wallet
+      operationId: addFunds
+      parameters:
+      - description: request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.AddFundsRequest'
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.Response'
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.Response'
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.Response'
+            type: object
+      summary: Add new funds to a user wallet
+      tags:
+      - cs-coin-methods
+  /api/cs-coin/wallet/init/{addr}:
+    get:
+      consumes:
+      - application/json
+      description: Generate the seed object for a new wallet
+      operationId: init
+      parameters:
+      - description: addr
+        in: path
+        name: addr
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.InitResponse'
+            type: object
+      summary: Generate the seed object for a new wallet
+      tags:
+      - cs-coin-init
+  /api/cs-coin/wallet/transfer-funds:
+    post:
+      consumes:
+      - application/json
+      description: Transfer funds from a wallet to another
+      operationId: transferFunds
+      parameters:
+      - description: request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.TransferFundsRequest'
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.Response'
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.Response'
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.Response'
+            type: object
+      summary: Transfer funds from a wallet to another
+      tags:
+      - cs-coin-methods
+  /api/kv/label/{label}:
+    get:
+      consumes:
+      - application/json
+      description: get string by label
+      operationId: getbyLabel
+      parameters:
+      - description: label
+        in: path
+        name: label
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ObjectResponse'
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+      summary: Retrieve a key by its label
+      tags:
+      - kv
+  /api/kv/label/{label}/version-id:
+    get:
+      consumes:
+      - application/json
+      description: get version ID by label
+      operationId: getVersionIDbyLabel
+      parameters:
+      - description: label
+        in: path
+        name: label
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.VersionIDResponse'
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+      summary: Retrieve a version ID by its label
+      tags:
+      - kv
+  /api/kv/prefix/{prefix}:
+    get:
+      consumes:
+      - application/json
+      description: See before
+      operationId: getByPrefix
+      parameters:
+      - description: prefix
+        in: path
+        name: prefix
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ListObjectsResponse'
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+      summary: See before
+      tags:
+      - kv
+  /api/kv/prefix/{prefix}/version-id:
+    get:
+      consumes:
+      - application/json
+      description: see before
+      operationId: getVersionIDbyPrefix
+      parameters:
+      - description: prefix
+        in: path
+        name: prefix
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ListVersionIDsResponse'
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+      summary: See before
+      tags:
+      - kv
+  /api/pubsub/ws:
+    get:
+      description: Iniate a websocket connection
+      operationId: websocket
+      responses:
+        "204": {}
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+      summary: Initiate a websocket connection in order to subscribed to object saved
+        in chainspace by the current node
+      tags:
+      - pubsub
+  /api/sbac/object:
+    post:
+      consumes:
+      - application/json
+      description: TODO
+      operationId: createObject
+      parameters:
+      - description: object
+        in: body
+        name: object
+        required: true
+        schema:
+          $ref: '#/definitions/api.ObjectRequest'
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ObjectIDResponse'
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+      summary: Create an object to a shard
+      tags:
+      - sbac
+  /api/sbac/states:
+    get:
+      consumes:
+      - application/json
+      description: TODO
+      operationId: states
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.Object'
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+      summary: Get the states
+      tags:
+      - sbac
+  /api/sbac/transaction:
+    post:
+      consumes:
+      - application/json
+      description: TODO
+      operationId: addTransaction
+      parameters:
+      - description: transaction
+        in: body
+        name: transaction
+        required: true
+        schema:
+          $ref: '#/definitions/api.Transaction'
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.Object'
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+      summary: Add a transaction to a shard
+      tags:
+      - sbac
+  /api/sbac/transaction-checked:
+    post:
+      consumes:
+      - application/json
+      description: TODO
+      operationId: addTransaction
+      parameters:
+      - description: transaction
+        in: body
+        name: transaction
+        required: true
+        schema:
+          $ref: '#/definitions/api.Transaction'
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.Object'
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.Error'
+            type: object
+      summary: Add a transaction which is already checked to a shard
+      tags:
+      - sbac
+swagger: "2.0"

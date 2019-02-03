@@ -1,4 +1,4 @@
-package contracts // import "chainspace.io/prototype/contracts"
+package contracts // import "chainspace.io/chainspace-go/contracts"
 
 import (
 	"bytes"
@@ -12,10 +12,10 @@ import (
 	"path"
 	"time"
 
-	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
-	"chainspace.io/prototype/sbac"
+	"chainspace.io/chainspace-go/config"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
+	"chainspace.io/chainspace-go/sbac"
 )
 
 type Checker struct {
@@ -24,14 +24,18 @@ type Checker struct {
 	addr          string
 }
 
+type outputObject struct {
+	Labels []string `json:"labels"`
+	Object string   `json:"object"`
+}
+
 type trace struct {
-	Inputs          []interface{} `json:"inputs"`
-	ReferenceInputs []interface{} `json:"referenceInputs"`
-	Parameters      []interface{} `json:"parameters"`
-	Outputs         []interface{} `json:"outputs"`
-	Returns         []interface{} `json:"returns"`
-	Labels          [][]string    `json:"labels"`
-	Dependencies    []trace       `json:"dependencies"`
+	Dependencies    []trace        `json:"dependencies"`
+	Inputs          []string       `json:"inputs"`
+	Outputs         []outputObject `json:"outputs"`
+	Parameters      []string       `json:"parameters"`
+	ReferenceInputs []string       `json:"referenceInputs"`
+	Returns         []string       `json:"returns"`
 }
 
 func encodeToStrings(ls [][]byte) []string {
@@ -41,6 +45,44 @@ func encodeToStrings(ls [][]byte) []string {
 	}
 
 	return out
+}
+
+func toStringSlice(s [][]byte) []string {
+	out := make([]string, 0, len(s))
+	for _, v := range s {
+		out = append(out, string(v))
+	}
+	return out
+}
+
+func makeTrace(inputs, refInputs, parameters [][]byte, outputs []*sbac.OutputObject, returns [][]byte, traces []*sbac.Trace) trace {
+	deps := []trace{}
+	for _, t := range traces {
+		t := t
+		trace := makeTrace(
+			t.InputObjects,
+			t.InputReferences,
+			t.Parameters,
+			t.OutputObjects,
+			t.Returns,
+			t.Dependencies)
+		deps = append(deps, trace)
+	}
+
+	outputObjects := make([]outputObject, 0, len(outputs))
+	for _, v := range outputs {
+		outputObjects = append(outputObjects,
+			outputObject{v.Labels, string(v.Object)})
+	}
+
+	return trace{
+		Inputs:          toStringSlice(inputs),
+		ReferenceInputs: toStringSlice(refInputs),
+		Parameters:      toStringSlice(parameters),
+		Outputs:         outputObjects,
+		Returns:         toStringSlice(returns),
+		Dependencies:    deps,
+	}
 }
 
 func unmarshalIfaceSlice(ls [][]byte) []interface{} {
@@ -56,39 +98,10 @@ func unmarshalIfaceSlice(ls [][]byte) []interface{} {
 	return out
 }
 
-func makeTrace(inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string, traces []*sbac.Trace) trace {
-	deps := []trace{}
-	for _, t := range traces {
-		t := t
-		trace := makeTrace(
-			t.InputObjects,
-			t.InputReferences,
-			t.Parameters,
-			t.OutputObjects,
-			t.Returns,
-			sbac.StringsSlice(t.Labels).AsSlice(),
-			t.Dependencies)
-		deps = append(deps, trace)
-	}
-
-	return trace{
-		Inputs:          unmarshalIfaceSlice(inputs),
-		ReferenceInputs: unmarshalIfaceSlice(refInputs),
-		Parameters:      unmarshalIfaceSlice(parameters),
-		Outputs:         unmarshalIfaceSlice(outputs),
-		Returns:         unmarshalIfaceSlice(returns),
-		Labels:          labels,
-		Dependencies:    deps,
-	}
-}
-
-func (c Checker) Name() string { return c.procedureName }
-
-func (c Checker) ContractID() string { return c.iD }
-
 func (c Checker) Check(
-	inputs, refInputs, parameters, outputs, returns [][]byte, labels [][]string, dependencies []*sbac.Trace) bool {
-	body := makeTrace(inputs, refInputs, parameters, outputs, returns, labels, dependencies)
+	inputs, refInputs, parameters [][]byte, outputs []*sbac.OutputObject,
+	returns [][]byte, dependencies []*sbac.Trace) bool {
+	body := makeTrace(inputs, refInputs, parameters, outputs, returns, dependencies)
 	bbody, _ := json.Marshal(body)
 	payload := bytes.NewBuffer(bbody)
 
@@ -130,18 +143,10 @@ func (c Checker) Check(
 	return res.Success
 }
 
-func NewDockerCheckers(cfg *config.DockerContract) []Checker {
-	u, _ := url.Parse(fmt.Sprintf("http://0.0.0.0:%v", cfg.HostPort))
-	u.Path = path.Join(u.Path, cfg.Name)
-	checkers := []Checker{}
+func (c Checker) ContractID() string { return c.iD }
 
-	for _, v := range cfg.Procedures {
-		_u := *u
-		_u.Path = path.Join(_u.Path, v)
-		checkers = append(checkers, Checker{cfg.Name, v, _u.String()})
-	}
-
-	return checkers
+func (c Checker) Name() string {
+	return c.procedureName
 }
 
 func NewCheckers(cfg *config.Contract) []Checker {
@@ -151,6 +156,20 @@ func NewCheckers(cfg *config.Contract) []Checker {
 	for _, v := range cfg.Procedures {
 		pth := path.Join(u, v)
 		_u, _ := url.Parse(pth)
+		checkers = append(checkers, Checker{cfg.Name, v, _u.String()})
+	}
+
+	return checkers
+}
+
+func NewDockerCheckers(cfg *config.DockerContract) []Checker {
+	u, _ := url.Parse(fmt.Sprintf("http://0.0.0.0:%v", cfg.HostPort))
+	u.Path = path.Join(u.Path, cfg.Name)
+	checkers := []Checker{}
+
+	for _, v := range cfg.Procedures {
+		_u := *u
+		_u.Path = path.Join(_u.Path, v)
 		checkers = append(checkers, Checker{cfg.Name, v, _u.String()})
 	}
 

@@ -1,4 +1,4 @@
-package pubsub // import "chainspace.io/prototype/pubsub"
+package pubsub // import "chainspace.io/chainspace-go/pubsub"
 
 import (
 	"encoding/base64"
@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"chainspace.io/prototype/internal/freeport"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
-	"chainspace.io/prototype/pubsub/internal"
+	"chainspace.io/chainspace-go/internal/freeport"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
+	"chainspace.io/chainspace-go/pubsub/internal"
 	"github.com/grandcat/zeroconf"
 )
 
@@ -25,20 +25,22 @@ type Config struct {
 type Server interface {
 	Close()
 	Publish(objectID []byte, labels []string, success bool)
+	RegisterNotifier(n Notifier)
 }
+
+type Notifier func(internal.Payload)
 
 type server struct {
 	port      int
 	networkID string
 	nodeID    uint64
 	conns     map[string]*internal.Conn
+	notifiers []Notifier
 	mu        sync.Mutex
 }
 
-func (s *server) Close() {
-	for _, v := range s.conns {
-		v.Close()
-	}
+func (s *server) RegisterNotifier(n Notifier) {
+	s.notifiers = append(s.notifiers, n)
 }
 
 func (s *server) handleConnection(conn net.Conn) {
@@ -56,6 +58,12 @@ func (s *server) listen(ln net.Listener) {
 	}
 }
 
+func (s *server) Close() {
+	for _, v := range s.conns {
+		v.Close()
+	}
+}
+
 func (s *server) Publish(objectID []byte, labels []string, success bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -66,6 +74,11 @@ func (s *server) Publish(objectID []byte, labels []string, success bool) {
 		NodeID:   s.nodeID,
 		Labels:   labels,
 	}
+	// send to customs notifiers
+	for _, notify := range s.notifiers {
+		notify(payload)
+	}
+
 	b, _ := json.Marshal(&payload)
 	badconns := []string{}
 	for addr, c := range s.conns {
@@ -82,7 +95,7 @@ func (s *server) Publish(objectID []byte, labels []string, success bool) {
 }
 
 func announceMDNS(networkID string, nodeID uint64, port int) error {
-	log.Error("ANNOUNCE MDNS PUBSUB")
+	log.Info("ANNOUNCE MDNS PUBSUB")
 	instance := fmt.Sprintf("_%d", nodeID)
 	service := fmt.Sprintf("_%s_pubsub._chainspace", strings.ToLower(networkID))
 	_, err := zeroconf.Register(instance, service, "local.", port, nil, nil)

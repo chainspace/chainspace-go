@@ -1,4 +1,4 @@
-package client // import "chainspace.io/prototype/pubsub/client"
+package client // import "chainspace.io/chainspace-go/pubsub/client"
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"chainspace.io/prototype/pubsub/internal"
+	"chainspace.io/chainspace-go/pubsub/internal"
 )
 
 type Callback func(nodeID uint64, objectID string, success bool, labels []string)

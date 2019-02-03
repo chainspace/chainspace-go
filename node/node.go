@@ -1,4 +1,4 @@
-package node // import "chainspace.io/prototype/node"
+package node // import "chainspace.io/chainspace-go/node"
 
 import (
 	"bytes"
@@ -13,20 +13,20 @@ import (
 	"sync"
 	"time"
 
-	"chainspace.io/prototype/broadcast"
-	"chainspace.io/prototype/checker"
-	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/contracts"
-	"chainspace.io/prototype/internal/crypto/signature"
-	"chainspace.io/prototype/internal/freeport"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
-	"chainspace.io/prototype/kv"
-	"chainspace.io/prototype/network"
-	"chainspace.io/prototype/pubsub"
-	"chainspace.io/prototype/restsrv"
-	"chainspace.io/prototype/sbac"
-	"chainspace.io/prototype/service"
+	"chainspace.io/chainspace-go/broadcast"
+	"chainspace.io/chainspace-go/checker"
+	"chainspace.io/chainspace-go/config"
+	"chainspace.io/chainspace-go/contracts"
+	"chainspace.io/chainspace-go/internal/crypto/signature"
+	"chainspace.io/chainspace-go/internal/freeport"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
+	"chainspace.io/chainspace-go/kv"
+	"chainspace.io/chainspace-go/network"
+	"chainspace.io/chainspace-go/pubsub"
+	"chainspace.io/chainspace-go/rest"
+	"chainspace.io/chainspace-go/sbac"
+	"chainspace.io/chainspace-go/service"
 	"github.com/gogo/protobuf/proto"
 	"github.com/tav/golly/process"
 )
@@ -65,7 +65,7 @@ type Config struct {
 type Server struct {
 	Broadcast       *broadcast.Service
 	cancel          context.CancelFunc
-	checker         *checker.Service
+	checker         checker.Service
 	ctx             context.Context
 	id              uint64
 	key             signature.KeyPair
@@ -75,7 +75,7 @@ type Server struct {
 	mu              sync.RWMutex // protects nonceMap
 	nonceExpiration time.Duration
 	nonceMap        map[uint64][]usedNonce
-	restsrv         *restsrv.Service
+	rst             *rest.Service
 	sharder         service.Handler
 	top             *network.Topology
 	sbac            service.Handler
@@ -147,7 +147,6 @@ func (s *Server) handleConnection(conn net.Conn) {
 			}
 		}
 	}
-
 }
 
 func (s *Server) listen(l net.Listener) {
@@ -303,7 +302,7 @@ func Run(cfg *Config) (*Server, error) {
 
 		// ensure all the contracts are working
 		if err := cts.EnsureUp(); err != nil {
-			log.Fatal("some contracts are unavailable", fld.Err(err))
+			log.Fatal("some contracts are unavailable, run `chainspace contracts <yournetworkname> create`", fld.Err(err))
 		}
 	}
 
@@ -416,11 +415,11 @@ func Run(cfg *Config) (*Server, error) {
 	}
 
 	var (
+		checkr  checker.Service
 		kvstore kv.Service
-		rstsrv  *restsrv.Service
-		ssbac   *sbac.Service
 		pbsb    pubsub.Server
-		checkr  *checker.Service
+		rst     *rest.Service
+		ssbac   *sbac.ServiceSBAC
 	)
 
 	kvcfg := &kv.Config{
@@ -491,20 +490,21 @@ func Run(cfg *Config) (*Server, error) {
 		} else {
 			rport, _ = freeport.TCP("")
 		}
-		restsrvcfg := &restsrv.Config{
+		restcfg := &rest.Config{
 			Addr:        "",
-			Key:         key,
-			Port:        rport,
-			Top:         top,
-			SelfID:      cfg.NodeID,
-			MaxPayload:  config.ByteSize(maxPayload),
-			SBAC:        ssbac,
-			Store:       kvstore,
 			Checker:     checkr,
-			SBACOnly:    cfg.SBACOnly,
 			CheckerOnly: cfg.CheckerOnly,
+			Key:         key,
+			MaxPayload:  config.ByteSize(maxPayload),
+			Port:        1000 + rport,
+			SelfID:      cfg.NodeID,
+			SBAC:        ssbac,
+			SBACOnly:    cfg.SBACOnly,
+			Store:       kvstore,
+			Top:         top,
+			PS:          pbsb,
 		}
-		rstsrv = restsrv.New(restsrvcfg)
+		rst = rest.New(restcfg)
 	}
 
 	node := &Server{
@@ -519,7 +519,7 @@ func Run(cfg *Config) (*Server, error) {
 		nonceExpiration: cfg.Network.Consensus.NonceExpiration,
 		nonceMap:        map[uint64][]usedNonce{},
 		readTimeout:     cfg.Node.Connections.ReadTimeout,
-		restsrv:         rstsrv,
+		rst:             rst,
 		top:             top,
 		sbac:            ssbac,
 		writeTimeout:    cfg.Node.Connections.WriteTimeout,
@@ -550,5 +550,4 @@ func Run(cfg *Config) (*Server, error) {
 	log.Info("Node is running", fld.NetworkName(cfg.NetworkName), fld.Port(port))
 	log.Info("Runtime directory", fld.Path(dir))
 	return node, nil
-
 }

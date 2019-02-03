@@ -4,19 +4,19 @@ import (
 	"sync"
 )
 
-type ownblocks struct {
+type ownBlocks struct {
 	data   map[uint64]*SignedData
 	latest uint64
 	mu     sync.Mutex
 }
 
-func (o *ownblocks) get(round uint64) *SignedData {
+func (o *ownBlocks) get(round uint64) *SignedData {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	return o.data[round]
 }
 
-func (o *ownblocks) prune(size int) {
+func (o *ownBlocks) prune(size int) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if len(o.data) <= size {
@@ -32,7 +32,7 @@ func (o *ownblocks) prune(size int) {
 	o.data = ndata
 }
 
-func (o *ownblocks) set(round uint64, block *SignedData) {
+func (o *ownBlocks) set(round uint64, block *SignedData) {
 	o.mu.Lock()
 	o.data[round] = block
 	o.latest = round

@@ -1,4 +1,4 @@
-package freeport // import "chainspace.io/prototype/internal/freeport"
+package freeport // import "chainspace.io/chainspace-go/internal/freeport"
 
 import (
 	"net"

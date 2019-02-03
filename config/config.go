@@ -1,4 +1,4 @@
-package config // import "chainspace.io/prototype/config"
+package config // import "chainspace.io/chainspace-go/config"
 
 // NOTE(tav): The order of some of the struct fields are purposefully not in
 // alphabetical order so as to generate a more pleasing ordering when serialised
@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"chainspace.io/prototype/internal/log"
+	"chainspace.io/chainspace-go/internal/log"
 	"gopkg.in/yaml.v2"
 )
 
@@ -221,6 +221,19 @@ type Contracts struct {
 	DockerMinimalVersion string           `yaml:"docker.minimalversion"`
 }
 
+// LoadContracts will read the YAML file at the given path and return the
+// corresponding Contracts config.
+func LoadContracts(path string) (*Contracts, error) {
+	data, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	cfg := &Contracts{}
+	err = yaml.Unmarshal(data, cfg)
+
+	return cfg, err
+}
+
 // LoadKeys will read the YAML file at the given path and return the
 // corresponding Keys config.
 func LoadKeys(path string) (*Keys, error) {
@@ -257,19 +270,6 @@ func LoadNode(path string) (*Node, error) {
 	if cfg.Storage == nil || len(cfg.Storage.Type) <= 0 {
 		cfg.Storage = &Storage{"memstore"}
 	}
-
-	return cfg, err
-}
-
-// LoadContracts will read the YAML file at the given path and return the
-// corresponding Contracts config.
-func LoadContracts(path string) (*Contracts, error) {
-	data, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	cfg := &Contracts{}
-	err = yaml.Unmarshal(data, cfg)
 
 	return cfg, err
 }

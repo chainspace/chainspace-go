@@ -1,41 +1,15 @@
-package conns // import "chainspace.io/prototype/internal/conns"
+package conns // import "chainspace.io/chainspace-go/internal/conns"
 
 import (
 	"sync"
 	"time"
 
-	"chainspace.io/prototype/internal/crypto/signature"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
-	"chainspace.io/prototype/network"
-	"chainspace.io/prototype/service"
+	"chainspace.io/chainspace-go/internal/crypto/signature"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
+	"chainspace.io/chainspace-go/network"
+	"chainspace.io/chainspace-go/service"
 )
-
-type MuConn struct {
-	mu   sync.Mutex
-	conn *network.Conn
-	die  chan bool
-}
-
-type PendingAck struct {
-	nodeID  uint64
-	msg     *service.Message
-	sentAt  time.Time
-	timeout time.Duration
-	cb      func(uint64, *service.Message)
-}
-
-type AckID struct {
-	NodeID    uint64
-	RequestID uint64
-}
-
-type Cache interface {
-	Close()
-	WriteRequest(
-		nodeID uint64, msg *service.Message, timeout time.Duration, ack bool,
-		cb func(uint64, *service.Message)) (uint64, error)
-}
 
 type cache struct {
 	conns      map[uint64]*MuConn
@@ -51,15 +25,43 @@ type cache struct {
 	pendingAcksMu sync.Mutex
 }
 
-func (c *cache) Close() {}
+type AckID struct {
+	NodeID    uint64
+	RequestID uint64
+}
 
-func (c *cache) sendHello(nodeID uint64, conn *network.Conn) error {
-	hellomsg, err := service.SignHello(
-		c.selfID, nodeID, c.key, c.connection)
-	if err != nil {
-		return err
+type MuConn struct {
+	mu   sync.Mutex
+	conn *network.Conn
+	die  chan bool
+}
+
+type PendingAck struct {
+	nodeID  uint64
+	msg     *service.Message
+	sentAt  time.Time
+	timeout time.Duration
+	cb      func(uint64, *service.Message)
+}
+
+type Cache interface {
+	Close()
+	WriteRequest(
+		nodeID uint64, msg *service.Message, timeout time.Duration, ack bool,
+		cb func(uint64, *service.Message)) (uint64, error)
+}
+
+func (c *cache) addPendingAck(nodeID uint64, msg *service.Message, timeout time.Duration, id uint64, cb func(uint64, *service.Message)) {
+	ack := PendingAck{
+		sentAt:  time.Now(),
+		nodeID:  nodeID,
+		msg:     msg,
+		timeout: timeout,
+		cb:      cb,
 	}
-	return conn.WritePayload(hellomsg, c.maxPayload, time.Second)
+	c.pendingAcksMu.Lock()
+	c.pendingAcks[AckID{nodeID, id}] = ack
+	c.pendingAcksMu.Unlock()
 }
 
 func (c *cache) dial(nodeID uint64) (*MuConn, error) {
@@ -87,55 +89,6 @@ func (c *cache) dial(nodeID uint64) (*MuConn, error) {
 	go c.readAckMessage(nodeID, cc.conn, cc.die)
 	c.conns[nodeID] = cc
 	return cc, nil
-}
-
-func (c *cache) release(nodeID uint64) {
-	c.mu.Lock()
-	cc, ok := c.conns[nodeID]
-	c.mu.Unlock()
-	if ok {
-		cc.die <- true
-		cc.conn.Close()
-		c.mu.Lock()
-		delete(c.conns, nodeID)
-		c.mu.Unlock()
-	}
-}
-
-func (c *cache) WriteRequest(
-	nodeID uint64, msg *service.Message, timeout time.Duration, ack bool, cb func(uint64, *service.Message)) (uint64, error) {
-	c.cmu[nodeID-1].Lock()
-	mc, err := c.dial(nodeID)
-	if err != nil {
-		c.release(nodeID)
-		c.cmu[nodeID-1].Unlock()
-		time.Sleep(5 * time.Millisecond)
-		return c.WriteRequest(nodeID, msg, timeout, ack, cb)
-	}
-	id, err := mc.conn.WriteRequest(msg, c.maxPayload, timeout)
-	if err != nil {
-		c.release(nodeID)
-		c.cmu[nodeID-1].Unlock()
-		return c.WriteRequest(nodeID, msg, timeout, ack, cb)
-	}
-	c.cmu[nodeID-1].Unlock()
-	if ack {
-		c.addPendingAck(nodeID, msg, timeout, id, cb)
-	}
-	return id, nil
-}
-
-func (c *cache) addPendingAck(nodeID uint64, msg *service.Message, timeout time.Duration, id uint64, cb func(uint64, *service.Message)) {
-	ack := PendingAck{
-		sentAt:  time.Now(),
-		nodeID:  nodeID,
-		msg:     msg,
-		timeout: timeout,
-		cb:      cb,
-	}
-	c.pendingAcksMu.Lock()
-	c.pendingAcks[AckID{nodeID, id}] = ack
-	c.pendingAcksMu.Unlock()
 }
 
 func (c *cache) processAckMessage(nodeID uint64, msg *service.Message) {
@@ -171,6 +124,19 @@ func (c *cache) readAckMessage(nodeID uint64, conn *network.Conn, die chan bool)
 	}
 }
 
+func (c *cache) release(nodeID uint64) {
+	c.mu.Lock()
+	cc, ok := c.conns[nodeID]
+	c.mu.Unlock()
+	if ok {
+		cc.die <- true
+		cc.conn.Close()
+		c.mu.Lock()
+		delete(c.conns, nodeID)
+		c.mu.Unlock()
+	}
+}
+
 func (c *cache) retryRequests() {
 	for {
 		redolist := []PendingAck{}
@@ -187,6 +153,40 @@ func (c *cache) retryRequests() {
 			c.WriteRequest(v.nodeID, v.msg, v.timeout, true, v.cb)
 		}
 	}
+}
+
+func (c *cache) sendHello(nodeID uint64, conn *network.Conn) error {
+	hellomsg, err := service.SignHello(
+		c.selfID, nodeID, c.key, c.connection)
+	if err != nil {
+		return err
+	}
+	return conn.WritePayload(hellomsg, c.maxPayload, time.Second)
+}
+
+func (c *cache) Close() {}
+
+func (c *cache) WriteRequest(
+	nodeID uint64, msg *service.Message, timeout time.Duration, ack bool, cb func(uint64, *service.Message)) (uint64, error) {
+	c.cmu[nodeID-1].Lock()
+	mc, err := c.dial(nodeID)
+	if err != nil {
+		c.release(nodeID)
+		c.cmu[nodeID-1].Unlock()
+		time.Sleep(5 * time.Millisecond)
+		return c.WriteRequest(nodeID, msg, timeout, ack, cb)
+	}
+	id, err := mc.conn.WriteRequest(msg, c.maxPayload, timeout)
+	if err != nil {
+		c.release(nodeID)
+		c.cmu[nodeID-1].Unlock()
+		return c.WriteRequest(nodeID, msg, timeout, ack, cb)
+	}
+	c.cmu[nodeID-1].Unlock()
+	if ack {
+		c.addPendingAck(nodeID, msg, timeout, id, cb)
+	}
+	return id, nil
 }
 
 func NewCache(nodeID uint64, top network.NetTopology, maxPayload int, key signature.KeyPair, connection service.CONNECTION) *cache {

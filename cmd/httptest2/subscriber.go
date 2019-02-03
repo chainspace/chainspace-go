@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"chainspace.io/prototype/pubsub/client"
+	"chainspace.io/chainspace-go/pubsub/client"
 )
 
 type okcallback func(objectID string)

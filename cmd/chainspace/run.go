@@ -9,15 +9,15 @@ import (
 	"runtime/pprof"
 	"strconv"
 
-	"chainspace.io/prototype/checker"
-	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/contracts"
-	"chainspace.io/prototype/internal/crypto/signature"
-	"chainspace.io/prototype/internal/freeport"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
-	"chainspace.io/prototype/node"
-	"chainspace.io/prototype/restsrv"
+	"chainspace.io/chainspace-go/checker"
+	"chainspace.io/chainspace-go/config"
+	"chainspace.io/chainspace-go/contracts"
+	"chainspace.io/chainspace-go/internal/crypto/signature"
+	"chainspace.io/chainspace-go/internal/freeport"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
+	"chainspace.io/chainspace-go/node"
+	"chainspace.io/chainspace-go/rest"
 
 	"github.com/tav/golly/process"
 )
@@ -132,7 +132,7 @@ func cmdRun(args []string, usage string) {
 	}()
 
 	var s *node.Server
-	var rstsrv *restsrv.Service
+	var rstsrv *rest.Service
 	if !*checkerOnly {
 		s, err = node.Run(cfg)
 		if err != nil {
@@ -167,7 +167,7 @@ func cmdRun(args []string, usage string) {
 	<-wait
 }
 
-func runCheckerOnly(cfg *node.Config) *restsrv.Service {
+func runCheckerOnly(cfg *node.Config) *rest.Service {
 	maxPayload, err := cfg.Network.MaxPayload.Int()
 	if err != nil {
 		log.Fatal("invalid maxpayload", fld.Err(err))
@@ -207,7 +207,7 @@ func runCheckerOnly(cfg *node.Config) *restsrv.Service {
 
 	// ensure all the contracts are working
 	if err := cts.EnsureUp(); err != nil {
-		log.Fatal("some contracts are unavailable", fld.Err(err))
+		log.Fatal("some contracts are unavailable, run `chainspace contracts <yournetworkname> create`", fld.Err(err))
 	}
 
 	tcheckers := []checker.Checker{}
@@ -230,16 +230,16 @@ func runCheckerOnly(cfg *node.Config) *restsrv.Service {
 	} else {
 		rport, _ = freeport.TCP("")
 	}
-	restsrvcfg := &restsrv.Config{
+	restsrvcfg := &rest.Config{
 		Addr:        "",
-		Key:         key,
-		Port:        rport,
-		SelfID:      cfg.NodeID,
-		MaxPayload:  config.ByteSize(maxPayload),
 		Checker:     checkr,
-		SBACOnly:    cfg.SBACOnly,
 		CheckerOnly: cfg.CheckerOnly,
+		Key:         key,
+		MaxPayload:  config.ByteSize(maxPayload),
+		Port:        rport,
+		SBACOnly:    cfg.SBACOnly,
+		SelfID:      cfg.NodeID,
 	}
-	rstsrv := restsrv.New(restsrvcfg)
+	rstsrv := rest.New(restsrvcfg)
 	return rstsrv
 }

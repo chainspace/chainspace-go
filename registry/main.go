@@ -18,14 +18,14 @@ const (
 )
 
 type auth struct {
-	NetworkID string `json:"network_id"`
+	NetworkID string `json:"networkId"`
 	Token     string `json:"token"`
 }
 
 type nodeConfig struct {
-	NodeID int64  `json:"node_id"`
-	Port   int    `json:"port"`
 	Addr   string `json:"addr"`
+	NodeID int64  `json:"nodeId"`
+	Port   int    `json:"port"`
 }
 
 type Entity struct {

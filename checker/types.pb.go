@@ -6,8 +6,8 @@ package checker
 import proto "github.com/gogo/protobuf/proto"
 import fmt "fmt"
 import math "math"
+import sbac "chainspace.io/chainspace-go/sbac"
 import _ "github.com/gogo/protobuf/gogoproto"
-import sbac "chainspace.io/prototype/sbac"
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
@@ -39,16 +39,40 @@ var Opcode_value = map[string]int32{
 func (x Opcode) String() string {
 	return proto.EnumName(Opcode_name, int32(x))
 }
-func (Opcode) EnumDescriptor() ([]byte, []int) { return fileDescriptorTypes, []int{0} }
-
-type CheckRequest struct {
-	Tx *sbac.Transaction `protobuf:"bytes,1,opt,name=tx" json:"tx,omitempty"`
+func (Opcode) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_types_a990feecee9fe0f6, []int{0}
 }
 
-func (m *CheckRequest) Reset()                    { *m = CheckRequest{} }
-func (m *CheckRequest) String() string            { return proto.CompactTextString(m) }
-func (*CheckRequest) ProtoMessage()               {}
-func (*CheckRequest) Descriptor() ([]byte, []int) { return fileDescriptorTypes, []int{0} }
+type CheckRequest struct {
+	Tx                   *sbac.Transaction `protobuf:"bytes,1,opt,name=tx" json:"tx,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}          `json:"-"`
+	XXX_unrecognized     []byte            `json:"-"`
+	XXX_sizecache        int32             `json:"-"`
+}
+
+func (m *CheckRequest) Reset()         { *m = CheckRequest{} }
+func (m *CheckRequest) String() string { return proto.CompactTextString(m) }
+func (*CheckRequest) ProtoMessage()    {}
+func (*CheckRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_types_a990feecee9fe0f6, []int{0}
+}
+func (m *CheckRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_CheckRequest.Unmarshal(m, b)
+}
+func (m *CheckRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_CheckRequest.Marshal(b, m, deterministic)
+}
+func (dst *CheckRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CheckRequest.Merge(dst, src)
+}
+func (m *CheckRequest) XXX_Size() int {
+	return xxx_messageInfo_CheckRequest.Size(m)
+}
+func (m *CheckRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_CheckRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_CheckRequest proto.InternalMessageInfo
 
 func (m *CheckRequest) GetTx() *sbac.Transaction {
 	if m != nil {
@@ -58,14 +82,36 @@ func (m *CheckRequest) GetTx() *sbac.Transaction {
 }
 
 type CheckResponse struct {
-	Ok        bool   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
-	Signature []byte `protobuf:"bytes,2,opt,name=signature,proto3" json:"signature,omitempty"`
+	Ok                   bool     `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	Signature            []byte   `protobuf:"bytes,2,opt,name=signature,proto3" json:"signature,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *CheckResponse) Reset()                    { *m = CheckResponse{} }
-func (m *CheckResponse) String() string            { return proto.CompactTextString(m) }
-func (*CheckResponse) ProtoMessage()               {}
-func (*CheckResponse) Descriptor() ([]byte, []int) { return fileDescriptorTypes, []int{1} }
+func (m *CheckResponse) Reset()         { *m = CheckResponse{} }
+func (m *CheckResponse) String() string { return proto.CompactTextString(m) }
+func (*CheckResponse) ProtoMessage()    {}
+func (*CheckResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_types_a990feecee9fe0f6, []int{1}
+}
+func (m *CheckResponse) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_CheckResponse.Unmarshal(m, b)
+}
+func (m *CheckResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_CheckResponse.Marshal(b, m, deterministic)
+}
+func (dst *CheckResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CheckResponse.Merge(dst, src)
+}
+func (m *CheckResponse) XXX_Size() int {
+	return xxx_messageInfo_CheckResponse.Size(m)
+}
+func (m *CheckResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_CheckResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_CheckResponse proto.InternalMessageInfo
 
 func (m *CheckResponse) GetOk() bool {
 	if m != nil {
@@ -87,9 +133,9 @@ func init() {
 	proto.RegisterEnum("checker.Opcode", Opcode_name, Opcode_value)
 }
 
-func init() { proto.RegisterFile("checker/types.proto", fileDescriptorTypes) }
+func init() { proto.RegisterFile("checker/types.proto", fileDescriptor_types_a990feecee9fe0f6) }
 
-var fileDescriptorTypes = []byte{
+var fileDescriptor_types_a990feecee9fe0f6 = []byte{
 	// 232 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x4c, 0x8e, 0x41, 0x4b, 0xc3, 0x40,
 	0x10, 0x85, 0xcd, 0x82, 0xad, 0x9d, 0x56, 0xa9, 0xeb, 0xa5, 0x14, 0x0f, 0xb1, 0xa7, 0x20, 0xb8,

@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"chainspace.io/prototype/service"
+	"chainspace.io/chainspace-go/service"
 
 	"github.com/gogo/protobuf/proto"
 )
@@ -24,33 +24,6 @@ type Conn struct {
 	conn   net.Conn
 	lastID uint64
 	mu     sync.Mutex
-}
-
-// Close closes the underlying connection.
-func (c *Conn) Close() error {
-	return c.conn.Close()
-}
-
-// ReadHello reads a service.Hello from the underlying connection.
-func (c *Conn) ReadHello(limit int, timeout time.Duration) (*service.Hello, error) {
-	payload, err := c.readPayload(limit, timeout)
-	if err != nil {
-		return nil, err
-	}
-	hello := &service.Hello{}
-	err = proto.Unmarshal(payload, hello)
-	return hello, err
-}
-
-// ReadMessage reads a service.Message from the underlying connection.
-func (c *Conn) ReadMessage(limit int, timeout time.Duration) (*service.Message, error) {
-	payload, err := c.readPayload(limit, timeout)
-	if err != nil {
-		return nil, err
-	}
-	msg := &service.Message{}
-	err = proto.Unmarshal(payload, msg)
-	return msg, err
 }
 
 // readPayload returns the next protobuf-marshalled payload from the underlying
@@ -92,6 +65,33 @@ func (c *Conn) readPayload(limit int, timeout time.Duration) ([]byte, error) {
 		need -= n
 	}
 	return buf, nil
+}
+
+// Close closes the underlying connection.
+func (c *Conn) Close() error {
+	return c.conn.Close()
+}
+
+// ReadHello reads a service.Hello from the underlying connection.
+func (c *Conn) ReadHello(limit int, timeout time.Duration) (*service.Hello, error) {
+	payload, err := c.readPayload(limit, timeout)
+	if err != nil {
+		return nil, err
+	}
+	hello := &service.Hello{}
+	err = proto.Unmarshal(payload, hello)
+	return hello, err
+}
+
+// ReadMessage reads a service.Message from the underlying connection.
+func (c *Conn) ReadMessage(limit int, timeout time.Duration) (*service.Message, error) {
+	payload, err := c.readPayload(limit, timeout)
+	if err != nil {
+		return nil, err
+	}
+	msg := &service.Message{}
+	err = proto.Unmarshal(payload, msg)
+	return msg, err
 }
 
 // WritePayload encodes the given payload into protobuf and writes the

@@ -17,6 +17,8 @@ import (
 	"sync"
 	"time"
 
+	sbacapi "chainspace.io/chainspace-go/sbac/api"
+
 	"golang.org/x/oauth2/google"
 	compute "google.golang.org/api/compute/v1"
 )
@@ -76,14 +78,14 @@ func seedObjects(id int) ([]string, error) {
 	url := (&url.URL{
 		Scheme: "http",
 		Host:   _addr,
-		Path:   "object",
+		Path:   "/api/sbac/object",
 	}).String()
 	fmt.Printf("seeding objects for worker %v with %v\n", id, _addr)
 	for i := 0; i < objects; i += 1 {
 		client := http.Client{
 			Timeout: 15 * time.Second,
 		}
-		payload := bytes.NewBufferString(fmt.Sprintf(`{"data": "%v"}`, randSeq(30)))
+		payload := bytes.NewBufferString(fmt.Sprintf(`{"object": "%v"}`, randSeq(30)))
 		req, err := http.NewRequest(http.MethodPost, url, payload)
 		req.Header.Add("Content-Type", "application/json")
 		req.Header.Add("X-request-start", time.Now().Format(time.RFC3339Nano))
@@ -96,20 +98,16 @@ func seedObjects(id int) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("error reading response from POST /object: %v", err.Error())
 		}
-		res := struct {
-			Data   interface{} `json:"data"`
-			Status string      `json:"status"`
-		}{}
+		res := sbacapi.ObjectIDResponse{}
 		err = json.Unmarshal(b, &res)
 		if err != nil {
 			return nil, fmt.Errorf("unable to unmarshal response: %v", err.Error())
 		}
-		if res.Status != "success" {
-			return nil, fmt.Errorf("error from server: %v", res.Data)
+		if len(res.ID) <= 0 {
+			return nil, fmt.Errorf("invalid json response: missing field id")
 		}
-		key := res.Data.(map[string]interface{})["id"].(string)
-		out = append(out, key)
-		fmt.Printf("new seed key: %v\n", key)
+		out = append(out, res.ID)
+		fmt.Printf("new seed key: %v\n", res.ID)
 	}
 	return out, nil
 }
@@ -121,7 +119,8 @@ func main() {
 	}
 	if port > 0 && len(address) > 0 {
 		getAddresses()
-		getCheckerAddresses()
+		// getCheckerAddresses()
+		checkerAddresses = addresses
 	} else if port > 0 {
 		getAddressesFromGCP()
 		if standaloneCheckers {

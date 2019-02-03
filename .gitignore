@@ -1,11 +1,11 @@
+.idea
 coverage.txt
 coverhtml.txt
-/Gopkg.lock
 /cmd/chainspace/chainspace
 /cmd/httptest/httptest
 /cmd/httptest2/httptest2
+/cmd/blockmaniatest/blockmaniatest
 /infrastructure/.terraform/
 /infrastructure/conf/
 /infrastructure/terraform.tfstate
 /infrastructure/terraform.tfstate.backup
-/vendor

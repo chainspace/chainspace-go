@@ -1,4 +1,4 @@
-package client // import "chainspace.io/prototype/sbac/client"
+package client // import "chainspace.io/chainspace-go/sbac/client"
 
 import (
 	"crypto/sha512"
@@ -7,14 +7,14 @@ import (
 	"sync"
 	"time"
 
-	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/internal/conns"
-	"chainspace.io/prototype/internal/crypto/signature"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
-	"chainspace.io/prototype/network"
-	"chainspace.io/prototype/sbac"
-	"chainspace.io/prototype/service"
+	"chainspace.io/chainspace-go/config"
+	"chainspace.io/chainspace-go/internal/conns"
+	"chainspace.io/chainspace-go/internal/crypto/signature"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
+	"chainspace.io/chainspace-go/network"
+	"chainspace.io/chainspace-go/sbac"
+	"chainspace.io/chainspace-go/service"
 
 	"github.com/gogo/protobuf/proto"
 )
