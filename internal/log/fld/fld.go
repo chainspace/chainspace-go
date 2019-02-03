@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"chainspace.io/prototype/internal/log"
+	"chainspace.io/chainspace-go/internal/log"
 )
 
 // Address log field.

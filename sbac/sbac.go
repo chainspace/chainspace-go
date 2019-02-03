@@ -1,4 +1,4 @@
-package sbac // import "chainspace.io/prototype/sbac"
+package sbac // import "chainspace.io/chainspace-go/sbac"
 
 import (
 	"context"
@@ -7,16 +7,16 @@ import (
 	"errors"
 	"fmt"
 
-	"chainspace.io/prototype/broadcast"
-	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/internal/conns"
-	"chainspace.io/prototype/internal/crypto/signature"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
-	"chainspace.io/prototype/kv"
-	"chainspace.io/prototype/network"
-	"chainspace.io/prototype/pubsub"
-	"chainspace.io/prototype/service"
+	"chainspace.io/chainspace-go/broadcast"
+	"chainspace.io/chainspace-go/config"
+	"chainspace.io/chainspace-go/internal/conns"
+	"chainspace.io/chainspace-go/internal/crypto/signature"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
+	"chainspace.io/chainspace-go/kv"
+	"chainspace.io/chainspace-go/network"
+	"chainspace.io/chainspace-go/pubsub"
+	"chainspace.io/chainspace-go/service"
 
 	"github.com/gogo/protobuf/proto"
 )

@@ -1,4 +1,4 @@
-package contracts // import "chainspace.io/prototype/contracts"
+package contracts // import "chainspace.io/chainspace-go/contracts"
 
 import (
 	"bytes"
@@ -12,10 +12,10 @@ import (
 	"path"
 	"time"
 
-	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
-	"chainspace.io/prototype/sbac"
+	"chainspace.io/chainspace-go/config"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
+	"chainspace.io/chainspace-go/sbac"
 )
 
 type Checker struct {

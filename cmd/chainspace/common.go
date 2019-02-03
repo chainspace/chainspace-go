@@ -4,8 +4,8 @@ import (
 	"os"
 	"strconv"
 
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
 	"github.com/tav/golly/fsutil"
 	"github.com/tav/golly/optparse"
 	"gopkg.in/yaml.v2"

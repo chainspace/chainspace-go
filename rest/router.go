@@ -1,7 +1,7 @@
 package rest
 
 import (
-	_ "chainspace.io/prototype/rest/docs" // needed by https://github.com/swaggo/gin-swagger
+	_ "chainspace.io/chainspace-go/rest/docs" // needed by https://github.com/swaggo/gin-swagger
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"

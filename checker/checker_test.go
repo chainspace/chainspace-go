@@ -1,8 +1,8 @@
 package checker_test
 
 import (
-	"chainspace.io/prototype/checker"
-	"chainspace.io/prototype/config"
+	"chainspace.io/chainspace-go/checker"
+	"chainspace.io/chainspace-go/config"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )

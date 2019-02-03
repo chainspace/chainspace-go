@@ -1,5 +1,5 @@
 // Package log provides support for structured logging.
-package log // import "chainspace.io/prototype/internal/log"
+package log // import "chainspace.io/chainspace-go/internal/log"
 
 import (
 	"fmt"

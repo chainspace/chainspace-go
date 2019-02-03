@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"chainspace.io/prototype/sbac"
+	"chainspace.io/chainspace-go/sbac"
 )
 
 // ObjectRequest contains a full json graph

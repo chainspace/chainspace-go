@@ -1,11 +1,11 @@
-package checker // import "chainspace.io/prototype/checker"
+package checker // import "chainspace.io/chainspace-go/checker"
 
 import (
 	"context"
 	"errors"
 	fmt "fmt"
 
-	sbac "chainspace.io/prototype/sbac"
+	sbac "chainspace.io/chainspace-go/sbac"
 	"golang.org/x/sync/errgroup"
 )
 

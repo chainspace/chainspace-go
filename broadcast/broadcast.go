@@ -1,6 +1,6 @@
 // Package broadcast implements the network broadcast and consensus within a
 // shard.
-package broadcast // import "chainspace.io/prototype/broadcast"
+package broadcast // import "chainspace.io/chainspace-go/broadcast"
 
 import (
 	"context"
@@ -13,13 +13,13 @@ import (
 	"sync"
 	"time"
 
-	"chainspace.io/prototype/blockmania"
-	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/internal/crypto/signature"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
-	"chainspace.io/prototype/network"
-	"chainspace.io/prototype/service"
+	"chainspace.io/chainspace-go/blockmania"
+	"chainspace.io/chainspace-go/config"
+	"chainspace.io/chainspace-go/internal/crypto/signature"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
+	"chainspace.io/chainspace-go/network"
+	"chainspace.io/chainspace-go/service"
 	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
 	"github.com/tav/golly/process"

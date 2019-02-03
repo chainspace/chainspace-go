@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"chainspace.io/prototype/service"
+	"chainspace.io/chainspace-go/service"
 
 	"github.com/gogo/protobuf/proto"
 )

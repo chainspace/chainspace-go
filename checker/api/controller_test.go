@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"chainspace.io/prototype/checker/api"
-	"chainspace.io/prototype/checker/api/mocks"
-	sbacapi "chainspace.io/prototype/sbac/api"
+	"chainspace.io/chainspace-go/checker/api"
+	"chainspace.io/chainspace-go/checker/api/mocks"
+	sbacapi "chainspace.io/chainspace-go/sbac/api"
 
 	"github.com/gin-gonic/gin"
 	. "github.com/onsi/ginkgo"

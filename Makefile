@@ -23,7 +23,7 @@ generate: ## generte bindata files # TODO: remove this once new gin-swagger stuf
 	cd restsrv && go-bindata-assetfs -pkg restsrv -o bindata.go swagger && cd ..
 
 $(PROJECT_NAME): ## build the chainspace binary
-	$(GO_CMD) install $(NAMESPACE)/prototype/cmd/$(PROJECT_NAME)
+	$(GO_CMD) install $(NAMESPACE)/chainspace-go/cmd/$(PROJECT_NAME)
 
 coverage: $(COVERAGE_FILE)
 
@@ -57,13 +57,13 @@ docker-push: ## push the docker image to the gcp registry
 	docker push gcr.io/acoustic-atom-211511/$(PROJECT_NAME):v$(VERSION)
 
 httptest2: ## build the httptest2 binary
-	go install $(NAMESPACE)/prototype/cmd/httptest2
+	go install $(NAMESPACE)/chainspace-go/cmd/httptest2
 
 blockmaniatest: ## build the httptest2 binary
-	go install $(NAMESPACE)/prototype/cmd/blockmaniatest
+	go install $(NAMESPACE)/chainspace-go/cmd/blockmaniatest
 
 pubsublistener:
-	go install $(NAMESPACE)/prototype/cmd/pubsublistener
+	go install $(NAMESPACE)/chainspace-go/cmd/pubsublistener
 
 proto: ## recompile all protobuf definitions
 	$(foreach f,$(FILES),\
@@ -80,7 +80,7 @@ test: ## Run unit tests
 	go test -short ${PKG_LIST} -v
 
 gcp: ## build and compress in order to send to gcp
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w" $(NAMESPACE)/prototype/cmd/$(PROJECT_NAME)
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w" $(NAMESPACE)/chainspace-go/cmd/$(PROJECT_NAME)
 	rm -rf ./infrastructure/$(PROJECT_NAME).upx
 	upx -o ./infrastructure/$(PROJECT_NAME).upx $(PROJECT_NAME)
 

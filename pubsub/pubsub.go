@@ -1,4 +1,4 @@
-package pubsub // import "chainspace.io/prototype/pubsub"
+package pubsub // import "chainspace.io/chainspace-go/pubsub"
 
 import (
 	"encoding/base64"
@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"chainspace.io/prototype/internal/freeport"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
-	"chainspace.io/prototype/pubsub/internal"
+	"chainspace.io/chainspace-go/internal/freeport"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
+	"chainspace.io/chainspace-go/pubsub/internal"
 	"github.com/grandcat/zeroconf"
 )
 

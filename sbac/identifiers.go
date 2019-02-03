@@ -1,4 +1,4 @@
-package sbac // import "chainspace.io/prototype/sbac"
+package sbac // import "chainspace.io/chainspace-go/sbac"
 
 import (
 	"crypto/sha512"

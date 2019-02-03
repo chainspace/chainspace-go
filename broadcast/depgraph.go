@@ -4,9 +4,9 @@ import (
 	"context"
 	"sync"
 
-	"chainspace.io/prototype/blockmania"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
+	"chainspace.io/chainspace-go/blockmania"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
 )
 
 type blockData struct {

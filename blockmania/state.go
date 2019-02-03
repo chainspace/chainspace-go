@@ -1,8 +1,8 @@
 package blockmania
 
 import (
-	"chainspace.io/prototype/blockmania/messages"
-	"chainspace.io/prototype/blockmania/states"
+	"chainspace.io/chainspace-go/blockmania/messages"
+	"chainspace.io/chainspace-go/blockmania/states"
 )
 
 type nodeRound struct {

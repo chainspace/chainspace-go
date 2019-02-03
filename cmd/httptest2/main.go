@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	sbacapi "chainspace.io/prototype/sbac/api"
+	sbacapi "chainspace.io/chainspace-go/sbac/api"
 
 	"golang.org/x/oauth2/google"
 	compute "google.golang.org/api/compute/v1"

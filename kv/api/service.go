@@ -4,8 +4,8 @@ import (
 	"encoding/base64"
 	"net/http"
 
-	"chainspace.io/prototype/kv"
-	"chainspace.io/prototype/sbac"
+	"chainspace.io/chainspace-go/kv"
+	"chainspace.io/chainspace-go/sbac"
 )
 
 // service is the Key-Value srv

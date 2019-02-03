@@ -16,11 +16,11 @@ import (
 	"time"
 	"unsafe"
 
-	"chainspace.io/prototype/broadcast"
-	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
-	"chainspace.io/prototype/node"
+	"chainspace.io/chainspace-go/broadcast"
+	"chainspace.io/chainspace-go/config"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
+	"chainspace.io/chainspace-go/node"
 	"github.com/gogo/protobuf/proto"
 )
 

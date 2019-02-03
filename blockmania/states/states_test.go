@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	. "chainspace.io/prototype/blockmania/states"
+	. "chainspace.io/chainspace-go/blockmania/states"
 )
 
 var _ = Describe("States", func() {

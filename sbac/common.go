@@ -5,9 +5,9 @@ import (
 	"hash/fnv"
 	"time"
 
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
-	"chainspace.io/prototype/service"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
+	"chainspace.io/chainspace-go/service"
 	proto "github.com/gogo/protobuf/proto"
 )
 

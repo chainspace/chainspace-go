@@ -5,8 +5,8 @@ import (
 	fmt "fmt"
 	"sync"
 
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
 )
 
 type StateTable struct {

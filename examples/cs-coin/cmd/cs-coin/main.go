@@ -15,7 +15,7 @@ import (
 	"sync"
 	"syscall"
 
-	"chainspace.io/prototype/examples/cs-coin/api"
+	"chainspace.io/chainspace-go/examples/cs-coin/api"
 	"golang.org/x/crypto/ed25519"
 
 	"github.com/gin-gonic/gin"

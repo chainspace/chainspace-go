@@ -6,8 +6,8 @@ import (
 	"errors"
 	"net/http"
 
-	"chainspace.io/prototype/checker"
-	sbacapi "chainspace.io/prototype/sbac/api"
+	"chainspace.io/chainspace-go/checker"
+	sbacapi "chainspace.io/chainspace-go/sbac/api"
 )
 
 // Service is the Key-Value srv

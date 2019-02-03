@@ -6,10 +6,10 @@ import (
 	"errors"
 	"net/http"
 
-	"chainspace.io/prototype/kv"
-	"chainspace.io/prototype/kv/api"
-	kvMocks "chainspace.io/prototype/kv/mocks"
-	sbacMocks "chainspace.io/prototype/sbac/mocks"
+	"chainspace.io/chainspace-go/kv"
+	"chainspace.io/chainspace-go/kv/api"
+	kvMocks "chainspace.io/chainspace-go/kv/mocks"
+	sbacMocks "chainspace.io/chainspace-go/sbac/mocks"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

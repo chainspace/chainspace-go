@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/internal/x509certs"
+	"chainspace.io/chainspace-go/config"
+	"chainspace.io/chainspace-go/internal/x509certs"
 
 	"github.com/grandcat/zeroconf"
 )

@@ -1,16 +1,16 @@
-package checker // import "chainspace.io/prototype/checker"
+package checker // import "chainspace.io/chainspace-go/checker"
 
 import (
 	"context"
 	"encoding/base32"
 	"fmt"
 
-	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/internal/crypto/signature"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
-	"chainspace.io/prototype/sbac"
-	"chainspace.io/prototype/service"
+	"chainspace.io/chainspace-go/config"
+	"chainspace.io/chainspace-go/internal/crypto/signature"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
+	"chainspace.io/chainspace-go/sbac"
+	"chainspace.io/chainspace-go/service"
 	"github.com/gogo/protobuf/proto"
 )
 

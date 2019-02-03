@@ -3,7 +3,7 @@ package api_test
 import (
 	"fmt"
 
-	"chainspace.io/prototype/sbac/api"
+	"chainspace.io/chainspace-go/sbac/api"
 	"github.com/getlantern/deepcopy"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

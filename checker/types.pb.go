@@ -6,7 +6,7 @@ package checker
 import proto "github.com/gogo/protobuf/proto"
 import fmt "fmt"
 import math "math"
-import sbac "chainspace.io/prototype/sbac"
+import sbac "chainspace.io/chainspace-go/sbac"
 import _ "github.com/gogo/protobuf/gogoproto"
 
 // Reference imports to suppress errors if they are not otherwise used.

@@ -9,12 +9,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
-	"chainspace.io/prototype/network"
-	sbacapi "chainspace.io/prototype/sbac/api"
-	sbacclient "chainspace.io/prototype/sbac/client"
+	"chainspace.io/chainspace-go/config"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
+	"chainspace.io/chainspace-go/network"
+	sbacapi "chainspace.io/chainspace-go/sbac/api"
+	sbacclient "chainspace.io/chainspace-go/sbac/client"
 	"github.com/tav/golly/optparse"
 )
 

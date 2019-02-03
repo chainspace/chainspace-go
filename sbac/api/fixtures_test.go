@@ -1,7 +1,7 @@
 package api_test
 
 import (
-	sbacapi "chainspace.io/prototype/sbac/api"
+	sbacapi "chainspace.io/chainspace-go/sbac/api"
 )
 
 var transactionFixture = sbacapi.Transaction{

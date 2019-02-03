@@ -1,4 +1,4 @@
-package api // import "chainspace.io/prototype/sbac/api"
+package api // import "chainspace.io/chainspace-go/sbac/api"
 
 import (
 	"context"
@@ -8,11 +8,11 @@ import (
 	"net/http"
 	"sort"
 
-	"chainspace.io/prototype/checker"
-	checkerclient "chainspace.io/prototype/checker/client"
-	"chainspace.io/prototype/network"
-	"chainspace.io/prototype/sbac"
-	sbacclient "chainspace.io/prototype/sbac/client"
+	"chainspace.io/chainspace-go/checker"
+	checkerclient "chainspace.io/chainspace-go/checker/client"
+	"chainspace.io/chainspace-go/network"
+	"chainspace.io/chainspace-go/sbac"
+	sbacclient "chainspace.io/chainspace-go/sbac/client"
 )
 
 type service struct {

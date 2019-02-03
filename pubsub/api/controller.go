@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
-	"chainspace.io/prototype/pubsub"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
+	"chainspace.io/chainspace-go/pubsub"
 	"github.com/gin-gonic/gin"
 )
 

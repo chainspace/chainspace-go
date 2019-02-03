@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"sync"
 
-	"chainspace.io/prototype/pubsub"
-	"chainspace.io/prototype/pubsub/internal"
+	"chainspace.io/chainspace-go/pubsub"
+	"chainspace.io/chainspace-go/pubsub/internal"
 	"github.com/gorilla/websocket"
 )
 

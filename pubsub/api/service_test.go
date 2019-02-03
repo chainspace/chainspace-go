@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"sync"
 
-	"chainspace.io/prototype/pubsub/api"
-	mocks "chainspace.io/prototype/pubsub/api/mocks"
-	pbmocks "chainspace.io/prototype/pubsub/mocks"
+	"chainspace.io/chainspace-go/pubsub/api"
+	mocks "chainspace.io/chainspace-go/pubsub/api/mocks"
+	pbmocks "chainspace.io/chainspace-go/pubsub/mocks"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

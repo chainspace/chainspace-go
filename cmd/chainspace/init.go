@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
+	"chainspace.io/chainspace-go/config"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
 )
 
 func cmdInit(args []string, usage string) {

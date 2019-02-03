@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strconv"
 
-	sbacapi "chainspace.io/prototype/sbac/api"
+	sbacapi "chainspace.io/chainspace-go/sbac/api"
 	"golang.org/x/crypto/ed25519"
 )
 

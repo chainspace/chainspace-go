@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"os"
 
-	"chainspace.io/prototype/config"
-	"chainspace.io/prototype/internal/crypto/signature"
-	"chainspace.io/prototype/internal/crypto/transport"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
+	"chainspace.io/chainspace-go/config"
+	"chainspace.io/chainspace-go/internal/crypto/signature"
+	"chainspace.io/chainspace-go/internal/crypto/transport"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
 	"gopkg.in/yaml.v2"
 )
 

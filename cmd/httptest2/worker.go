@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	checkerapi "chainspace.io/prototype/checker/api"
-	sbacapi "chainspace.io/prototype/sbac/api"
+	checkerapi "chainspace.io/chainspace-go/checker/api"
+	sbacapi "chainspace.io/chainspace-go/sbac/api"
 )
 
 type worker struct {

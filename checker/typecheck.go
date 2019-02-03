@@ -1,10 +1,10 @@
-package checker // import "chainspace.io/prototype/checker"
+package checker // import "chainspace.io/chainspace-go/checker"
 
 import (
 	"encoding/base64"
 	"fmt"
 
-	"chainspace.io/prototype/sbac"
+	"chainspace.io/chainspace-go/sbac"
 )
 
 type idstate int8

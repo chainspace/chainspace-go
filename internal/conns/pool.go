@@ -1,11 +1,11 @@
-package conns // import "chainspace.io/prototype/internal/conns"
+package conns // import "chainspace.io/chainspace-go/internal/conns"
 
 import (
 	"sync"
 
-	"chainspace.io/prototype/internal/crypto/signature"
-	"chainspace.io/prototype/network"
-	"chainspace.io/prototype/service"
+	"chainspace.io/chainspace-go/internal/crypto/signature"
+	"chainspace.io/chainspace-go/network"
+	"chainspace.io/chainspace-go/service"
 )
 
 type pool struct {

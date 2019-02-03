@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"chainspace.io/prototype/kv/api"
-	serviceMocks "chainspace.io/prototype/kv/api/mocks"
+	"chainspace.io/chainspace-go/kv/api"
+	serviceMocks "chainspace.io/chainspace-go/kv/api/mocks"
 
 	"github.com/gin-gonic/gin"
 	. "github.com/onsi/ginkgo"

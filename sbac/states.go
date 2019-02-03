@@ -1,11 +1,11 @@
-package sbac // import "chainspace.io/prototype/sbac"
+package sbac // import "chainspace.io/chainspace-go/sbac"
 
 import (
 	"fmt"
 
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
-	"chainspace.io/prototype/service"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
+	"chainspace.io/chainspace-go/service"
 	"github.com/gogo/protobuf/proto"
 )
 

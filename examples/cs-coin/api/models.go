@@ -1,6 +1,6 @@
 package api
 
-import sbacapi "chainspace.io/prototype/sbac/api"
+import sbacapi "chainspace.io/chainspace-go/sbac/api"
 
 // InitRequest is the payload expected by the Init endpoint
 type InitRequest struct {

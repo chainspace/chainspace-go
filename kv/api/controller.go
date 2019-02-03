@@ -3,8 +3,8 @@ package api
 import (
 	"net/http"
 
-	"chainspace.io/prototype/kv"
-	"chainspace.io/prototype/sbac"
+	"chainspace.io/chainspace-go/kv"
+	"chainspace.io/chainspace-go/sbac"
 	"github.com/gin-gonic/gin"
 )
 

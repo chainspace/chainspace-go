@@ -2,7 +2,7 @@
 
 package mocks
 
-import api "chainspace.io/prototype/pubsub/api"
+import api "chainspace.io/chainspace-go/pubsub/api"
 import http "net/http"
 import mock "github.com/stretchr/testify/mock"
 

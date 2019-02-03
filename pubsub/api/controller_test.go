@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"chainspace.io/prototype/pubsub/api"
-	"chainspace.io/prototype/pubsub/api/mocks"
+	"chainspace.io/chainspace-go/pubsub/api"
+	"chainspace.io/chainspace-go/pubsub/api/mocks"
 
 	"github.com/gin-gonic/gin"
 	. "github.com/onsi/ginkgo"

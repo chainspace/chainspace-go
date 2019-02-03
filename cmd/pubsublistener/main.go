@@ -10,7 +10,7 @@ import (
 	"strings"
 	"syscall"
 
-	"chainspace.io/prototype/pubsub/client"
+	"chainspace.io/chainspace-go/pubsub/client"
 )
 
 var (

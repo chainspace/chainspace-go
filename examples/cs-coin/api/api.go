@@ -5,8 +5,8 @@ import (
 	"log"
 	"net/http"
 
-	_ "chainspace.io/prototype/examples/cs-coin/api/docs"
-	"chainspace.io/prototype/examples/cs-coin/service"
+	_ "chainspace.io/chainspace-go/examples/cs-coin/api/docs"
+	"chainspace.io/chainspace-go/examples/cs-coin/service"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"

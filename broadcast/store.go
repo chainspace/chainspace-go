@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"sync"
 
-	"chainspace.io/prototype/blockmania"
-	"chainspace.io/prototype/internal/lexinum"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
+	"chainspace.io/chainspace-go/blockmania"
+	"chainspace.io/chainspace-go/internal/lexinum"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
 	"github.com/dgraph-io/badger"
 	"github.com/gogo/protobuf/proto"
 )

@@ -3,12 +3,12 @@ package api
 import (
 	"net/http"
 
-	checkerclient "chainspace.io/prototype/checker/client"
-	"chainspace.io/prototype/network"
-	sbacclient "chainspace.io/prototype/sbac/client"
+	checkerclient "chainspace.io/chainspace-go/checker/client"
+	"chainspace.io/chainspace-go/network"
+	sbacclient "chainspace.io/chainspace-go/sbac/client"
 
-	"chainspace.io/prototype/checker"
-	"chainspace.io/prototype/sbac"
+	"chainspace.io/chainspace-go/checker"
+	"chainspace.io/chainspace-go/sbac"
 	"github.com/gin-gonic/gin"
 )
 

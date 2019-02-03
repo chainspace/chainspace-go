@@ -6,10 +6,10 @@ import (
 	"io/ioutil"
 	"os"
 
-	"chainspace.io/prototype/checker"
-	"chainspace.io/prototype/internal/log"
-	"chainspace.io/prototype/internal/log/fld"
-	sbacapi "chainspace.io/prototype/sbac/api"
+	"chainspace.io/chainspace-go/checker"
+	"chainspace.io/chainspace-go/internal/log"
+	"chainspace.io/chainspace-go/internal/log/fld"
+	sbacapi "chainspace.io/chainspace-go/sbac/api"
 
 	"github.com/tav/golly/optparse"
 )
